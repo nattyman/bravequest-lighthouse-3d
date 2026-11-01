@@ -7,6 +7,10 @@
    (6/8, D minor, his chord chart and leitmotif). They play accents on the
    recording's beat grid, and they are the full fallback score if the files
    can't be fetched or decoded.
+   In the cave, Heath's "Bravequest Dungeon Theme" (a Suno cover of the same
+   theme) takes over: audio/bq-cave-core|rhythm|power.mp3, fetched lazily on the
+   first cave visit (or once the core loop starts), time-warped onto the
+   island's bar grid so both recordings loop together, phase-locked.
    It only listens: events from the other modules plus a light poll of
    player / monster state.
    ===================================================================== */
@@ -334,6 +338,18 @@ const CHART=['Dm','Am',['Bb','C'],'F','Gm','Dm','Bb','A',  'Dm','Am',['Bb','C'],
              'Bb','C','Dm','Dm','Bb','C','F','CE',          'Bb','C','Am',['Dm','C'],'Gm','Gm','A','A'];
 const CURED_MAP={Dm:'D',Am:'A',Bb:'G',C:'A',F:'D',Gm:'G',A:'A',CE:'A',Dc:'D'};
 const BOSS_CHART=['Dm','Eb','Dm','Cs'];
+/* The cave recording: "Bravequest Dungeon Theme" (Suno cover, D minor, 6/8, ~148–150 pulses/min with
+   Suno's drift and phrase-end ritards). Song: intro 0–23 s (keys, guitar, light percussion) | verse with a
+   wordless hummed lead 24–68 | build 69–100 (hum swells 84–96) | instrumental verse 101–121 (synth-led)
+   | verse 2 122–142 (strings, hum, choir from 132) | choir chorus 142–181 | breakdown 181–196 |
+   instrumental 197–220 | outro. Drums are near-silent throughout; percussion is light.
+   The loop is song 103.85–181.23 s: 32 bars (instrumental verse, verse 2, choir chorus), warped bar by
+   bar onto the island grid (BAR above), so it shares loopStart/loopEnd with the island files and
+   plays in lock-step with them. Groups: core = strings, bass, keys, woodwinds, choir (lead + backing
+   "vocals" are a wordless hum/choir: no consonants); rhythm = percussion, drums, guitar; power = synth, other. */
+const CAVE_FILES={ccore:'cave-core',crhythm:'cave-rhythm',cpower:'cave-power'}, CAVE_KEYS=Object.keys(CAVE_FILES);
+const CAVE_CHART=['Dm','Am','Bb','F','Gm','Dm','Bb','A',  'Dm','Am','Bb','F','Gm','Dm','C','C',
+                  'F','C','Dm','Am','Bb','F','Gm','C',    'F','C','Dm','Am','Bb','F','C','C'];
 const chordAt=(i,half,cured)=>{ let c=CHART[((i%32)+32)%32]; if(Array.isArray(c))c=c[half?1:0]; return CH[cured?CURED_MAP[c]:c]; };
 const toMajor=m=>{ const pc=((m%12)+12)%12; return m+(pc===5||pc===0||pc===10?1:0); };  // F→F#, C→C#, Bb→B (D major)
 // [midi, pulse offset, length in pulses]
@@ -379,7 +395,34 @@ for(const k of REC.files){
   catch(e){ recFetch[k]=Promise.reject(e); }
   recFetch[k].catch(()=>{});
 }
-let recBus, coreLP, coreWarm, recCaveLP;
+// the cave recording: fetched only on the first cave visit (or once the core loop is on), so the title/island load isn't slowed
+const caveRec={ requested:false, fetch:{}, decoding:false, loaded:false, failed:false, error:null, offset:0, playing:false };
+for(const k of CAVE_KEYS)rec.w[k]=0;
+function requestCave(){
+  if(caveRec.requested)return; caveRec.requested=true;
+  for(const k of CAVE_KEYS){
+    try{ caveRec.fetch[k]=fetch('audio/bq-'+CAVE_FILES[k]+'.mp3').then(r=>{ if(!r.ok)throw new Error('HTTP '+r.status); return r.arrayBuffer(); }); }
+    catch(e){ caveRec.fetch[k]=Promise.reject(e); }
+    caveRec.fetch[k].catch(()=>{});
+  }
+}
+function decodeCave(){
+  if(caveRec.decoding||!ctx||!caveRec.requested)return; caveRec.decoding=true;
+  Promise.all(CAVE_KEYS.map(k=>caveRec.fetch[k].then(decode).then(b=>{rec.bufs[k]=b;})))
+    .then(()=>{ caveRec.loaded=true; const extra=rec.bufs.ccore.duration-REC.rawLen; caveRec.offset=(extra>0&&extra<.08)?extra:0;
+      if(rec.playing)startCave(ctx.currentTime+.1); })
+    .catch(e=>{ caveRec.failed=true; caveRec.error=String(e&&e.message||e); console.warn('cave music unavailable, using the island stems:',caveRec.error); });
+}
+/** start the cave groups phase-locked to the island groups (same loop length and bar grid) */
+function startCave(when){
+  if(!caveRec.loaded||!rec.playing)return;
+  const len=REC.loopEnd-REC.loopStart, pos=(((when-rec.start)%len)+len)%len;
+  for(const k of CAVE_KEYS){ const n=rec.nodes[k]; if(n.src){ try{n.src.stop(when);}catch(_){} }
+    n.src=newSrc(k,REC.loopStart,REC.loopEnd,caveRec.offset); n.src.start(when,REC.loopStart+pos+caveRec.offset); }
+  caveRec.playing=true;
+}
+const caveLive=()=>caveRec.playing;
+let recBus, coreLP, coreWarm, recCaveLP, caveCoreLP;
 function decode(ab){ return new Promise((res,rej)=>{ try{ const p=ctx.decodeAudioData(ab,res,rej); if(p&&p.then)p.then(res,rej); }catch(e){rej(e);} }); }
 function buildRecording(){
   recBus=ctx.createGain(); recBus.gain.value=.85;
@@ -389,6 +432,10 @@ function buildRecording(){
   if(caveCoreSend)coreWarm.connect(caveCoreSend);
   coreLP=ctx.createBiquadFilter(); coreLP.type='lowpass'; coreLP.frequency.value=20000; coreLP.Q.value=.6; coreLP.connect(coreWarm);
   for(const k of REC.files){ const g=ctx.createGain(); g.gain.value=0; g.connect(k==='core'?coreLP:recBus); rec.nodes[k]={gain:g,src:null}; }
+  // cave groups: the cave core has its own low-pass and feeds the cave reverb; rhythm and power go straight to the bus
+  caveCoreLP=ctx.createBiquadFilter(); caveCoreLP.type='lowpass'; caveCoreLP.frequency.value=2600; caveCoreLP.Q.value=.5; caveCoreLP.connect(recBus);
+  if(caveCoreSend)caveCoreLP.connect(caveCoreSend);
+  for(const k of CAVE_KEYS){ const g=ctx.createGain(); g.gain.value=0; g.connect(k==='ccore'?caveCoreLP:recBus); rec.nodes[k]={gain:g,src:null}; }
   const want=['core','rhythm','power'];
   Promise.all(want.map(k=>recFetch[k].then(decode).then(b=>{rec.bufs[k]=b;})))
     .then(()=>{ rec.loaded=true;
@@ -398,12 +445,13 @@ function buildRecording(){
     .catch(e=>{ rec.failed=true; rec.error=String(e&&e.message||e); console.warn('music stems unavailable, using generative score:',rec.error); });
   recFetch.title.then(decode).then(b=>{ rec.bufs.title=b; startTitle(ctx.currentTime+.05); }).catch(()=>{});
 }
-function newSrc(k,ls,le){ const s=ctx.createBufferSource(); s.buffer=rec.bufs[k]; s.loop=true; s.loopStart=ls+rec.offset; s.loopEnd=le+rec.offset; s.connect(rec.nodes[k].gain); return s; }
+function newSrc(k,ls,le,off){ const o=off==null?rec.offset:off, s=ctx.createBufferSource(); s.buffer=rec.bufs[k]; s.loop=true; s.loopStart=ls+o; s.loopEnd=le+o; s.connect(rec.nodes[k].gain); return s; }
 /** (re)start the three groups together, from the loop start (song bar 9 = verse downbeat) at time `when` */
 function startStems(when){
   for(const k of ['core','rhythm','power']){ const n=rec.nodes[k]; if(n.src){ try{n.src.stop(when);}catch(_){} }
     n.src=newSrc(k,REC.loopStart,REC.loopEnd); n.src.start(when,REC.loopStart+rec.offset); }
   rec.start=when; rec.playing=true; aligned=false;
+  if(caveRec.loaded)startCave(when);
 }
 function startTitle(when){ const n=rec.nodes.title; if(n.src)return; n.src=newSrc('title',REC.titleLoopStart,REC.titleLoopEnd); n.src.start(when,REC.titleLoopStart+rec.offset); rec.titleStart=when; }
 /** time of the next grid point (unit = PULSE, BEAT or BAR) on the recording's beat grid */
@@ -459,6 +507,15 @@ const MIX={
   caveHold:   {title:0, core:.06, rhythm:0,   power:0,   lp:300,   warm:0},
   silent: {title:0,   core:0,   rhythm:0,   power:0,   lp:20000, warm:0}
 };
+// once the dungeon recording plays, the everyday cave states use it instead of the island stems
+// (clp = cave-core low-pass, Hz). The Undertow fight, its D-major resolution and the Wound hold stay on the
+// island stems: the dungeon song has no real drums, and the island theme returning in full is the payoff.
+const CAVE_MIX={
+  caveDark:   {title:0, core:0, rhythm:0, power:0, lp:20000, warm:0, ccore:.13, crhythm:0,   cpower:0,   clp:300},
+  caveLit:    {title:0, core:0, rhythm:0, power:0, lp:20000, warm:0, ccore:.42, crhythm:0,   cpower:.25, clp:2600},
+  caveCombat: {title:0, core:0, rhythm:0, power:0, lp:20000, warm:0, ccore:.6,  crhythm:2.4, cpower:.9,  clp:9000}
+};
+function mixFor(s){ return (caveLive()&&CAVE_MIX[s])||MIX[s]||MIX.explore; }
 // generative layers: full score when there is no recording, accents on top of it otherwise
 function synthWeights(st,mode){
   const W={title:0,explore:0,forest:0,tower:0,combat:0,boss:0,cave:0,caveDark:0,caveBoss:0}, live=rec.playing, s=st.s, base=st.base||s;
@@ -469,7 +526,8 @@ function synthWeights(st,mode){
   if(s==='caveResolve'||s==='caveHold')return W;
   if(s==='caveLit'){ W.cave=1; return W; }
   if(s==='caveDark'){ W.caveDark=1; return W; }
-  if(s==='caveCombat'){ W.combat=live?.3:.8; if(base==='caveLit')W.cave=.5; else W.caveDark=.6; return W; }
+  // (the dungeon song's own percussion is light and drops out under its choir, so the synth frame drum carries more of it)
+  if(s==='caveCombat'){ W.combat=live?(caveLive()?.5:.3):.8; if(base==='caveLit')W.cave=.5; else W.caveDark=.6; return W; }
   if(s==='title'){ W.title=(live||rec.bufs.title)?0:1; return W; }
   if(s==='ending'){ W.title=live?0:.9; return W; }
   if(s==='boss'){ W.boss=live?.55:1; W.explore=live?0:.25; return W; }
@@ -482,7 +540,8 @@ function synthWeights(st,mode){
 let bar=0, nextBar=0, musicStarted=false, curedFlag=false, aligned=false, motifCount=0;
 function scheduleBar(t){
   const w=k=>layers[k].w>0.02, d=k=>layers[k].gain, live=rec.playing;
-  const i=((bar%32)+32)%32, c=chordAt(i,0,curedFlag&&!live), c2=chordAt(i,1,curedFlag&&!live), split=c!==c2;
+  const i=((bar%32)+32)%32, caveSong=caveLive()&&!!CAVE_MIX[rec.state];   // accents follow the dungeon song's chords while it plays
+  const c=caveSong?CH[CAVE_CHART[i]]:chordAt(i,0,curedFlag&&!live), c2=caveSong?c:chordAt(i,1,curedFlag&&!live), split=c!==c2;
   const maj=curedFlag&&!live, scale=maj?SCALE_MAJ:SCALE_MIN, motif=maj?MOTIF_CURED:MOTIF;
   const chordTone=k=>c.n[k%3]+12*((k/3)|0);
   // title (fallback only): the theme on music box over a gentle pad
@@ -525,7 +584,12 @@ function scheduleBar(t){
   // cave, lit room: sparse music-box leitmotif where the recording's melody rests, a stray chord tone otherwise
   if(w('cave')){ const g=live?.06:.09;
     if(!live&&i%4===0)I.pad(d('cave'),t,c.n.map(m=>m-12),BAR*4,.025,520);
-    if(i%8===5) phrase('musicBox',d('cave'),t,MOTIF,{tr:12,g});
+    // dungeon song: the motif over its instrumental verse (bar 5) and the answer as verse 2 opens (bar 8);
+    // under the choir (bars 12–31) only a stray chord tone now and then
+    if(caveSong){ if(i===5) phrase('musicBox',d('cave'),t,MOTIF,{tr:12,g});
+      else if(i===8) phrase('musicBox',d('cave'),t,MOTIF_ANSWER.map(([m,p,l])=>[m,p-12,l]),{tr:12,g:g*.8});
+      else if(Math.random()<(i>=12?.14:.22)) I.musicBox(d('cave'),t+((Math.random()*6)|0)*PULSE,chordTone(3+(Math.random()*3|0))+12,g*.55); }
+    else if(i%8===5) phrase('musicBox',d('cave'),t,MOTIF,{tr:12,g});
     else if(i%16===13) phrase('musicBox',d('cave'),t,MOTIF_ANSWER.map(([m,p,l])=>[m,p-12,l]),{tr:12,g:g*.8});
     else if(Math.random()<.22) I.musicBox(d('cave'),t+((Math.random()*6)|0)*PULSE,chordTone(3+(Math.random()*3|0))+12,g*.55); }
   // cave, dark room: a slow heartbeat on the dotted-quarter beat and almost nothing else
@@ -545,16 +609,20 @@ function updateMusic(_dt,mode){
     L.w=U.damp(L.w,tw,up?(k==='combat'||k==='boss'||k==='caveBoss'?3:.7):.6,dt);
     L.gain.gain.setTargetAtTime(L.w,t,.1); }
   // recording group gains
-  if(recBus){ const M=MIX[st.s]||MIX.explore, have=rec.playing;
-    for(const k of REC.files){ const n=rec.nodes[k]; if(!n)continue;
-      let tw=(k==='title'?(rec.bufs.title?M.title:0):(have?M[k]:0));
+  // the dungeon recording: fetch on the first cave visit or once the core loop is on; decode once the island stems play
+  if(!caveRec.requested&&(cv.inside||(G.loop&&G.loop.active)))requestCave();
+  if(caveRec.requested&&!caveRec.decoding&&rec.loaded)decodeCave();
+  if(recBus){ const M=mixFor(st.s), have=rec.playing;
+    for(const k of REC.files.concat(CAVE_KEYS)){ const n=rec.nodes[k]; if(!n)continue;
+      let tw=(k==='title'?(rec.bufs.title?M.title:0):(have?(M[k]||0):0));
       if(k==='title'&&!rec.bufs.title)tw=0;
       if(st.s==='title'&&k==='core'&&!rec.bufs.title&&have)tw=.6;   // no title excerpt: gentle core instead
       if(paused)tw*=.5;
       const up=tw>rec.w[k], fast=st.s==='combat'||st.s==='boss'||st.s==='caveBoss'||st.s==='caveCombat';
       rec.w[k]=U.damp(rec.w[k],tw,up?(fast?2.2:.6):(st.s==='dead'?1.2:st.s==='caveResolve'?1:.45),dt);
       n.gain.gain.setTargetAtTime(rec.w[k],t,.08); }
-    coreLP.frequency.setTargetAtTime(M.lp,t,.8); coreWarm.gain.setTargetAtTime(M.warm,t,1.5); }
+    coreLP.frequency.setTargetAtTime(M.lp,t,.8); coreWarm.gain.setTargetAtTime(M.warm,t,1.5);
+    if(M.clp)caveCoreLP.frequency.setTargetAtTime(M.clp,t,.8); }
   // generative clock: locked to the recording's bar grid when it plays
   if(rec.playing&&!aligned){ const n=Math.ceil((t+.05-rec.start)/BAR); nextBar=rec.start+n*BAR; bar=n; aligned=true; musicStarted=true; }
   if(!musicStarted||nextBar<t-BAR){ musicStarted=true; if(rec.playing){aligned=false;return;} nextBar=t+.15; } // also recovers after the tab was hidden
@@ -984,7 +1052,8 @@ function updateCave(_dt,mode){
   tgt(caveSend.gain,.62*k,.3); tgt(caveAmbSend.gain,.5*k,.3); tgt(caveMusSend.gain,.95*k,.3);
   const st=rec.state, boss=st==='caveBoss';
   tgt(caveCoreSend.gain,k*(boss?.22:.75),.6);
-  if(recCaveLP)tgt(recCaveLP.frequency,k>.5&&!boss&&st!=='caveResolve'?(st==='caveCombat'?2400:900):20000,.8);
+  // the island stems are muffled by rock; the dungeon recording (own low-pass on its core) is the cave's own music, left open
+  if(recCaveLP)tgt(recCaveLP.frequency,k>.5&&!boss&&st!=='caveResolve'&&!(caveLive()&&CAVE_MIX[st])?(st==='caveCombat'?2400:900):20000,.8);
   // beds
   tgt(caveBus.gain,k*(mode==='paused'?.6:1),.3);
   tgt(cbed.droneG.gain,cv.lit?.03:.085,1.5); tgt(cbed.droneF.frequency,cv.lit?320:185,1.5); tgt(cbed.litG.gain,cv.lit?.012:0,2);
@@ -1070,7 +1139,8 @@ function undertowFx(a,pos){ if(!ctx)return false; pos=V3(pos)||pNear(2); const o
 /* -- events -- */
 function wireCave(){
   const now=()=>ctx.currentTime;
-  G.on('cave:enter',e=>{ cv.evtInside=true; cv.evtRoom=(e&&e.room)||cv.evtRoom||'mouth'; cv.lastW=null; if(!ctx)return; cfx('cave_enter',null,'enter',{dest:caveVerbIn(),arg:{g:.3}}); });
+  G.on('loop:start',()=>requestCave());
+  G.on('cave:enter',e=>{ requestCave(); cv.evtInside=true; cv.evtRoom=(e&&e.room)||cv.evtRoom||'mouth'; cv.lastW=null; if(!ctx)return; cfx('cave_enter',null,'enter',{dest:caveVerbIn(),arg:{g:.3}}); });
   G.on('cave:exit',()=>{ cv.evtInside=false; cv.raft.drift=false; cv.feeds.clear(); if(!ctx)return; cfx('cave_exit',null,'enter',{dest:caveVerbIn(),arg:{g:.26,exit:true}}); });
   G.on('cave:room',e=>{ if(e&&e.id)cv.evtRoom=e.id; });
   // veins: cave_puzzles emits cave:lit {room, restored} (restored = loaded from a save: silent) and cave:veinDry {room}
@@ -1160,8 +1230,14 @@ G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get outp
     get groups(){ const o={}; for(const k of REC.files){ const n=rec.nodes[k]; o[k]={loaded:!!rec.bufs[k],duration:rec.bufs[k]?rec.bufs[k].duration:0,playing:!!(n&&n.src),gain:n?+n.gain.gain.value.toFixed(3):0,target:+(rec.w[k]||0).toFixed(3)}; } return o; },
     get synth(){ const o={}; for(const k of LAYER_NAMES)o[k]=+layers[k].w.toFixed(3); return o; },
     get filter(){ return coreLP?Math.round(coreLP.frequency.value):null; },
+    get cave(){ const o={requested:caveRec.requested,loaded:caveRec.loaded,failed:caveRec.failed,error:caveRec.error,playing:caveRec.playing,offset:caveRec.offset,
+        filter:caveCoreLP?Math.round(caveCoreLP.frequency.value):null,files:CAVE_KEYS.map(k=>'audio/bq-'+CAVE_FILES[k]+'.mp3'),groups:{}};
+      for(const k of CAVE_KEYS){ const n=rec.nodes[k]; o.groups[k]={loaded:!!rec.bufs[k],duration:rec.bufs[k]?rec.bufs[k].duration:0,playing:!!(n&&n.src),gain:n?+n.gain.gain.value.toFixed(3):0,target:+(rec.w[k]||0).toFixed(3)}; }
+      return o; },
+    /** test hook: tap a group's output (island core/rhythm/power or cave ccore/crhythm/cpower) */
+    tap(k){ const n=rec.nodes[k]; return n?n.gain:null; },
     setOverride, restart(){ if(rec.loaded)startStems(ctx.currentTime+.05); },
-    meta:{key:'D minor',meter:'6/8',pulseBpm:+(60/PULSE).toFixed(2),beatBpm:+(60/BEAT).toFixed(2),bar:BAR,loopStart:REC.loopStart,loopEnd:REC.loopEnd,chart:CHART,motif:'D E F E C'} }};
+    meta:{key:'D minor',meter:'6/8',pulseBpm:+(60/PULSE).toFixed(2),beatBpm:+(60/BEAT).toFixed(2),bar:BAR,loopStart:REC.loopStart,loopEnd:REC.loopEnd,chart:CHART,caveChart:CAVE_CHART,motif:'D E F E C'} }};
 G.audio.cave=caveAPI;
 G.system('audio',{order:92,modes:'always',
   init(){ wire(); wireCave(); buildUI(); },
