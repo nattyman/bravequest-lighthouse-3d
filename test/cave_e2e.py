@@ -205,8 +205,9 @@ STEPS=[
  ("shot:channel-lit",None),
  # ---------------------------------------------------------------- the hall of drafts
  ("drafts", r"""(()=>{ const r=T.walk([[46,-86.3],[52,-86.5]],{local:true}); const L=G.items.lantern; if(!L.shut)T.tap('shutter',3); const shut=L.shut;
-   const f=T.fight({room:'drafts',max:2400,r:45,threats:true}); // shy crabs with nothing to hunt are left alone, like a player would const r2=T.walk([[58,-86.3],[60,-80]],{local:true});
-   return {ok:r.ok&&shut&&f.left===0&&T.swarm()>=20,shut,fight:f,swarm:T.swarm(),lost:T.losses.drafts||0,hud:T.hud()}; })()"""),
+   const f=T.fight({room:'drafts',max:2400,r:45,threats:true}); // shy crabs with nothing to hunt are left alone, like a player would
+   const r2=T.walk([[58,-86.3],[60,-80]],{local:true});
+   return {ok:r.ok&&r2.ok&&shut&&f.left===0&&T.swarm()>=20,shut,fight:f,r2,swarm:T.swarm(),lost:T.losses.drafts||0,hud:T.hud()}; })()"""),
  ("shot:drafts-dark",None),
  ("gusts", r"""(()=>{ const L=G.items.lantern, gust=G.cavePuzzles.gust; let bursts=0, killedInGust=0; const lost0=G.moths.lost;
    G.on('moths:lost',e=>{ if(gust.phase==='burst'&&e.pos&&G.cavePuzzles.vents.some(v=>Math.hypot(e.pos.x-v.pos.x,e.pos.z-v.pos.z)<3.3))killedInGust+=e.n; }); // a gust's victims die over its vent
