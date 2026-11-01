@@ -1,0 +1,20 @@
+# Heath's original audio sources stay in the GameLab folder (large); the game ships processed copies in audio/ and sfx/
+music-src/
+sfx-src/
+# local test output
+test/*.png
+__pycache__/
+.DS_Store
+# only the few Three.js example files the game uses
+/vendor/three/examples/js/*
+!/vendor/three/examples/js/shaders/
+!/vendor/three/examples/js/postprocessing/
+/vendor/three/examples/js/shaders/*
+!/vendor/three/examples/js/shaders/CopyShader.js
+!/vendor/three/examples/js/shaders/LuminosityHighPassShader.js
+!/vendor/three/examples/js/shaders/GammaCorrectionShader.js
+/vendor/three/examples/js/postprocessing/*
+!/vendor/three/examples/js/postprocessing/EffectComposer.js
+!/vendor/three/examples/js/postprocessing/RenderPass.js
+!/vendor/three/examples/js/postprocessing/ShaderPass.js
+!/vendor/three/examples/js/postprocessing/UnrealBloomPass.js

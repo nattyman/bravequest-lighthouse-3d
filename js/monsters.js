@@ -1,0 +1,1108 @@
+/* =====================================================================
+   BRAVE QUEST: LIGHTHOUSE — monsters.js  (Creatures agent)
+   The fog's hunters: Hollows, Shade Hounds, and the Hollow Stag (boss).
+   API: G.monsters = {list, spawn(kind,pos,opts), alive(), boss, reset()}
+   ===================================================================== */
+(function(){
+'use strict';
+const G=window.G, THREE=G.THREE, U=G.U, PI=Math.PI, TAU=PI*2;
+const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+const rnd=U.rng(9137);
+const H=(x,z)=>{try{const h=G.world.height(x,z);return isFinite(h)?h:0;}catch(e){return 0;}};
+const LM=()=>(G.world&&G.world.landmarks)||{};
+const BONE='#ddd3bf';
+
+/* ---------------------------------------------------------------- params */
+const P={
+  hollow:{hp:6,radius:.5,height:2.5,aggro:16,speed:3.1,wander:1.1,clawRange:2.3,clawWind:.65,lungeWind:.8,lungeMin:3.2,lungeMax:6.5,lungeDist:3.2,
+    clawDmg:2,lungeDmg:2,recover:.75,hurt:.4,lightSlow:.6,lightR:5},
+  hound:{hp:4,radius:.42,height:1.1,aggro:18,speed:6.5,wander:1.6,circleR:5.5,dashWind:.5,dashSpeed:13,dashMax:.55,biteDmg:1,recover:.6,hurt:.35},
+  stag:{hp:48,radius:2.0,height:4.8,speed:3.2,chargeWind:1.0,chargeSpeed:17,chargeLen:30,stagger:2.0,sweepWind:.75,stompWind:.95,
+    chargeDmg:3,sweepDmg:2,stompDmg:2,ringSpeed:11,ringMax:14}
+};
+const MAX_TOKENS=2, LEASH=30;
+
+/* ---------------------------------------------------------------- ink fx helpers
+   Everything visual about the shadows is built on ink.js (G.ink, G.SNOISE).
+   puff()/ember() write straight into the shared ink particle pools so we can
+   make directional streams (backward-streaming smoke, inward pulls, shockwave fronts). */
+const INK=()=>G.ink||null;
+const cInk=U.col('#06040a'), cSmoke=U.col('#0e0a15'), cMist=U.col('#2b2438'), cVio=U.col('#a67dff');
+function puff(x,y,z,vx,vy,vz,life,s0,s1,a0,col,grav,drag){
+  const I=INK(); if(!I||!I.smoke||!I.smoke.vel)return; const Q=I.smoke, i=Q.next; Q.next=(Q.next+1)%Q.N;
+  Q.pos[i*3]=x;Q.pos[i*3+1]=y;Q.pos[i*3+2]=z;Q.vel[i*3]=vx;Q.vel[i*3+1]=vy;Q.vel[i*3+2]=vz;
+  Q.life[i]=life;Q.max[i]=life;Q.s0[i]=s0;Q.s1[i]=s1;Q.a0[i]=a0;Q.grav[i]=grav||0;Q.drag[i]=drag==null?1.2:drag;
+  Q.rot[i]=rnd()*TAU;Q.spin[i]=(rnd()-.5)*1.4;const c=col||cInk;Q.color[i*3]=c.r;Q.color[i*3+1]=c.g;Q.color[i*3+2]=c.b;
+}
+function ember(x,y,z,vx,vy,vz,life,s){
+  const I=INK(); if(!I||!I.embers||!I.embers.vel)return; const Q=I.embers, i=Q.next; Q.next=(Q.next+1)%Q.N;
+  Q.pos[i*3]=x;Q.pos[i*3+1]=y;Q.pos[i*3+2]=z;Q.vel[i*3]=vx;Q.vel[i*3+1]=vy;Q.vel[i*3+2]=vz;
+  Q.life[i]=life;Q.max[i]=life;Q.s0[i]=s;Q.s1[i]=s*.3;Q.a0[i]=.95;Q.grav[i]=0;Q.drag[i]=.6;Q.rot[i]=0;Q.spin[i]=0;
+  Q.color[i*3]=cVio.r;Q.color[i*3+1]=cVio.g;Q.color[i*3+2]=cVio.b;
+}
+/* legacy name kept: a splash of ink, drops and violet motes */
+function sparks(pos,n=14,power=1){
+  const I=INK(); if(!I)return;
+  I.burst(pos,{n:Math.round(n*1.2),speed:2.4*power,size:[.25*power,.9*power],life:[.4,1.1],up:.6,embers:Math.round(n*.5),drops:Math.round(n*.35)});
+}
+/* directional ink splash for hits: spray + falling drops (they splat on the ground) + motes */
+function splash(pos,dir,power){
+  const n=Math.round(12*power);
+  for(let k=0;k<n;k++){ const s=(1.5+rnd()*3.5)*power;
+    puff(pos.x+(rnd()-.5)*.2,pos.y+(rnd()-.5)*.3,pos.z+(rnd()-.5)*.2, dir.x*s+(rnd()-.5)*2.2,(rnd()*.9+.1)*s*.5,dir.z*s+(rnd()-.5)*2.2, .45+rnd()*.6,.35*power,1.2*power,.95,cInk,0,3.4); }
+  for(let k=0;k<Math.round(7*power);k++){ const s=(1.5+rnd()*3)*power;
+    puff(pos.x,pos.y,pos.z, dir.x*s+(rnd()-.5)*1.6,1.2+rnd()*2.6,dir.z*s+(rnd()-.5)*1.6, 2,.16,.11,1,cInk,12,.3); }
+  for(let k=0;k<Math.round(6*power);k++){ const s=(1+rnd()*3)*power; ember(pos.x,pos.y,pos.z,dir.x*s+(rnd()-.5)*2,rnd()*2.5+.5,dir.z*s+(rnd()-.5)*2,.4+rnd()*.6,.16); }
+}
+/* temporary ink puddles (stag hoof prints, summon wells) */
+const puddles=[];
+function puddle(x,y,z,r,life,alpha){
+  const I=INK(); if(!I||!I.pool)return null;
+  if(puddles.length>=14){const o=puddles.shift(); I.remove(o.h);}
+  const h=I.pool({pos:V(x,y,z)},{radius:r,alpha:alpha||.8,rim:'#5b35ad'}); const p={h,t:0,life,grow:.25}; h.intensity=0; puddles.push(p); return p;
+}
+function updatePuddles(dt){
+  const I=INK(); if(!I)return;
+  for(let i=puddles.length-1;i>=0;i--){const p=puddles[i]; p.t+=dt;
+    p.h.intensity=Math.min(1,p.t/p.grow)*(1-U.smooth(p.life*.45,p.life,p.t));
+    if(p.t>p.life){I.remove(p.h);puddles.splice(i,1);} }
+}
+function clearPuddles(){const I=INK(); for(const p of puddles)I&&I.remove(p.h); puddles.length=0;}
+
+const ash=(pos,n,spread)=>{ if(G.creatures&&G.creatures.ash)G.creatures.ash(pos,n,spread); };
+let glowTex=null;
+/* eye glint: a small hot core sprite with a faint wide bloom halo as its child */
+function eyeSprite(color='#e2d0ff',size=.12,halo=3.2,haloO=.3){
+  const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex||G.tex.flame,color:U.col(color).multiplyScalar(3),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+  s.scale.setScalar(size); s.renderOrder=4;
+  const h=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#8a5cff'),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:haloO}));
+  h.scale.setScalar(halo); h.userData.o=haloO; h.renderOrder=4; s.add(h);
+  return s;
+}
+
+/* ---------------------------------------------------------------- ink materials
+   Like ink.js's living surface, plus: per-monster shared uniforms (uFade/uFlash/uRim/uGround,
+   so one dissolve/flash/rim drives every part), legs that dissolve into mist toward the
+   ground (uMist), and a torn hem that frays into nothing along the sheet's uv.y (uFray). */
+const SN=G.SNOISE||'';
+const MON_VS=`uniform float uTime;uniform float uAmp;uniform float uFlow;uniform float uScale;uniform float uGround;uniform float uMist;
+varying vec3 vN;varying vec3 vV;varying vec3 vW;varying vec2 vUv;varying float vLow;
+#include <fog_pars_vertex>
+${SN}
+void main(){
+  vUv=uv;
+  vec4 wp=modelMatrix*vec4(position,1.);
+  vec3 wn=normalize(mat3(modelMatrix)*normal);
+  vec3 q=wp.xyz*uScale+vec3(0.,-uTime*uFlow,0.);
+  float n=snoise(q)*.65+snoise(q*2.3+7.1)*.35;
+  float low=uMist>0.?1.-clamp((wp.y-uGround)/uMist,0.,1.):0.;
+  wp.xyz+=wn*uAmp*n*(1.+low*2.5);
+  wp.xz+=vec2(snoise(q*.8+3.3),snoise(q*.8-5.1))*low*low*uAmp*4.;
+  vLow=low;
+  vec4 mvPosition=viewMatrix*wp;
+  vN=normalize(mat3(viewMatrix)*wn); vV=normalize(-mvPosition.xyz); vW=wp.xyz;
+  gl_Position=projectionMatrix*mvPosition;
+  #include <fog_vertex>
+}`;
+const MON_FS=`uniform float uTime;uniform float uFade;uniform float uFlash;uniform float uWisp;uniform float uFlow;uniform float uScale;
+uniform float uFray;uniform float uMist;uniform float uRimK;uniform vec3 uRim;uniform vec3 uInk;
+varying vec3 vN;varying vec3 vV;varying vec3 vW;varying vec2 vUv;varying float vLow;
+#include <fog_pars_fragment>
+${SN}
+void main(){
+  vec3 q=vW*uScale*1.4+vec3(0.,-uTime*uFlow*1.3,0.);
+  float n=snoise(q)*.5+.5;
+  float n2=snoise(q*2.7+vec3(3.1,0.,1.7)+vec3(0.,uTime*.2,0.))*.5+.5;
+  float dn=n*.6+n2*.4;
+  if(dn>uFade*1.08+.02)discard;
+  float f=1.-abs(dot(normalize(vN),normalize(vV)));
+  vec3 col=uInk*(.04+.96*pow(smoothstep(.35,1.,n2),2.5));
+  col+=uRim*uRimK*pow(f,5.)*(.2+1.1*n)*.8;
+  col+=uRim*(uFade<.98?smoothstep(uFade-.06,uFade,dn)*.6:0.);
+  col+=mix(vec3(.55,.4,1.),vec3(1.),f)*uFlash*(.2+.9*f*f)+uRim*uFlash*.25;
+  float a=1.-smoothstep(.35,1.0,f+(n-.5)*.8)*uWisp;
+  if(uMist>0.){ a*=1.-smoothstep(.2,1.,vLow+(n-.5)*.6); col*=1.-.6*vLow; }
+  if(uFray>0.){ float tat=snoise(vec3(vUv.x*18.,vUv.y*1.5,uTime*.35))*.5+.5; // torn vertical tatters
+    a*=smoothstep(0.,uFray*.6,vUv.y-uFray*.25+(n2-.5)*uFray*.6-tat*uFray*.5); }
+  if(a<.03)discard;
+  gl_FragColor=vec4(col,clamp(a,0.,1.));
+  #include <fog_fragment>
+}`;
+function sharedUniforms(rim,strength,ink,inkS){
+  return {uFade:{value:1},uFlash:{value:0},uRim:{value:U.col(rim).multiplyScalar(strength)},uInk:{value:U.col(ink).multiplyScalar(inkS)},uGround:{value:0}};
+}
+function inkMat(S,o={}){
+  if(!SN){ const m=G.negMaterial({rim:'#a37cff',strength:1.7}); if(o.side)m.side=o.side; return m; }
+  const u=THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{
+    uAmp:{value:o.amp==null?.05:o.amp},uWisp:{value:o.wisp==null?.85:o.wisp},uFlow:{value:o.flow==null?.35:o.flow},uScale:{value:o.scale==null?1.6:o.scale},
+    uMist:{value:o.mist||0},uFray:{value:o.fray||0},uRimK:{value:o.rimK==null?1:o.rimK}}]);
+  for(const k in S)u[k]=S[k];
+  u.uTime=G.negTime;
+  return new THREE.ShaderMaterial({uniforms:u,fog:true,vertexShader:MON_VS,fragmentShader:MON_FS,transparent:true,depthWrite:true,side:o.side||THREE.FrontSide});
+}
+
+/* ---------------------------------------------------------------- smooth geometry
+   sweep(): a smooth tube along a Catmull-Rom spine with elliptical cross-sections and
+   rounded caps — one continuous mesh, no split normals, so the ink displacement never cracks. */
+function sweep(pts,radial=12,sub=4){
+  const n=pts.length, curve=new THREE.CatmullRomCurve3(pts.map(p=>V(p[0],p[1],p[2])),false,'centripetal');
+  const N=(n-1)*sub+1, R=radial, pos=[], uv=[], idx=[];
+  const T=V(), side=V(), up=V(), c=V(); let upPrev=null; const rings=[];
+  for(let j=0;j<N;j++){
+    const u=j/(N-1); curve.getPoint(u,c); curve.getTangent(u,T); T.normalize();
+    const sf=u*(n-1), si=Math.min(n-2,Math.floor(sf)), f=sf-si, fs=f*f*(3-2*f);
+    const rx=U.lerp(pts[si][3],pts[si+1][3],fs), ry=U.lerp(pts[si][4]==null?pts[si][3]:pts[si][4],pts[si+1][4]==null?pts[si+1][3]:pts[si+1][4],fs);
+    if(!upPrev)upPrev=Math.abs(T.y)>.85?V(0,0,1):V(0,1,0);
+    side.crossVectors(T,upPrev).normalize(); up.crossVectors(side,T).normalize(); upPrev=up.clone();
+    for(let k=0;k<R;k++){const a=k/R*TAU, ca=Math.cos(a), sa=Math.sin(a);
+      pos.push(c.x+side.x*ca*rx+up.x*sa*ry, c.y+side.y*ca*rx+up.y*sa*ry, c.z+side.z*ca*rx+up.z*sa*ry); uv.push(k/R,1-u);}
+    rings.push({c:c.clone(),T:T.clone(),r:Math.min(rx,ry)});
+  }
+  for(let j=0;j<N-1;j++)for(let k=0;k<R;k++){const a=j*R+k,b=(j+1)*R+k,cc=j*R+(k+1)%R,d=(j+1)*R+(k+1)%R; idx.push(a,b,cc,b,d,cc);}
+  const s0=rings[0], s1=rings[N-1], si=pos.length/3;
+  pos.push(s0.c.x-s0.T.x*s0.r*.6,s0.c.y-s0.T.y*s0.r*.6,s0.c.z-s0.T.z*s0.r*.6); uv.push(.5,1);
+  pos.push(s1.c.x+s1.T.x*s1.r*.6,s1.c.y+s1.T.y*s1.r*.6,s1.c.z+s1.T.z*s1.r*.6); uv.push(.5,0);
+  for(let k=0;k<R;k++){idx.push(si,k,(k+1)%R); idx.push(si+1,(N-1)*R+(k+1)%R,(N-1)*R+k);}
+  const g=new THREE.BufferGeometry();
+  g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  g.setIndex(idx); g.computeVertexNormals(); return g;
+}
+function mergeGeos(list){
+  let nv=0; const P=[],UV=[],I=[],NM=[];
+  for(const g of list){ const p=g.attributes.position, u=g.attributes.uv, nm=g.attributes.normal;
+    for(let i=0;i<p.count;i++){P.push(p.getX(i),p.getY(i),p.getZ(i)); NM.push(nm.getX(i),nm.getY(i),nm.getZ(i)); UV.push(u?u.getX(i):0,u?u.getY(i):0);}
+    const ix=g.index; for(let i=0;i<ix.count;i++)I.push(ix.getX(i)+nv); nv+=p.count; g.dispose(); }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(P,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(NM,3));
+  g.setAttribute('uv',new THREE.Float32BufferAttribute(UV,2)); g.setIndex(I); return g;
+}
+
+/* ---------------------------------------------------------------- tendrils
+   Follow-the-leader chains rebuilt as tubes every frame: manes, tails, sleeves, shroud ribbons.
+   They lag behind motion, so a running hound streams smoke-tendrils and a lunge leaves ribbons trailing. */
+const _ta=V(),_tb=V(),_tt=V(),_ts=V(),_tu=V(),_tq=new THREE.Quaternion(),_tinv=new THREE.Matrix4(),_tup=V(),_tsd=V(),_tT=V();
+function tendril(root,anchor,o,mat){
+  const n=o.n||8, R=o.radial||6, nv=n*R;
+  const pos=new Float32Array(nv*3), nor=new Float32Array(nv*3), uv=new Float32Array(nv*2), idx=[];
+  for(let j=0;j<n;j++)for(let k=0;k<R;k++){uv[(j*R+k)*2]=k/R;uv[(j*R+k)*2+1]=1-j/(n-1);}
+  for(let j=0;j<n-1;j++)for(let k=0;k<R;k++){const a=j*R+k,b=(j+1)*R+k,c=j*R+(k+1)%R,d=(j+1)*R+(k+1)%R; idx.push(a,b,c,b,d,c);}
+  const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('normal',new THREE.BufferAttribute(nor,3));
+  geo.setAttribute('uv',new THREE.BufferAttribute(uv,2)); geo.setIndex(idx);
+  const mesh=new THREE.Mesh(geo,mat); mesh.frustumCulled=false; mesh.userData.noShadow=true; root.add(mesh);
+  const loc=[]; for(let j=0;j<n;j++)loc.push(V());
+  return {anchor,mesh,geo,pos,nor,n,R,loc,root,len:o.len||1,r0:o.r0||.06,r1:o.r1||0,dir:(o.dir||V(0,0,-1)).clone().normalize(),
+    stiff:o.stiff||10,wave:o.wave==null?.12:o.wave,freq:o.freq||3,ph:rnd()*TAU,lift:o.lift||0,pts:null};
+}
+function stepTendril(T,dt,t,agit=1,lift=0){
+  const seg=T.len/(T.n-1);
+  T.anchor.getWorldPosition(_ta); T.anchor.getWorldQuaternion(_tq);
+  const dw=_tt.copy(T.dir).applyQuaternion(_tq);
+  if(!T.pts){T.pts=[];for(let j=0;j<T.n;j++)T.pts.push(_ta.clone().addScaledVector(dw,seg*j));}
+  const P=T.pts; P[0].copy(_ta);
+  _ts.set(-dw.z,0,dw.x); if(_ts.lengthSq()<1e-4)_ts.set(1,0,0); _ts.normalize();
+  const k=1-Math.exp(-Math.max(dt,1e-3)*T.stiff), L_=T.lift+lift;
+  for(let j=1;j<T.n;j++){
+    const f=j/(T.n-1);
+    _tb.copy(P[j-1]).addScaledVector(dw,seg);
+    _tb.addScaledVector(_ts,Math.sin(t*T.freq*agit+T.ph-j*.9)*T.wave*f*agit);
+    _tb.y+=Math.sin(t*T.freq*.7*agit+T.ph*1.3-j*.7)*T.wave*.6*f*agit+L_*f*seg;
+    P[j].lerp(_tb,k);
+    _tu.subVectors(P[j],P[j-1]); const l=_tu.length(); if(l>1e-5)P[j].copy(P[j-1]).addScaledVector(_tu,seg/l);
+  }
+  _tinv.copy(T.root.matrixWorld).invert();
+  for(let j=0;j<T.n;j++)T.loc[j].copy(P[j]).applyMatrix4(_tinv);
+  const R=T.R, pos=T.pos, nor=T.nor;
+  _tup.set(0,1,0);
+  for(let j=0;j<T.n;j++){
+    const a=T.loc[Math.max(0,j-1)], b=T.loc[Math.min(T.n-1,j+1)];
+    _tT.subVectors(b,a); if(_tT.lengthSq()<1e-8)_tT.set(0,0,1); _tT.normalize();
+    if(j===0&&Math.abs(_tT.y)>.9)_tup.set(1,0,0);
+    _tsd.crossVectors(_tT,_tup).normalize(); _tup.crossVectors(_tsd,_tT).normalize();
+    const f=j/(T.n-1), r=U.lerp(T.r0,T.r1,Math.pow(f,.8))*(j===T.n-1?.25:1);
+    const c=T.loc[j];
+    for(let q=0;q<R;q++){const an=q/R*TAU, ca=Math.cos(an), sa=Math.sin(an), i=(j*R+q)*3;
+      const nx=_tsd.x*ca+_tup.x*sa, ny=_tsd.y*ca+_tup.y*sa, nz=_tsd.z*ca+_tup.z*sa;
+      nor[i]=nx;nor[i+1]=ny;nor[i+2]=nz; pos[i]=c.x+nx*r;pos[i+1]=c.y+ny*r;pos[i+2]=c.z+nz*r;}
+  }
+  T.geo.attributes.position.needsUpdate=true; T.geo.attributes.normal.needsUpdate=true;
+}
+function anchor(parent,x,y,z){const o=new THREE.Object3D();o.position.set(x,y,z);parent.add(o);return o;}
+
+/* ---------------------------------------------------------------- lighthouse avoidance */
+function lh(){return G.world.lighthouse;}
+function outsideTower(x,z,y,r){
+  const L=lh(); if(!L)return true;
+  const cx=L.x!=null?L.x:180, cz=L.z!=null?L.z:0, R=(L.outerR||4.4)+r+.3;
+  if(Math.hypot(x-cx,z-cz)<R&&y<(L.topY||1e9))return false;
+  if(L.inBody){try{if(L.inBody(V(x,y+.5,z)))return false;}catch(e){}}
+  return true;
+}
+function okGround(x,z,y){
+  if(G.world.walkable&&!G.world.walkable(x,z))return false;
+  return outsideTower(x,z,y==null?H(x,z):y,1);
+}
+
+/* ---------------------------------------------------------------- models
+   Every monster is mostly ink: smooth swept forms with the living-ink shader, CPU-deformed
+   cloth and smoke tendrils, a void face with two cold glints, and smoke/drips/pools from G.ink. */
+function addMesh(parent,geo,mat,x=0,y=0,z=0){const m=new THREE.Mesh(geo,mat);m.position.set(x,y,z);parent.add(m);return m;}
+const voidMat=()=>new THREE.MeshBasicMaterial({color:0x000000,transparent:true});
+
+/* ---- Hollow: a gaunt hooded void in a streaming shroud ---- */
+const SH_C=26, SH_R=13;
+function buildHollow(S){
+  const mat=inkMat(S,{amp:.035,wisp:.8,flow:.45,scale:2.2,rimK:.6});
+  const shroudMat=inkMat(S,{amp:.05,wisp:.4,flow:.5,scale:2.0,fray:.45,rimK:.7,side:THREE.DoubleSide});
+  const clawMat=inkMat(S,{amp:.006,wisp:.25,flow:.3,scale:3,rimK:1.6});
+  const shroudMat2=inkMat(S,{amp:.04,wisp:.85,flow:.5,scale:2.0,rimK:.6});
+  const ribbonMat=inkMat(S,{amp:.02,wisp:.8,flow:.6,scale:2.5,fray:.6,rimK:.5,side:THREE.DoubleSide});
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
+  // the shroud: a CPU-deformed open sheet from the shoulders that frays into smoke at the bottom
+  const nC=SH_C+1, nV=nC*SH_R, pos=new Float32Array(nV*3), uv=new Float32Array(nV*2), base=new Float32Array(nV*4), idx=[];
+  for(let r=0;r<SH_R;r++)for(let c=0;c<nC;c++){
+    const t=r/(SH_R-1), s=c/SH_C, i=r*nC+c, a=s*TAU;
+    const rr=U.lerp(.13,.62,Math.pow(t,.7))+.08*Math.exp(-((t-.14)**2)*60);
+    base[i*4]=a; base[i*4+1]=rr; base[i*4+2]=2.3-t*2.5; base[i*4+3]=t;
+    uv[i*2]=s; uv[i*2+1]=1-t;
+  }
+  for(let r=0;r<SH_R-1;r++)for(let c=0;c<SH_C;c++){const a=r*nC+c,b=(r+1)*nC+c,cc=r*nC+c+1,d=(r+1)*nC+c+1; idx.push(a,b,cc,b,d,cc);}
+  const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.BufferAttribute(pos,3)); sg.setAttribute('uv',new THREE.BufferAttribute(uv,2)); sg.setIndex(idx);
+  const shroud=addMesh(body,sg,shroudMat); shroud.frustumCulled=false;
+  const upper=new THREE.Group(); upper.position.y=1.9; body.add(upper);
+  // gaunt torso + shoulders (inside the shroud)
+  addMesh(upper,sweep([[0,-1.0,0,.13,.1],[0,-.45,0,.17,.13],[0,0,.0,.24,.16],[0,.22,.03,.28,.15],[0,.36,.06,.12,.11]],10,3),mat);
+  // hood + void face + cold glints
+  const head=new THREE.Group(); head.position.set(0,.5,.08); upper.add(head);
+  const hood=addMesh(head,new THREE.SphereGeometry(.3,24,16,PI/2+.85,TAU-1.7,0,PI*.8),inkMat(S,{amp:.025,wisp:.55,flow:.4,scale:2.4,rimK:.8,side:THREE.DoubleSide}),0,0,-.03); hood.scale.set(1.0,1.25,1.25);
+  const face=addMesh(head,new THREE.SphereGeometry(.2,16,12),voidMat(),0,-.04,-.02); face.scale.set(.85,1.1,.9);
+  const eyes=[]; for(const s of [-1,1]){const e=eyeSprite('#e6dcff',.11,2.4,.22);e.position.set(s*.065,-.02,.24);head.add(e);eyes.push(e);}
+  const hoodTip=anchor(head,0,.2,-.3);
+  // long arms: smooth ink, sleeves that hang as tendrils, long dripping claws
+  const arms=[], clawTips=[], ribbons=[];
+  for(const s of [-1,1]){
+    const sh=new THREE.Group(); sh.position.set(s*.27,.14,.02); upper.add(sh);
+    addMesh(sh,sweep([[0,.04,0,.08],[0,-.35,-.01,.1,.09],[0,-.7,0,.13,.11],[0,-.86,.02,.16,.13]],10,3),shroudMat2);
+    const el=new THREE.Group(); el.position.y=-.76; sh.add(el);
+    addMesh(el,sweep([[0,-.05,0,.05],[0,-.35,.01,.038],[0,-.68,0,.03]],8,3),mat);
+    const hand=new THREE.Group(); hand.position.y=-.68; el.add(hand);
+    const cl=[sweep([[0,.03,0,.045,.03],[0,-.06,.01,.05,.03],[0,-.1,.02,.03,.02]],8,2)];
+    for(let k=0;k<4;k++){const x=(k-1.5)*.03, sp=(k-1.5)*.07;
+      cl.push(sweep([[x,-.06,.02,.016],[x+sp*.8,-.25,.06,.012],[x+sp*1.3,-.44,.14,.007],[x+sp*1.4,-.56,.25,.002]],5,3));
+      clawTips.push(anchor(hand,x+sp*1.4,-.55,.24));}
+    addMesh(hand,mergeGeos(cl),clawMat);
+    ribbons.push({a:anchor(el,0,-.08,-.04),o:{n:7,len:.8,r0:.1,r1:.0,dir:V(0,-1,-.4),stiff:6,wave:.12,freq:2.4,lift:-.2}});
+    arms.push({sh,el,hand,s});
+  }
+  // trailing shroud ribbons from the shoulders and the hood tip
+  for(let k=0;k<4;k++){const x=(k-1.5)*.16; ribbons.push({a:anchor(upper,x,.18-(k%2)*.12,-.12),o:{n:9,len:1.3+(k%2)*.4,r0:.08,r1:.01,dir:V(x*.6,-1,-.5),stiff:5,wave:.16,freq:2,lift:.15}});}
+  ribbons.push({a:hoodTip,o:{n:8,len:.85,r0:.09,r1:.0,dir:V(0,.3,-1),stiff:6,wave:.1,freq:2.6,lift:.5}});
+  // hem anchors for the smoke the hollow sheds
+  const hem=[]; for(let k=0;k<7;k++){const a=k/7*TAU; hem.push(anchor(body,Math.sin(a)*.42,.15,Math.cos(a)*.38));}
+  hem.push(anchor(upper,.25,.2,0),anchor(upper,-.25,.2,0),anchor(head,0,.15,-.1));
+  return {root,body,upper,head,arms,eyes,shroud:{geo:sg,pos,base,nC,lag:V(),lagV:V()},ribbonsDef:ribbons,ribbonMat,hem,clawTips,mats:[mat,shroudMat,shroudMat2,clawMat,ribbonMat],extra:[face.material],tendrils:[]};
+}
+function finishTendrils(c){
+  if(c.ribbonsDef)for(const r of c.ribbonsDef)c.tendrils.push(tendril(c.root,r.a,r.o,r.mat||c.ribbonMat));
+}
+
+/* ---- Shade hound: a smooth inky wolf-blur, smoke mane & tail, legs dissolving into mist ---- */
+function buildHound(S){
+  const mat=inkMat(S,{amp:.035,wisp:.9,flow:.5,scale:2.6,mist:.55,rimK:.8});
+  const tMat=inkMat(S,{amp:.02,wisp:.95,flow:.7,scale:3,fray:.7,rimK:.5});
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body); body.position.y=.78;
+  addMesh(body,sweep([[0,.1,-.66,.07],[0,.06,-.5,.17,.19],[0,.04,-.3,.2,.22],[0,-.01,-.05,.16,.19],[0,0,.2,.23,.28],[0,.07,.4,.2,.25],[0,.2,.56,.14,.16],[0,.3,.66,.11,.12]],12,4),mat);
+  const neck=new THREE.Group(); body.add(neck);
+  const head=new THREE.Group(); head.position.set(0,.3,.68); body.add(head);
+  addMesh(head,sweep([[0,.04,-.1,.1],[0,.03,.04,.135,.12],[0,0,.16,.1,.09],[0,-.03,.3,.06,.055],[0,-.04,.4,.035,.03]],10,3),mat);
+  for(const s of [-1,1])addMesh(head,sweep([[s*.07,.07,-.02,.045,.03],[s*.1,.17,-.05,.025,.018],[s*.11,.25,-.08,.004]],6,2),mat);
+  const jaw=new THREE.Group(); jaw.position.set(0,-.07,.06); head.add(jaw);
+  addMesh(jaw,sweep([[0,0,-.02,.07,.035],[0,-.015,.15,.05,.025],[0,-.02,.3,.025,.015]],8,2),mat);
+  const eyes=[]; for(const s of [-1,1]){const e=eyeSprite('#d9c6ff',.1,1.2,.18);e.position.set(s*.072,.055,.135);e.userData.slit=1;head.add(e);eyes.push(e);}
+  const tail=new THREE.Group(); tail.position.set(0,.1,-.62); body.add(tail);
+  const legs=[], paws=[];
+  for(const [sx,sz] of [[-1,1],[1,1],[-1,-1],[1,-1]]){
+    const hip=new THREE.Group(); hip.position.set(sx*.14,-.04,sz*.36); body.add(hip);
+    addMesh(hip,sweep([[0,.06,0,sz>0?.09:.11,.11],[0,-.18,sz>0?.02:-.03,.07],[0,-.4,0,.05]],8,3),mat);
+    const knee=new THREE.Group(); knee.position.y=-.4; hip.add(knee);
+    addMesh(knee,sweep([[0,.02,0,.048],[0,-.2,.01,.036],[0,-.37,.04,.035,.025],[0,-.39,.1,.02]],7,3),mat);
+    knee.rotation.x=sz>0?.12:-.35; hip.rotation.x=sz>0?0:.25;
+    paws.push(anchor(knee,0,-.33,.04));
+    legs.push({hip,knee,front:sz>0,side:sx});
+  }
+  const ribbons=[];
+  for(let k=0;k<6;k++)ribbons.push({a:anchor(body,(k%2?.05:-.05),.24-k*.02,.6-k*.16),o:{n:8,len:.6-k*.05,r0:.06,r1:.0,dir:V(k%2?.3:-.3,.25,-1),stiff:6,wave:.1,freq:3.2,lift:.15},mat:tMat});
+  for(const s of [-1,1])ribbons.push({a:anchor(head,s*.1,.02,-.08),o:{n:6,len:.4,r0:.05,r1:0,dir:V(s*.6,.1,-1),stiff:7,wave:.08,freq:4,lift:.1},mat:tMat});
+  ribbons.push({a:tail,o:{n:9,len:1.0,r0:.09,r1:.0,dir:V(0,.25,-1),stiff:6,wave:.14,freq:3,lift:.3},mat:tMat});
+  ribbons.push({a:anchor(tail,.03,-.02,0),o:{n:7,len:.7,r0:.05,r1:0,dir:V(.2,.4,-1),stiff:5,wave:.16,freq:3.6,lift:.5},mat:tMat});
+  const back=[anchor(body,0,.2,.35),anchor(body,0,.15,0),anchor(body,0,.15,-.35),anchor(head,0,.08,0)];
+  return {root,body,head,jaw,neck,tail,legs,eyes,ribbonsDef:ribbons,ribbonMat:tMat,back,paws,mats:[mat,tMat],extra:[],tendrils:[]};
+}
+
+/* ---- The Hollow Stag: a huge stag of absence under a crown of burning ink ---- */
+function antlerGeo(s,tips){
+  const g=[]; const tip=(p)=>tips.push(V(p[0],p[1],p[2]));
+  const beam=[[s*.22,0,0,.15],[s*.75,.6,-.3,.13],[s*1.3,1.25,-.35,.1],[s*1.6,2.0,-.1,.075],[s*1.55,2.7,.3,.05],[s*1.35,3.15,.55,.008]];
+  g.push(sweep(beam,8,4)); tip(beam[5]);
+  const tines=[ // [beam idx, frac, dir x, dir y, dir z, len]
+    [0,.6, .1,.5,1,.75],[1,.5, .4,.9,.8,.95],[2,.2,-.15,1,.55,1.0],[2,.8,.8,.8,-.3,.8],[3,.5,-.3,1,.6,.8],[4,.1,.5,.9,-.4,.6]];
+  for(const [bi,f,dx,dy,dz,L] of tines){
+    const a=beam[bi], b=beam[bi+1], p=[U.lerp(a[0],b[0],f),U.lerp(a[1],b[1],f),U.lerp(a[2],b[2],f)], r=U.lerp(a[3],b[3],f)*.75;
+    const d=V(dx*s,dy,dz).normalize();
+    const m1=[p[0]+d.x*L*.5+s*.05,p[1]+d.y*L*.5,p[2]+d.z*L*.5], e=[p[0]+d.x*L+s*.04,p[1]+d.y*L+.12,p[2]+d.z*L];
+    g.push(sweep([[p[0],p[1],p[2],r],[...m1,r*.6],[...e,.005]],6,3)); tip(e);
+  }
+  return mergeGeos(g);
+}
+function buildStag(S){
+  const mat=inkMat(S,{amp:.1,wisp:.9,flow:.35,scale:.9,mist:1.3,rimK:.55});
+  const tMat=inkMat(S,{amp:.04,wisp:.95,flow:.6,scale:1.6,fray:.7,rimK:.5});
+  const crownMat=inkMat(S,{amp:.012,wisp:.35,flow:.6,scale:3,rimK:2.2});
+  if(crownMat.uniforms.uInk)crownMat.uniforms.uInk={value:U.col('#3a2070')}; // violet-veined antlers
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body); body.position.y=3.15;
+  addMesh(body,sweep([[0,.55,-2.3,.2],[0,.3,-1.9,.86,.92],[0,.05,-1.0,1.0,1.08],[0,-.05,.1,1.0,1.15],[0,.1,.95,1.14,1.32],[0,.45,1.5,.92,1.08],[0,.9,1.8,.7,.78]],16,4),mat);
+  const neck=new THREE.Group(); neck.position.set(0,.6,1.55); neck.rotation.x=.6; body.add(neck);
+  addMesh(neck,sweep([[0,-.2,-.05,.8,.86],[0,.75,.05,.62,.66],[0,1.5,.12,.48,.5],[0,1.75,.12,.38]],14,4),mat);
+  const head=new THREE.Group(); head.position.set(0,1.55,.15); head.rotation.x=-.42; head.scale.setScalar(1.3); neck.add(head);
+  addMesh(head,sweep([[0,.08,-.42,.3],[0,.06,-.15,.42,.45],[0,0,.3,.38,.4],[0,-.12,.8,.25,.25],[0,-.2,1.2,.17,.15],[0,-.22,1.32,.08]],14,4),mat);
+  for(const s of [-1,1])addMesh(head,sweep([[s*.3,.25,-.12,.11,.06],[s*.62,.42,-.2,.09,.04],[s*.85,.52,-.24,.005]],7,2),mat);
+  const eyes=[]; for(const s of [-1,1]){const e=eyeSprite('#efe6ff',.3,3.4,.28);e.position.set(s*.33,.1,.5);head.add(e);eyes.push(e);}
+  const mouth=[anchor(head,0,-.28,1.3),anchor(head,.08,-.18,1.3),anchor(head,-.08,-.18,1.3)];
+  // the crown: branching ink with violet-burning tips
+  const crown=new THREE.Group(); crown.position.set(0,.3,-.1); head.add(crown);
+  const tips=[]; const ag=mergeGeos([antlerGeo(-1,tips),antlerGeo(1,tips)]);
+  addMesh(crown,ag,crownMat);
+  const flames=[], tipAnchors=[];
+  const flameMat=()=>new THREE.SpriteMaterial({map:G.tex.flame,color:U.col('#a57bff').multiplyScalar(1.1),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false});
+  tips.forEach((p,i)=>{const f=new THREE.Sprite(flameMat()); f.scale.setScalar(.4); f.position.copy(p); f.renderOrder=4; crown.add(f); flames.push(f); tipAnchors.push(anchor(crown,p.x,p.y,p.z));});
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#8a5cff'),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:.3}));
+  halo.scale.setScalar(4.2); halo.position.set(0,2,.1); crown.add(halo);
+  const tail=new THREE.Group(); tail.position.set(0,.5,-2.15); body.add(tail);
+  const legs=[], hooves=[];
+  for(const [sx,sz] of [[-1,1],[1,1],[-1,-1],[1,-1]]){
+    const hip=new THREE.Group(); hip.position.set(sx*.6,-.35,sz>0?1.25:-1.35); body.add(hip);
+    addMesh(hip,sweep([[0,.45,sz>0?.05:-.1,.42,.5],[0,-.3,sz>0?.06:-.12,.33,.36],[0,-1.0,0,.22],[0,-1.55,0,.17]],10,3),mat);
+    const knee=new THREE.Group(); knee.position.y=-1.5; hip.add(knee);
+    addMesh(knee,sweep([[0,.05,0,.15],[0,-.7,.02,.11],[0,-1.25,.04,.12],[0,-1.45,.08,.17,.12]],8,3),mat);
+    knee.rotation.x=sz>0?.08:-.3; hip.rotation.x=sz>0?0:.22;
+    const hv=anchor(knee,0,-1.45,.08); hooves.push(hv);
+    legs.push({hip,knee,front:sz>0,side:sx,hoof:hv,prev:0});
+  }
+  const ribbons=[];
+  for(let k=0;k<7;k++)ribbons.push({a:anchor(body,(k%2?.3:-.3),.85-k*.05,1.2-k*.45),o:{n:8,len:1.4+(k%3)*.4,r0:.16,r1:.0,dir:V(k%2?.7:-.7,.15,-1),stiff:3.5,wave:.25,freq:1.5,lift:.1},mat:tMat});
+  for(let k=0;k<4;k++)ribbons.push({a:anchor(body,(k-1.5)*.35,-.75,1.3+(k%2)*.15),o:{n:7,len:1.0+(k%2)*.35,r0:.17,r1:0,dir:V((k-1.5)*.2,-1,.25),stiff:4,wave:.18,freq:1.8,lift:-.1},mat:tMat});
+  ribbons.push({a:tail,o:{n:8,len:1.3,r0:.2,r1:0,dir:V(0,.2,-1),stiff:4,wave:.2,freq:2,lift:.4},mat:tMat});
+  for(let k=0;k<4;k++){const tA=tipAnchors[[0,6,7,13][k]]; if(tA)ribbons.push({a:tA,o:{n:6,len:.75,r0:.04,r1:0,dir:V(0,1,0),stiff:5,wave:.12,freq:2.5,lift:1.2},mat:crownMat});}
+  const back=[]; for(let k=0;k<7;k++)back.push(anchor(body,(rnd()-.5)*.8,.75+(k%2)*.15,1.4-k*.55));
+  back.push(anchor(neck,0,1.2,-.3),anchor(neck,0,.4,-.5));
+  const light=new THREE.PointLight(0x9a6cff,2.2,22,1.6); light.position.set(0,2.2,0); head.add(light);
+  return {root,body,head,neck,tail,legs,eyes,crown,crownMat,flames,halo,light,ribbonsDef:ribbons,ribbonMat:tMat,back,mouth,hooves,tipAnchors,mats:[mat,tMat,crownMat],extra:[],tendrils:[]};
+}
+
+/* ---------------------------------------------------------------- per-monster fx (smoke, drips, pools) */
+function attachFx(m){
+  const I=INK(), c=m.parts; m.fx={list:[]};
+  if(!I)return;
+  const add=h=>{m.fx.list.push(h);return h;};
+  if(m.kind==='hollow'){
+    m.fx.body=add(I.emitter(c.hem,{rate:16,radius:.25,height:.3,size:[.8,2.2],life:[1.0,1.9],rise:.6,drift:.22,trail:.9,alpha:.85,color:'#0b0712'}));
+    m.fx.claws=add(I.emitter(c.clawTips,{rate:3,radius:.05,size:[.15,.5],life:[.6,1.1],rise:.25,drift:.1,trail:.5,alpha:.5,drip:2.6}));
+    m.fx.pool=add(I.pool(m.pos,{radius:1.0,alpha:.75}));
+  }else if(m.kind==='hound'){
+    m.fx.body=add(I.emitter(c.back,{rate:9,radius:.12,size:[.45,1.3],life:[.7,1.4],rise:.35,drift:.15,trail:1,alpha:.75,color:'#0b0712'}));
+    m.fx.legs=add(I.emitter(c.paws,{rate:7,radius:.12,size:[.4,1.1],life:[.5,1.0],rise:.15,drift:.25,trail:.9,alpha:.6,color:'#16101f'}));
+    m.fx.pool=add(I.pool(m.pos,{radius:.85,alpha:.6}));
+  }else{
+    m.fx.body=add(I.emitter(c.back,{rate:22,radius:.55,height:.4,size:[1.5,3.9],life:[1.6,2.7],rise:.8,drift:.35,trail:.8,alpha:.75,color:'#0a0710'}));
+    m.fx.mouth=add(I.emitter(c.mouth,{rate:9,radius:.08,size:[.35,1.3],life:[.8,1.6],rise:.25,drift:.3,trail:.6,alpha:.6,drip:1.2}));
+    m.fx.legs=add(I.emitter(c.hooves,{rate:6,radius:.25,size:[.7,1.8],life:[.6,1.1],rise:.15,drift:.4,trail:.9,alpha:.45,color:'#120d1a'}));
+    m.fx.crown=add(I.emitter(c.tipAnchors,{rate:0,radius:.05,embers:12}));
+    m.fx.pool=add(I.pool(m.pos,{radius:3.9,alpha:.8}));
+  }
+}
+function removeFx(m){ const I=INK(); if(!I||!m.fx)return; for(const h of m.fx.list)I.remove(h); m.fx.list.length=0; }
+function fxIntensity(m,k){ if(!m.fx)return; for(const h of m.fx.list)h.intensity=k; }
+
+/* ---------------------------------------------------------------- ink animation */
+const _v=V(), _v2=V();
+function stepShroud(m,dt,t){
+  const c=m.parts, S=c.shroud, pos=S.pos, base=S.base, nC=S.nC;
+  const W=m.state==='windup', A=m.state==='attack';
+  // spring lag: the hem trails behind motion, and kicks forward on a lunge
+  const sp=m.speedNow||0, lunge=A&&m.atk==='lunge';
+  const tgtZ=-Math.min(.9,sp*.12)-(lunge?.55:0), tgtY=Math.min(.45,sp*.06)+(lunge?.35:0);
+  if(dt>0){ S.lagV.z+=(40*(tgtZ-S.lag.z)-7*S.lagV.z)*dt; S.lagV.y+=(40*(tgtY-S.lag.y)-7*S.lagV.y)*dt; S.lag.addScaledVector(S.lagV,dt); }
+  const flare=m.flare, hurt=m.state==='hurt'?1:0;
+  for(let i=0;i<pos.length/3;i++){
+    const a=base[i*4], rr0=base[i*4+1], y=base[i*4+2], tr=base[i*4+3];
+    const w=Math.pow(tr,1.3);
+    const wave=(Math.sin(t*2.6+a*3-tr*4.2+m.id)*.06+Math.sin(t*4.3+a*5.3+m.id*2)*.03)*w*(1+flare*1.8);
+    const rr=rr0*(1+flare*1.15*w+hurt*.25*w)+wave;
+    let x=Math.sin(a)*rr, z=Math.cos(a)*rr, yy=y+S.lag.y*w*1.2+Math.sin(t*3.2+a*4+m.id)*.05*w;
+    z+=S.lag.z*w*1.4; yy+=flare*.3*w*(.5+.5*Math.cos(a*2));
+    pos[i*3]=x; pos[i*3+1]=yy; pos[i*3+2]=z;
+  }
+  S.geo.attributes.position.needsUpdate=true; S.geo.computeVertexNormals();
+  const nr=S.geo.attributes.normal.array; // weld the seam so the ink displacement never cracks
+  for(let r=0;r<SH_R;r++){const i0=r*nC*3, i1=(r*nC+nC-1)*3; for(let k=0;k<3;k++){const av=(nr[i0+k]+nr[i1+k])*.5; nr[i0+k]=nr[i1+k]=av;}}
+}
+function stepTendrils(m,dt,agit,lift){
+  const c=m.parts; if(m.fxK<=0&&c.tendrils[0]&&c.tendrils[0].pts)return; c.root.updateMatrixWorld(true);
+  for(const T of c.tendrils)stepTendril(T,dt,G.time,agit,lift);
+}
+/* smoke drawn INTO the body (crouch / gathering), or streamed away from it */
+function gather(cx,cy,cz,r,n,col){
+  for(let k=0;k<n;k++){const a=rnd()*TAU, el=(rnd()-.3)*.9, rr=r*(.7+rnd()*.5);
+    const x=cx+Math.cos(a)*rr, y=cy+el*rr*.6, z=cz+Math.sin(a)*rr;
+    puff(x,y,z,(cx-x)*2.2,(cy-y)*2.2,(cz-z)*2.2,.42+rnd()*.15,.7*r,.15*r,.55,col||cSmoke,0,.4);}
+}
+function eyesFlare(c,base,k,fade){
+  c.eyes.forEach(e=>{ const s=base*(1+k*1.1); if(e.userData.slit)e.scale.set(s*1.5,s*.45,1); else e.scale.setScalar(s);
+    e.material.opacity=fade; const h=e.children[0]; if(h)h.material.opacity=h.userData.o*(1+k*2.2)*fade; });
+}
+
+function animHollow(m,dt){
+  const c=m.parts, t=G.time;
+  m.phase+=dt;
+  const bob=.32+Math.sin(t*1.8+m.id)*.09;
+  c.body.position.y=U.damp(c.body.position.y,bob,8,dt);
+  const W=m.state==='windup', A=m.state==='attack', R=m.state==='recover', Hh=m.state==='hurt';
+  const lean=W?-.35*m.flare:A?.45:Hh?-.25:(m.speedNow>2?.18:.05);
+  c.upper.rotation.x=U.damp(c.upper.rotation.x,lean,10,dt);
+  c.body.rotation.x=U.damp(c.body.rotation.x,(m.speedNow>2?.12:0)+(A?.15:0),6,dt);
+  for(const a of c.arms){
+    let sx=Math.sin(t*1.3+a.s)*.08, sz=a.s*.12, ex=-.15;
+    if(W){ if(m.atk==='claw'){ sx=a.s>0?-2.6*m.flare:-.6*m.flare; sz=a.s*(.5*m.flare+.1); ex=-.9*m.flare; } else { sx=-.9*m.flare; sz=a.s*.9*m.flare; ex=-.6*m.flare; } }
+    else if(A){ if(m.atk==='claw'){ sx=a.s>0?-.2:-.4; sz=a.s>0?-.5:.2; ex=-.1;} else { sx=-1.5; sz=a.s*.15; ex=-.1; } }
+    else if(R){ sx=-.2; ex=-.3; }
+    else if(m.speedNow>2){ sx=.45; ex=-.05; }
+    a.sh.rotation.x=U.damp(a.sh.rotation.x,sx,A?30:9,dt); a.sh.rotation.z=U.damp(a.sh.rotation.z,sz,A?30:9,dt);
+    a.el.rotation.x=U.damp(a.el.rotation.x,ex,12,dt);
+  }
+  if(m.fxK>0||!c.shroud.init){c.shroud.init=1; stepShroud(m,dt,t);}
+  stepTendrils(m,dt,1+m.flare*1.5+(A?1:0),m.flare*.8);
+  eyesFlare(c,.11,m.flare*.8,m.fade);
+  // smoke: constant shedding, thickening on the wind-up, a trail on the lunge
+  const k=m.fxK;
+  if(m.fx.body){ m.fx.body.intensity=k*(1+m.flare*1.4+(A?1:0)); m.fx.body.radius=.18+m.flare*.35; m.fx.body.rate=13; }
+  if(m.fx.claws)m.fx.claws.intensity=k*(1+m.flare);
+  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade*(1+m.flare*.4));
+  if(k>0&&W&&rnd()<dt*14*m.flare)gather(m.pos.x,m.pos.y+1.6,m.pos.z,1.3,1);
+  if(k>0&&A&&m.atk==='lunge'){ for(let n=0;n<2;n++)puff(m.pos.x+(rnd()-.5)*.5,m.pos.y+.4+rnd()*1.6,m.pos.z+(rnd()-.5)*.5,(rnd()-.5)*.3,.2,(rnd()-.5)*.3,1.1+rnd()*.6,.6,1.6,.6,cInk,0,2); }
+}
+
+function animQuadLegs(c,m,dt,speed,stride,gallop){
+  m.phase+=dt*speed*stride;
+  const amp=Math.min(1,speed/2)*(gallop?.8:.5);
+  c.legs.forEach((l,i)=>{
+    const off=gallop?(l.front?0:PI*.9)+(l.side>0?.35:0):[0,PI,PI,0][i];
+    const s=Math.sin(m.phase+off);
+    l.hip.rotation.x=(l.front?0:.22)+s*amp;
+    l.knee.rotation.x=(l.front?.1:-.3)+Math.max(0,-Math.cos(m.phase+off))*amp*(l.front?.9:-.9);
+    l.footfall=speed>.3&&l.prevS!=null&&l.prevS<0&&s>=0; l.prevS=s;
+  });
+}
+function animHound(m,dt){
+  const c=m.parts, t=G.time, W=m.state==='windup', A=m.state==='attack';
+  animQuadLegs(c,m,dt,m.speedNow,3.2,m.speedNow>4);
+  const crouch=W?-.22*m.flare:0;
+  c.body.position.y=U.damp(c.body.position.y,.78+crouch+(m.speedNow>4?Math.abs(Math.sin(m.phase))*.08:0),14,dt);
+  c.body.rotation.x=U.damp(c.body.rotation.x,W?.12:A?-.1:0,10,dt);
+  c.head.rotation.x=U.damp(c.head.rotation.x,W?.25:m.state==='flee'?-.2:0,10,dt);
+  c.jaw.rotation.x=U.damp(c.jaw.rotation.x,A?.7:W?.35:.05+Math.max(0,Math.sin(t*3+m.id))*.06,20,dt);
+  c.tail.rotation.x=U.damp(c.tail.rotation.x,m.state==='flee'?-.9:W?.5:0,6,dt);
+  c.tail.rotation.y=Math.sin(t*5+m.id)*.2;
+  // mane/tail: flatten back on the run, bristle up on the crouch, tight & stiff on the dash
+  stepTendrils(m,dt,1+Math.min(1.5,m.speedNow*.12)+m.flare,W?.9*m.flare:A?-.3:0);
+  eyesFlare(c,.075,m.flare*.9,m.fade);
+  const k=m.fxK;
+  if(m.fx.body){ m.fx.body.intensity=k*(W?.25:1+(A?1.5:0)); m.fx.body.trail=1; }
+  if(m.fx.legs)m.fx.legs.intensity=k*(m.speedNow>.5?1+m.speedNow*.12:.6)*(W?.2:1);
+  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade);
+  // the crouch before a dash pulls smoke inward
+  if(k>0&&W&&rnd()<dt*22)gather(m.pos.x,m.pos.y+.6,m.pos.z,1.1,1);
+  // dash leaves a thin smoke streak
+  if(k>0&&A)puff(m.pos.x,m.pos.y+.6+rnd()*.2,m.pos.z,0,.1,0,.8+rnd()*.4,.45,.9,.6,cInk,0,2);
+}
+
+function animStag(m,dt){
+  const c=m.parts, t=G.time, s=m.state;
+  animQuadLegs(c,m,dt,m.speedNow,s==='charge'?1.1:1.5,s==='charge');
+  let bodyY=3.15, pitch=0, headX=0, headZ=0;
+  if(s==='chargeWind'){ // paws the ground, lowers the crown
+    const paw=c.legs[1]; paw.hip.rotation.x=-.5+Math.sin(t*14)*.5; paw.knee.rotation.x=.9;
+    headX=.85*m.flare; pitch=.08*m.flare; bodyY=3.0;
+  }else if(s==='charge'){ headX=.85; pitch=.06; }
+  else if(s==='staggered'){ headX=1.0+Math.sin(t*5)*.1; headZ=Math.sin(t*3)*.25; bodyY=2.55; pitch=.16; }
+  else if(s==='sweepWind'){ headX=.4; headZ=-.7*m.flare; }
+  else if(s==='sweep'){ headX=.4; headZ=-.7+m.st/.35*1.4; }
+  else if(s==='stompWind'||s==='summon'){ // rears up on its hind legs
+    const k=s==='summon'?Math.min(1,m.st*2)*(m.st<1.3?1:Math.max(0,1-(m.st-1.3)*3)):m.flare;
+    pitch=-.75*k; bodyY=3.15+1.1*k; headX=-.35*k;
+    c.legs.forEach(l=>{if(l.front){l.hip.rotation.x=-.9*k;l.knee.rotation.x=1.3*k;}});
+  }else if(s==='stomp'){ pitch=U.damp(c.body.rotation.x,0,14,dt); }
+  else if(s==='intro'){ headX=-.3; }
+  else if(s==='dying'){ bodyY=3.15-1.6*Math.min(1,m.st/2.4); pitch=.2; headX=.9; }
+  c.body.position.y=U.damp(c.body.position.y,bodyY,10,dt);
+  c.body.rotation.x=s==='stomp'?pitch:U.damp(c.body.rotation.x,pitch,8,dt);
+  c.neck.rotation.x=U.damp(c.neck.rotation.x,.6+headX,8,dt);
+  c.head.rotation.z=U.damp(c.head.rotation.z,headZ,s==='sweep'?20:8,dt);
+  c.tail.rotation.y=Math.sin(t*2)*.2;
+  const stag=s==='staggered', wind=s==='chargeWind', chg=s==='charge';
+  stepTendrils(m,dt,stag?.4:1+m.flare*.8+(chg?1:0),stag?-1.2:m.flare*.6);
+  // the crown burns hotter during wind-ups
+  const heat=stag?.35:1+m.flare*1.2;
+  c.flames.forEach((f,i)=>{f.scale.setScalar((.36+.14*Math.sin(t*13+i*1.7)+.08*Math.sin(t*29+i))*heat*(i%7===0?1.35:1));});
+  c.halo.material.opacity=(.16+m.flare*.3)*m.fade; c.light.intensity=(1.6+m.flare*2.5)*m.fade*(stag?.4:1);
+  c.flames.forEach(f=>f.material.opacity=m.fade);
+  eyesFlare(c,.3,stag?-.5:m.flare,m.fade);
+  // smoke: rolls off the back, pours from the mouth; slackens when staggered; streams backward on the wind-up
+  const k=m.fxK;
+  if(m.fx.body){ m.fx.body.intensity=k*(stag?.35:1+m.flare*.6+(chg?.6:0)); m.fx.body.rise=stag?.2:.9; }
+  if(m.fx.mouth)m.fx.mouth.intensity=k*(stag?.3:1+m.flare*1.5);
+  if(m.fx.legs)m.fx.legs.intensity=k*(m.speedNow>.5?1.2:.5);
+  if(m.fx.crown)m.fx.crown.intensity=k*(stag?.15:1+m.flare*2.5);
+  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade*(stag?.7:1));
+  if(k>0&&wind){ // smoke streams backward off the whole body: the charge is coming
+    const fx=Math.sin(m.heading), fz=Math.cos(m.heading);
+    for(let n=0;n<3;n++){ const a=c.back[(rnd()*c.back.length)|0]; a.getWorldPosition(_v);
+      puff(_v.x+(rnd()-.5),_v.y+(rnd()-.5)*.6,_v.z+(rnd()-.5),-fx*(5+rnd()*4)*m.flare,.3,-fz*(5+rnd()*4)*m.flare,.7+rnd()*.5,.9,2.4,.55,cInk,0,.9); }
+    if(rnd()<dt*30){ const tp=c.tipAnchors[(rnd()*c.tipAnchors.length)|0]; tp.getWorldPosition(_v); ember(_v.x,_v.y,_v.z,-fx*3,1,-fz*3,.6,.22); }
+  }
+  if(k>0&&chg){ for(let n=0;n<2;n++)puff(m.pos.x+(rnd()-.5)*2,m.pos.y+.6+rnd()*3,m.pos.z+(rnd()-.5)*2,(rnd()-.5)*.5,.4,(rnd()-.5)*.5,1.2+rnd()*.8,1.4,3.2,.55,cInk,0,1.6); }
+  // hooves leave ink puddles and splats
+  if(k>0&&m.speedNow>.5)c.legs.forEach(l=>{ if(!l.footfall)return; l.hoof.getWorldPosition(_v); const y=G.floorAt(_v.x,_v.z,_v.y+1);
+    puddle(_v.x,y,_v.z,.55+rnd()*.25,chg?2.2:3.2,.75);
+    for(let n=0;n<4;n++)puff(_v.x,y+.1,_v.z,(rnd()-.5)*2.5,rnd()*1.5+.5,(rnd()-.5)*2.5,1.6,.15,.1,1,cInk,10,.4); });
+}
+
+/* ---------------------------------------------------------------- stomp shockwave: an ink ring */
+const RING_FS=`uniform float uTime;uniform float uR;uniform float uHalf;uniform float uA;uniform vec3 uRim;varying vec2 vUv;varying vec3 vW;
+#include <fog_pars_fragment>
+${SN}
+void main(){ vec2 p=(vUv*2.-1.)*uHalf; float d=length(p); float ang=atan(p.y,p.x);
+  float n=snoise(vec3(cos(ang)*2.,sin(ang)*2.,uTime*1.5+uR*.3))*.5+.5;
+  float x=d-uR;                          // >0 ahead of the front, <0 behind it
+  float front=1.-smoothstep(0.,.35+.25*n,abs(x+.1));
+  float wake=smoothstep(-2.6-n*1.2,-.2,x)*(1.-smoothstep(-.2,.05,x));
+  float a=max(front,wake*.75)*uA; if(a<.01)discard;
+  vec3 c=vec3(.01,.006,.02)+uRim*front*(.6+.8*n);
+  gl_FragColor=vec4(c,a);
+  #include <fog_fragment>
+}`;
+const RING_VS=`varying vec2 vUv;varying vec3 vW;
+#include <fog_pars_vertex>
+void main(){vUv=uv;vec4 wp=modelMatrix*vec4(position,1.);vW=wp.xyz;vec4 mvPosition=viewMatrix*wp;gl_Position=projectionMatrix*mvPosition;
+#include <fog_vertex>
+}`;
+function ringMesh(){
+  const half=P.stag.ringMax+2;
+  const u=THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{uR:{value:.5},uHalf:{value:half},uA:{value:1},uRim:{value:U.col('#b28aff').multiplyScalar(2.4)}}]); u.uTime=G.negTime;
+  const mat=SN?new THREE.ShaderMaterial({uniforms:u,vertexShader:RING_VS,fragmentShader:RING_FS,transparent:true,depthWrite:false,fog:true,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3})
+    :new THREE.MeshBasicMaterial({color:0x9a6cff,transparent:true});
+  const mesh=new THREE.Mesh(new THREE.PlaneGeometry(half*2,half*2,1,1).rotateX(-PI/2),mat); mesh.renderOrder=2;
+  return mesh;
+}
+/* ---------------------------------------------------------------- monsters */
+const list=[], tokens=new Set();
+let boss=null, finaleZone=null, ringFx=[];
+function playerPos(){return G.player&&G.player.pos;}
+function playerAlive(){const p=G.player;return !!(p&&p.pos&&p.alive!==false&&!(p.hp<=0));}
+function takeToken(m){
+  if(tokens.has(m))return true;
+  let n=0; for(const t of tokens) if(!t.boss&&t.alive&&!t.dying)n++; else if(!t.alive||t.dying)tokens.delete(t);
+  if(n>=MAX_TOKENS)return false; tokens.add(m); return true;
+}
+const dropToken=m=>tokens.delete(m);
+function setState(m,s){ if(m.state==='windup'||m.state==='attack'||m.state==='recover'){ if(s!=='attack'&&s!=='recover'&&s!=='windup')dropToken(m);} m.state=s; m.st=0; }
+
+function spawn(kind,pos,opts={}){
+  if(!P[kind])kind='hollow';
+  const p=P[kind];
+  const S=sharedUniforms(kind==='stag'?'#b58cff':'#a37cff',kind==='stag'?1.8:1.7,kind==='stag'?'#2a1446':'#24103a',kind==='stag'?.5:.65);
+  const mat={uniforms:S}; // one set of uniforms drives every ink part of this monster (fade, flash, rim)
+  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):buildStag(S);
+  const y=G.floorAt(pos.x,pos.z,(pos.y!=null?pos.y:H(pos.x,pos.z))+1);
+  const m={kind,boss:kind==='stag',parts,mat,rimBase:mat.uniforms.uRim.value.clone(),pos:V(pos.x,y,pos.z),home:V(pos.x,y,pos.z),
+    zone:opts.zone||{x:pos.x,z:pos.z,r:20,name:'adhoc'},heading:opts.heading!=null?opts.heading:rnd()*TAU,hp:p.hp,maxHp:p.hp,
+    state:opts.aggro?'chase':'idle',st:0,kv:V(),vy:0,flash:0,flare:0,alive:true,dying:false,fade:1,cool:1+rnd()*1.5,
+    wt:null,pause:rnd()*2,phase:rnd()*10,speedNow:0,orbit:rnd()<.5?1:-1,orbitA:rnd()*TAU,fled:false,hitSet:new Set(),
+    atk:null,dashDir:V(),travel:0,didHit:false,summoned:false,aggro:!!opts.aggro,center:V(),id:list.length,finale:!!opts.finale};
+  m.hb={team:'enemy',pos:m.pos,radius:p.radius+(kind==='stag'?.2:.1),height:p.height,targetable:true,corrupt:true,
+    name:kind==='hollow'?'Hollow':kind==='hound'?'Shade Hound':'The Hollow Stag',
+    lockOffset:kind==='stag'?3.2:kind==='hound'?.8:1.7, monster:m,
+    alive:()=>m.alive&&!m.dying, hit:info=>onHit(m,info)};
+  G.combat.add(m.hb);
+  parts.root.position.copy(m.pos); parts.root.rotation.y=m.heading; parts.root.name='monster_'+kind;
+  parts.root.traverse(o=>{if(o.isMesh){o.castShadow=kind!=='hollow'&&!o.userData.noShadow&&o.material.uniforms&&!o.material.uniforms.uFray.value;}});
+  G.scene.add(parts.root); parts.root.updateMatrixWorld(true);
+  finishTendrils(parts);
+  m.fxK=1; attachFx(m);
+  m.ground=S.uGround;
+  if(opts.intro){m.state='intro';m.fade=0;S.uFade.value=0;
+    const I=INK(); if(I){ const w=puddle(m.pos.x,m.pos.y,m.pos.z,kind==='stag'?4.5:1.3,kind==='stag'?4:2.2,.9); if(w)w.grow=.4; } }
+  list.push(m);
+  return m;
+}
+function onHit(m,info){
+  if(!m.alive||m.dying)return;
+  let d=info.damage||1;
+  if(m.boss&&m.state==='staggered')d*=2;
+  if(m.state==='return'&&!m.boss&&info.kind!=='swarm'){ m.flash=.5; splash(V(m.pos.x,m.pos.y+1,m.pos.z),info.dir||V(0,0,1),.4); setState(m,'chase'); m.aggro=true; return; } // re-engage instead of being farmed while leashing
+  m.hp-=d; m.flash=1; m.lastHit=G.time;
+  m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.55,m.pos.z);
+  const dir=info.dir||V(0,0,1);
+  splash(m.center,dir,info.kind==='swarm'?.35:m.boss?1.6:1);
+  ash(m.center,info.kind==='swarm'?2:5,m.boss?2:.8);
+  const kb=(info.knockback==null?5:info.knockback)*(m.boss?.04:m.kind==='hound'?1.1:.75);
+  m.kv.x+=dir.x*kb; m.kv.z+=dir.z*kb;
+  m.aggro=true;
+  if(m.hp<=0){die(m,info);return;}
+  if(!m.boss&&info.kind!=='swarm'){ dropToken(m); setState(m,'hurt'); }
+  if(m.boss&&m.state==='staggered')G.ui.shake&&G.ui.shake(.15);
+}
+function die(m,info){
+  m.dying=true; m.hp=0; dropToken(m); m.st=0; m.state='dying';
+  m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.55,m.pos.z);
+  ash(m.center,m.boss?60:14,m.boss?4:1.2); splash(m.center,(info&&info.dir)||V(0,0,1),m.boss?2:1.2);
+  if(!m.boss&&rnd()<.35){try{G.pickups.spawn('heart',m.pos.clone().setY(m.pos.y+.3));}catch(e){}}
+  G.emit('monster:killed',{kind:m.kind,pos:m.pos.clone(),boss:m.boss});
+  if(m.boss){
+    G.ui.shake&&G.ui.shake(.8);
+    for(const o of list) if(o!==m&&o.finale&&o.alive&&!o.dying)die(o,{});
+  }
+}
+function remove(m){
+  m.alive=false; G.combat.remove(m.hb); G.scene.remove(m.parts.root); dropToken(m); removeFx(m);
+  m.parts.root.traverse(o=>{if(o.isMesh){o.geometry.dispose(); if(o.material.dispose)o.material.dispose();}});
+  const i=list.indexOf(m); if(i>=0)list.splice(i,1);
+  if(m===boss){ boss=null; G.ui.bossBar(null); G.emit('boss:dead'); }
+}
+
+/* movement helpers */
+function faceTo(m,x,z,rate,dt){const want=Math.atan2(x-m.pos.x,z-m.pos.z);m.heading+=U.angDiff(want,m.heading)*Math.min(1,rate*dt);return want;}
+function stepMove(m,dx,dz){
+  const r=P[m.kind].radius;
+  const nx=m.pos.x+dx, nz=m.pos.z+dz;
+  if(!outsideTower(nx,nz,m.pos.y,r))return false;
+  if(G.world.walkable&&!G.world.walkable(nx,nz))return false;
+  const res=G.moveCharacter(m.pos,dx,dz,r,'monster');
+  if(!outsideTower(m.pos.x,m.pos.z,m.pos.y,r)){m.pos.x-=dx;m.pos.z-=dz;return false;}
+  return !res.blocked;
+}
+function moveDir(m,ang,speed,dt){ if(speed<=0||!(dt>0))return true; return stepMove(m,Math.sin(ang)*speed*dt,Math.cos(ang)*speed*dt); }
+function settle(m,dt){
+  const f=G.floorAt(m.pos.x,m.pos.z,m.pos.y+.7);
+  if(m.pos.y>f+.02){m.vy-=22*dt;m.pos.y+=m.vy*dt;if(m.pos.y<f){m.pos.y=f;m.vy=0;}}
+  else{m.pos.y=f;m.vy=0;}
+}
+function separation(m,dt){
+  const r=P[m.kind].radius;
+  for(const o of list){ if(o===m||!o.alive||o.dying)continue;
+    const dx=m.pos.x-o.pos.x, dz=m.pos.z-o.pos.z, d=Math.hypot(dx,dz), min=r+P[o.kind].radius+.5;
+    if(d<min&&d>1e-4){const push=(min-d)*(o.boss?3:1.6)*dt*(m.boss?.1:1); stepMove(m,dx/d*push,dz/d*push);} }
+}
+function applyKnock(m,dt){
+  if(m.kv.lengthSq()<1e-4)return;
+  stepMove(m,m.kv.x*dt,m.kv.z*dt); m.kv.multiplyScalar(Math.exp(-dt*7));
+}
+function wander(m,dt,p){
+  if(!m.wt||U.dist2(m.pos,m.wt)<.8){
+    if(m.pause>0){m.pause-=dt;m.speedNow=0;return;}
+    let x,z,k=0; do{const a=rnd()*TAU,r=2+rnd()*Math.min(10,m.zone.r*.4);x=m.home.x+Math.cos(a)*r;z=m.home.z+Math.sin(a)*r;k++;}while(!okGround(x,z)&&k<10);
+    m.wt=V(x,0,z); m.pause=1.5+rnd()*3.5; return;
+  }
+  faceTo(m,m.wt.x,m.wt.z,3,dt);
+  if(!moveDir(m,m.heading,p.wander,dt)){m.wt=null;}
+  m.speedNow=p.wander;
+}
+function playerFar(m){
+  const pp=playerPos(); if(!pp||!playerAlive())return true;
+  const dz=Math.hypot(pp.x-m.zone.x,pp.z-m.zone.z);
+  return dz>m.zone.r+LEASH||Math.abs(pp.y-m.pos.y)>12;
+}
+function strikeAt(m,x,y,z,radius,damage,knock,kind){
+  return G.combat.strike({x,y,z,radius,team:'enemy',damage,knockback:knock,kind,source:m.hb,exclude:m.hitSet});
+}
+function lanternNear(m,r){
+  const L=G.items&&G.items.lantern; if(!L||!L.found||!L.lit||!L.lit()||L.inCradle)return false;
+  const w=L.world&&L.world.lengthSq()>0?L.world:L.pos; return Math.hypot(w.x-m.pos.x,w.z-m.pos.z)<r;
+}
+function goHome(m,dt,speed){
+  const want=faceTo(m,m.home.x,m.home.z,5,dt);
+  const ok=moveDir(m,want,speed,dt); m.speedNow=speed;
+  if(U.dist2(m.pos,m.home)<1.2||!ok&&m.st>8){ m.hp=m.maxHp; setState(m,'idle'); m.aggro=false; m.fled=false; }
+}
+
+/* ---- Hollow ---- */
+function updateHollow(m,dt){
+  const p=P.hollow, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9;
+  let slow=lanternNear(m,p.lightR)?p.lightSlow:1;
+  m.flare=U.damp(m.flare,0,4,dt);
+  switch(m.state){
+    case 'idle':
+      wander(m,dt,p);
+      if(!playerFar(m)&&dP<p.aggro)setState(m,'chase');
+      break;
+    case 'chase':{
+      if(playerFar(m)||U.dist2(m.pos,m.home)>m.zone.r+LEASH+5){setState(m,'return');break;}
+      m.cool-=dt;
+      faceTo(m,pp.x,pp.z,4,dt);
+      const toP=Math.atan2(pp.x-m.pos.x,pp.z-m.pos.z);
+      const ready=m.cool<=0&&dP<9&&takeToken(m);   // holding the attack token = allowed to close in
+      if(ready&&dP<p.clawRange){m.atk='claw';setState(m,'windup');break;}
+      if(ready&&dP>p.lungeMin&&dP<p.lungeMax&&rnd()<dt*.7){m.atk='lunge';setState(m,'windup');break;}
+      if(tokens.has(m)||dP>7){ moveDir(m,toP,p.speed*slow,dt); m.speedNow=p.speed*slow; }
+      else{ // wait our turn: hover at a respectful distance, drifting sideways
+        const ring=4.6, side=toP+PI/2*m.orbit; let a=side, s=p.speed*.35*slow;
+        if(dP<ring-.6){a=toP+PI;s=p.speed*.6*slow;} else if(dP>ring+.8){a=toP;s=p.speed*.7*slow;}
+        if(!moveDir(m,a,s,dt))m.orbit*=-1; m.speedNow=s; }
+      if(dP<1.1){moveDir(m,toP+PI,1.5,dt);}
+      break;}
+    case 'windup':{
+      const W=m.atk==='claw'?p.clawWind:p.lungeWind;
+      if(pp)faceTo(m,pp.x,pp.z,m.st<W*.7?6:1.5,dt);
+      m.flare=Math.min(1,m.st/W*1.3); m.speedNow=0;
+      if(m.atk==='lunge'&&pp)m.dashDir.set(Math.sin(m.heading),0,Math.cos(m.heading));
+      if(m.st>=W/slow*(slow<1?.85:1)){m.hitSet.clear();m.travel=0;setState(m,'attack');}
+      break;}
+    case 'attack':{
+      m.flare=1;
+      const fx=Math.sin(m.heading), fz=Math.cos(m.heading);
+      if(m.atk==='claw'){
+        if(m.st<.18){ strikeAt(m,m.pos.x+fx*1.25,m.pos.y+1.3,m.pos.z+fz*1.25,1.15,p.clawDmg,6,'melee'); moveDir(m,m.heading,2.5,dt); }
+        if(m.st>.3)setState(m,'recover');
+      }else{
+        const v=p.lungeDist/.26;
+        if(m.travel<p.lungeDist){ moveDir(m,m.heading,v,dt); m.travel+=v*dt;
+          strikeAt(m,m.pos.x+fx*.9,m.pos.y+1.2,m.pos.z+fz*.9,1.0,p.lungeDmg,7,'melee'); }
+        if(m.st>.35)setState(m,'recover');
+      }
+      break;}
+    case 'recover':
+      m.speedNow=0;
+      if(m.st>p.recover){dropToken(m);m.cool=1.1+rnd()*1.2;setState(m,'chase');}
+      break;
+    case 'hurt':
+      m.speedNow=0;
+      if(m.st>p.hurt){m.cool=Math.max(m.cool,.5);setState(m,'chase');}
+      break;
+    case 'return':
+      goHome(m,dt,p.speed*1.2);
+      if(!playerFar(m)&&dP<p.aggro*.6)setState(m,'chase');
+      break;
+  }
+  if(m.state!=='attack')separation(m,dt);
+}
+/* ---- Shade Hound ---- */
+function updateHound(m,dt){
+  const p=P.hound, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9;
+  m.flare=U.damp(m.flare,0,5,dt);
+  switch(m.state){
+    case 'idle':
+      wander(m,dt,p);
+      if(!playerFar(m)&&dP<p.aggro)setState(m,'chase');
+      break;
+    case 'chase':{
+      if(playerFar(m)||U.dist2(m.pos,m.home)>m.zone.r+LEASH+5){setState(m,'return');break;}
+      if(m.hp<=1&&!m.fled){m.fled=true;setState(m,'flee');break;}
+      m.cool-=dt;
+      const toP=Math.atan2(pp.x-m.pos.x,pp.z-m.pos.z);
+      if(dP>11){ faceTo(m,pp.x,pp.z,7,dt); moveDir(m,m.heading,p.speed,dt); m.speedNow=p.speed; }
+      else{
+        m.orbitA+=m.orbit*dt*.9;
+        const tx=pp.x+Math.sin(m.orbitA)*p.circleR, tz=pp.z+Math.cos(m.orbitA)*p.circleR;
+        const d=Math.hypot(tx-m.pos.x,tz-m.pos.z);
+        if(d>.4){ faceTo(m,tx,tz,8,dt); const s=Math.min(p.speed,d*3+1.5); if(!moveDir(m,m.heading,s,dt))m.orbit*=-1; m.speedNow=s; }
+        else { faceTo(m,pp.x,pp.z,8,dt); m.speedNow=0; }
+        if(m.cool<=0&&dP<8&&takeToken(m)){setState(m,'windup');}
+      }
+      void toP;
+      break;}
+    case 'windup':
+      if(pp)faceTo(m,pp.x,pp.z,10,dt);
+      m.flare=Math.min(1,m.st/p.dashWind*1.3); m.speedNow=0;
+      if(m.st>=p.dashWind){ m.dashDir.set(Math.sin(m.heading),0,Math.cos(m.heading)); m.hitSet.clear(); m.didHit=false; setState(m,'attack'); }
+      break;
+    case 'attack':{
+      m.flare=1;
+      const ok=moveDir(m,Math.atan2(m.dashDir.x,m.dashDir.z),p.dashSpeed,dt); m.speedNow=p.dashSpeed;
+      const hits=strikeAt(m,m.pos.x+m.dashDir.x*.6,m.pos.y+.7,m.pos.z+m.dashDir.z*.6,.75,p.biteDmg,4,'bite');
+      if(hits.length)m.didHit=true;
+      if(m.didHit||!ok||m.st>p.dashMax)setState(m,'recover');
+      break;}
+    case 'recover':
+      if(pp){ const away=Math.atan2(m.pos.x-pp.x,m.pos.z-pp.z); moveDir(m,away,5,dt); faceTo(m,pp.x,pp.z,6,dt); }
+      m.speedNow=3;
+      if(m.st>p.recover){dropToken(m);m.cool=1.4+rnd()*1.4;m.orbit=rnd()<.5?1:-1;if(pp)m.orbitA=Math.atan2(m.pos.x-pp.x,m.pos.z-pp.z);setState(m,'chase');}
+      break;
+    case 'hurt':
+      m.speedNow=0;
+      if(m.st>p.hurt){m.cool=Math.max(m.cool,.6);setState(m,m.hp<=1&&!m.fled?'flee':'chase');if(m.state==='flee')m.fled=true;}
+      break;
+    case 'flee':
+      if(pp){ const away=Math.atan2(m.pos.x-pp.x,m.pos.z-pp.z); m.heading+=U.angDiff(away,m.heading)*Math.min(1,dt*6); if(!moveDir(m,m.heading,p.speed*.9,dt))m.heading+=1.2; m.speedNow=p.speed*.9; }
+      if(m.st>4){ m.hp=Math.min(m.maxHp,m.hp+1); setState(m,'chase'); }
+      break;
+    case 'return':
+      goHome(m,dt,p.speed*.8);
+      if(!playerFar(m)&&dP<p.aggro*.6)setState(m,'chase');
+      break;
+  }
+  if(m.state!=='attack')separation(m,dt);
+}
+/* ---- The Hollow Stag ---- */
+function arenaOf(){
+  const f=LM().finale; const L=lh();
+  return f&&isFinite(f.x)?{x:f.x,z:f.z,y:isFinite(f.y)?f.y:H(f.x,f.z),r:f.r||28,name:'finale'}:{x:165,z:0,y:42,r:28,name:'finale'};
+}
+function inArena(x,z,pad){const a=m_arena||arenaOf();return Math.hypot(x-a.x,z-a.z)<a.r-pad;}
+let m_arena=null;
+function updateStag(m,dt){
+  const p=P.stag, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9, pa=playerAlive();
+  m.flare=U.damp(m.flare,0,3,dt);
+  if(m.state!=='intro'&&m.state!=='dying')G.ui.bossBar('The Hollow Stag',Math.max(0,m.hp/m.maxHp));
+  switch(m.state){
+    case 'intro':
+      m.fade=Math.min(1,m.st/2.2); m.mat.uniforms.uFade.value=m.fade; m.flare=1-m.fade*.5;
+      if(m.st>2.6){m.fade=1;setState(m,'stalk');m.cool=1;}
+      break;
+    case 'stalk':{
+      m.cool-=dt;
+      if(!pp||!pa){m.speedNow=0;break;}
+      faceTo(m,pp.x,pp.z,2.2,dt);
+      if(dP>8){ if(!moveDir(m,m.heading,p.speed,dt))m.heading+=.4; m.speedNow=p.speed; } else m.speedNow=0;
+      if(!m.summoned&&m.hp<=m.maxHp/2){m.summoned=true;setState(m,'summon');break;}
+      if(m.cool<=0){
+        const r=rnd();
+        if(dP<6.5) m.atk=r<.6?'sweep':'stomp';
+        else if(dP<11) m.atk=r<.5?'charge':'stomp';
+        else m.atk='charge';
+        setState(m,m.atk+'Wind');
+      }
+      break;}
+    case 'chargeWind':
+      if(pp)faceTo(m,pp.x,pp.z,m.st<.7?4:1,dt);
+      m.flare=Math.min(1,m.st/p.chargeWind); m.speedNow=0;
+      chargeLine(m,true);
+      if(m.st>=p.chargeWind){ m.dashDir.set(Math.sin(m.heading),0,Math.cos(m.heading)); m.travel=0; m.didHit=false; m.hitSet.clear(); chargeLine(m,false); setState(m,'charge'); G.ui.shake&&G.ui.shake(.25); }
+      break;
+    case 'charge':{
+      m.flare=1;
+      const step=p.chargeSpeed*dt; m.travel+=step;
+      const nx=m.pos.x+m.dashDir.x*step, nz=m.pos.z+m.dashDir.z*step;
+      let stop=m.travel>p.chargeLen||!inArena(nx,nz,2)||!outsideTower(nx,nz,m.pos.y,p.radius);
+      if(!stop)stop=!stepMove(m,m.dashDir.x*step,m.dashDir.z*step);
+      m.speedNow=p.chargeSpeed;
+      const hits=strikeAt(m,m.pos.x+m.dashDir.x*2.2,m.pos.y+1.4,m.pos.z+m.dashDir.z*2.2,1.9,p.chargeDmg,14,'charge');
+      if(hits.length)m.didHit=true;
+      if(stop||(m.didHit&&m.travel>p.chargeLen*.6)){
+        if(!outsideTower(nx,nz,m.pos.y,p.radius)||!inArena(nx,nz,2))G.ui.shake&&G.ui.shake(.5);
+        setState(m,m.didHit?'recover':'staggered'); }
+      break;}
+    case 'staggered':
+      m.speedNow=0; m.flare=0;
+      if(m.st>p.stagger){m.cool=.8;setState(m,'stalk');}
+      break;
+    case 'sweepWind':
+      if(pp)faceTo(m,pp.x,pp.z,3,dt);
+      m.flare=Math.min(1,m.st/p.sweepWind); m.speedNow=0;
+      if(m.st>=p.sweepWind){m.hitSet.clear();setState(m,'sweep');}
+      break;
+    case 'sweep':{
+      m.flare=1;
+      const a=m.heading+(-1+m.st/.35*2)*1.1; const fx=Math.sin(a), fz=Math.cos(a);
+      strikeAt(m,m.pos.x+fx*3.6,m.pos.y+1.2,m.pos.z+fz*3.6,2.0,p.sweepDmg,10,'melee');
+      if(m.st>.35)setState(m,'recover');
+      break;}
+    case 'stompWind':
+      if(pp)faceTo(m,pp.x,pp.z,2,dt);
+      m.flare=Math.min(1,m.st/p.stompWind); m.speedNow=0;
+      if(m.st>=p.stompWind){setState(m,'stomp');
+        const fx=Math.sin(m.heading),fz=Math.cos(m.heading);
+        spawnRing(m.pos.x+fx*2.6,m.pos.y,m.pos.z+fz*2.6,m); G.ui.shake&&G.ui.shake(.6); }
+      break;
+    case 'stomp':
+      if(m.st>.6)setState(m,'recover');
+      break;
+    case 'summon':
+      m.flare=1; m.speedNow=0;
+      if(m.st>.9&&!m.summonDone){ m.summonDone=true;
+        for(let k=0;k<3;k++){const a=m.heading+PI+(k-1)*.9, r=5;
+          let x=m.pos.x+Math.sin(a)*r, z=m.pos.z+Math.cos(a)*r;
+          if(!okGround(x,z)||!inArena(x,z,3)){x=m_arena.x+(rnd()-.5)*10;z=m_arena.z+(rnd()-.5)*10;}
+          const h=spawn('hound',{x,z},{zone:m_arena,aggro:true,intro:true,finale:true}); h.state='intro';
+          INK()&&INK().burst(V(x,h.pos.y+.2,z),{n:26,speed:1.6,size:[.6,1.8],life:[.8,1.6],up:1.6,embers:10,drops:6});} }
+      if(m.st<.9&&m.fxK>0&&rnd()<dt*20){ // ink wells up where they will rise
+        for(let k=0;k<3;k++){const a=m.heading+PI+(k-1)*.9; const x=m.pos.x+Math.sin(a)*5, z=m.pos.z+Math.cos(a)*5, y=G.floorAt(x,z,m.pos.y+1);
+          if(!m.wells){} puff(x+(rnd()-.5)*.8,y+.1,z+(rnd()-.5)*.8,0,1.2+rnd(),0,.9,.4,1.3,.7,cInk,0,1);}
+        if(!m.wells){ m.wells=1; for(let k=0;k<3;k++){const a=m.heading+PI+(k-1)*.9; const x=m.pos.x+Math.sin(a)*5, z=m.pos.z+Math.cos(a)*5; puddle(x,G.floorAt(x,z,m.pos.y+1),z,1.4,2.6,.9);} } }
+      if(m.st>1.8){m.cool=1;setState(m,'stalk');}
+      break;
+    case 'recover':
+      m.speedNow=0;
+      if(m.st>.9){m.cool=.9+rnd()*1.2;setState(m,'stalk');}
+      break;
+  }
+}
+const chargeLines=new Map();
+function chargeLine(m,on){
+  let l=chargeLines.get(m);
+  if(!l){ const g=new THREE.PlaneGeometry(2.6,1,1,1); g.rotateX(-PI/2); g.translate(0,0,.5);
+    l=new THREE.Mesh(g,new THREE.MeshBasicMaterial({map:G.tex.soft,color:U.col('#9a6cff').multiplyScalar(1.6),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
+    l.renderOrder=2; G.scene.add(l); chargeLines.set(m,l); }
+  l.visible=on; if(!on)return;
+  l.position.set(m.pos.x,m.pos.y+.15,m.pos.z); l.rotation.y=m.heading; l.scale.set(1,1,P.stag.chargeLen*Math.min(1,m.st*1.6));
+  l.material.opacity=.25+.35*Math.abs(Math.sin(G.time*10));
+}
+function spawnRing(x,y,z,m){
+  const mesh=ringMesh(); mesh.position.set(x,y+.06,z); G.scene.add(mesh);
+  ringFx.push({x,y,z,r:.5,mesh,hit:false,m});
+  INK()&&INK().burst(V(x,y+.3,z),{n:40,speed:4,size:[.6,2],life:[.6,1.3],up:.8,embers:20,drops:16});
+  puddle(x,y,z,2.2,3,.9);
+}
+function updateRings(dt){
+  const pp=playerPos();
+  for(let i=ringFx.length-1;i>=0;i--){
+    const R=ringFx[i]; R.r+=P.stag.ringSpeed*dt;
+    const fade=1-U.smooth(P.stag.ringMax*.6,P.stag.ringMax,R.r);
+    if(R.mesh.material.uniforms){R.mesh.material.uniforms.uR.value=R.r; R.mesh.material.uniforms.uA.value=fade;}
+    // an ink wall rolls along the front
+    const nP=Math.round(R.r*1.1*dt*30);
+    for(let k=0;k<nP;k++){const a=rnd()*TAU, ca=Math.cos(a), sa=Math.sin(a), px=R.x+ca*R.r, pz=R.z+sa*R.r;
+      puff(px,G.floorAt(px,pz,R.y+1)+.15,pz,ca*3,1.2+rnd()*1.4,sa*3,.45+rnd()*.3,.5,1.4,.7*fade,cInk,0,2.5);
+      if(rnd()<.25)ember(px,R.y+.3,pz,ca*2,1.5+rnd(),sa*2,.5,.2);}
+    if(pp&&!R.hit&&playerAlive()){
+      const d=Math.hypot(pp.x-R.x,pp.z-R.z), air=pp.y-G.floorAt(pp.x,pp.z,pp.y+.3);
+      if(Math.abs(d-R.r)<.75&&air<.45&&Math.abs(pp.y-R.y)<2.5){
+        const hits=G.combat.strike({x:pp.x,y:pp.y+.4,z:pp.z,radius:.35,team:'enemy',damage:P.stag.stompDmg,knockback:8,kind:'shockwave',source:R.m&&R.m.hb});
+        if(hits.length)R.hit=true;
+      }
+    }
+    if(R.r>P.stag.ringMax){G.scene.remove(R.mesh);R.mesh.geometry.dispose();ringFx.splice(i,1);}
+  }
+}
+/* ---------------------------------------------------------------- per-frame */
+function updateMonster(m,dt){
+  m.st+=dt;
+  if(m.dying){
+    const dur=m.boss?3.2:1.3;
+    // the form loses cohesion: it shudders, sheds smoke in sheets, dissolves, then bursts
+    m.fade=Math.max(0,1-m.st/dur); m.mat.uniforms.uFade.value=m.fade; m.mat.uniforms.uFlash.value=Math.max(0,.5-m.st*2)*.4; m.mat.uniforms.uRim.value.copy(m.rimBase).multiplyScalar(.6+m.fade*.4);
+    m.center.set(m.pos.x,m.pos.y+P[m.kind].height*(.3+rnd()*.5),m.pos.z);
+    if(rnd()<dt*(m.boss?20:8))ash(m.center,m.boss?4:1,m.boss?3:.8);
+    const loose=1-m.fade, H_=P[m.kind].height;
+    for(let k=0;k<Math.round((m.boss?7:2.5)*(.3+loose)*dt*30);k++){const r=P[m.kind].radius*(1+rnd()), a=rnd()*TAU;
+      puff(m.pos.x+Math.cos(a)*r,m.pos.y+rnd()*H_,m.pos.z+Math.sin(a)*r,Math.cos(a)*.6,.8+rnd()*1.2,Math.sin(a)*.6,1+rnd(),m.boss?1.2:.5,m.boss?3.2:1.4,.6,cInk,0,1);}
+    if(m.fx){ fxIntensity(m,(1+loose)*m.fxK); if(m.fx.pool)m.fx.pool.intensity=m.fade; }
+    if(m.parts.root){ const j=loose*(m.boss?.06:.04); m.parts.root.position.set(m.pos.x+(rnd()-.5)*j,m.pos.y-(m.boss?0:loose*.3),m.pos.z+(rnd()-.5)*j);
+      if(!m.boss){ m.parts.body.scale.set(1+loose*.35,1-loose*.25,1+loose*.35); } }
+    if(m.boss){ G.ui.bossBar('The Hollow Stag',0); animStag(m,dt); }
+    else if(m.kind==='hollow')animHollow(m,dt); else animHound(m,dt);
+    if(m.parts.eyes)eyesFlare(m.parts,m.boss?.3:.1,loose,m.fade);
+    if(m.parts.extra)m.parts.extra.forEach(x=>{x.transparent=true;x.opacity=m.fade;});
+    if(m.st>dur){ const I=INK(); if(I){ m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.45,m.pos.z);
+        I.burst(m.center,{n:m.boss?150:40,speed:m.boss?6:3,size:m.boss?[1,3.5]:[.5,1.8],life:[.8,1.8],up:1.2,embers:m.boss?90:22,drops:m.boss?40:12});
+        puddle(m.pos.x,m.pos.y,m.pos.z,m.boss?4.5:1.3,m.boss?6:3.5,.85); }
+      remove(m); }
+    return;
+  }
+  if(m.state==='intro'&&m.fxK>0&&rnd()<dt*25*(1-m.fade)){ const r=P[m.kind].radius*1.5; // ink wells up and gathers into a shape
+    puff(m.pos.x+(rnd()-.5)*r*2,m.pos.y+.1,m.pos.z+(rnd()-.5)*r*2,0,1+rnd()*1.5,0,1+rnd()*.5,m.boss?1:.4,m.boss?2.8:1.2,.7,cInk,0,1); }
+  if(m.state==='intro'&&!m.boss){ m.fade=Math.min(1,m.st/1.2); m.mat.uniforms.uFade.value=m.fade; if(m.st>1.2){m.fade=1;m.mat.uniforms.uFade.value=1;setState(m,'chase');} }
+  else if(m.kind==='hollow')updateHollow(m,dt);
+  else if(m.kind==='hound')updateHound(m,dt);
+  else updateStag(m,dt);
+  if(m.state!=='return'&&!m.boss&&m.st>0&&m.zone)leashHeal(m,dt);
+  applyKnock(m,dt);
+  settle(m,dt);
+  m.flash=Math.max(0,m.flash-dt*5); m.mat.uniforms.uFlash.value=m.flash*.9;
+  m.ground.value=m.pos.y;
+  // rim flares bright on wind-ups (the main telegraph)
+  const fl=m.state==='staggered'?.4:1+m.flare*(m.boss?1.8:2.0);
+  m.mat.uniforms.uRim.value.copy(m.rimBase).multiplyScalar(fl);
+}
+function leashHeal(m,dt){ if(m.state==='idle'&&m.hp<m.maxHp&&G.time-(m.lastHit||-99)>6)m.hp=Math.min(m.maxHp,m.hp+dt*.5); }
+function render(m,dt){
+  const c=m.parts;
+  c.root.position.copy(m.pos); c.root.rotation.y=m.heading;
+  c.root.updateMatrixWorld(true);
+  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(!m.dying)animStag(m,dt);
+}
+
+/* ---------------------------------------------------------------- spawning */
+const DEFAULT_ZONES=[
+  {name:'forest',x:-130,z:0,r:50,kinds:['hollow','hound'],count:7},
+  {name:'hamlet',x:-20,z:30,r:22,kinds:['hollow'],count:3},
+  {name:'moor',x:55,z:-10,r:30,kinds:['hound'],count:3}];
+function spawnZones(){
+  let zones=LM().monsterZones; if(!Array.isArray(zones)||!zones.length)zones=DEFAULT_ZONES;
+  for(const z of zones){
+    const kinds=(z.kinds&&z.kinds.length?z.kinds:['hollow']).filter(k=>k==='hollow'||k==='hound');
+    if(!kinds.length)continue;
+    const zone={name:z.name||'zone',x:z.x,z:z.z,r:z.r||25};
+    const n=z.count||3;
+    for(let i=0;i<n;i++){
+      let x,zz,k=0; do{const a=rnd()*TAU,r=Math.sqrt(rnd())*zone.r*.75;x=zone.x+Math.cos(a)*r;zz=zone.z+Math.sin(a)*r;k++;}while(!okGround(x,zz)&&k<20);
+      // hounds come in pairs
+      const kind=kinds.length===1?kinds[0]:kinds[i%3===2?1:0];
+      spawn(kind,{x,z:zz},{zone});
+    }
+  }
+}
+function startFinale(){
+  if(boss&&boss.alive&&!boss.dying)return;
+  m_arena=arenaOf(); const A=m_arena;
+  let x=A.x-10, z=A.z; if(!okGround(x,z))x=A.x-6;
+  boss=spawn('stag',{x,z},{zone:A,aggro:true,intro:true,finale:true,heading:PI/2});
+  boss.state='intro';
+  ash(V(x,boss.pos.y+2,z),120,4);
+  for(let k=0;k<3;k++){const a=-PI/2+(k-1)*1.1;let hx=A.x+Math.cos(a)*16, hz=A.z+Math.sin(a)*16;
+    if(!okGround(hx,hz)){hx=A.x-14+(k-1)*3;hz=A.z+(k-1)*8;}
+    spawn('hollow',{x:hx,z:hz},{zone:A,aggro:true,intro:true,finale:true});}
+}
+
+/* ---------------------------------------------------------------- system */
+G.on('finale:start',startFinale);
+G.on('player:respawn',()=>{
+  for(const m of list.slice()){
+    if(!m.alive||m.dying)continue;
+    if(m.finale&&m.kind==='hound'&&boss){remove(m);continue;}  // summoned hounds vanish; boss re-summons
+    m.hp=m.maxHp; m.kv.set(0,0,0); m.pos.copy(m.home); m.state=m.boss?'stalk':'idle'; m.st=0; m.flare=0; m.cool=1.5; m.aggro=false; m.fled=false;
+    if(m.boss){m.summoned=false;m.summonDone=false;m.state='stalk';}
+    if(m.finale&&!m.boss)m.state='chase';
+    dropToken(m);
+  }
+  for(const R of ringFx)G.scene.remove(R.mesh); ringFx.length=0; clearPuddles();
+  chargeLines.forEach(l=>l.visible=false);
+});
+G.monsters={list,spawn:(kind,pos,opts)=>spawn(kind,pos,opts||{aggro:false}),
+  alive:()=>list.filter(m=>m.alive&&!m.dying).length,
+  get boss(){return boss;}, tokens, startFinale, params:P};
+G.system('monsters',{order:40,modes:['play'],
+  init(){
+    glowTex=G.tex.flame;
+    try{spawnZones();}catch(e){console.error('monsters spawn',e);}
+  },
+  update(dt){
+    const f=(G.player&&G.player.pos)||G.focus;
+    for(const m of list.slice()){
+      const far=f.distanceToSquared(m.pos)>150*150&&G.focus.distanceToSquared(m.pos)>150*150&&!m.boss;
+      m.parts.root.visible=!far;
+      const dF=Math.sqrt(f.distanceToSquared(m.pos));
+      m.fxK=m.boss?1:1-U.smooth(45,55,dF); if(far)m.fxK=0;
+      if(far&&!m.dying){ fxIntensity(m,0); if(m.state!=='idle'){m.pos.copy(m.home);m.hp=m.maxHp;setState(m,'idle');} continue; }
+      updateMonster(m,dt);
+      if(m.alive)render(m,dt);
+    }
+    updateRings(dt);
+    updatePuddles(dt);
+  }
+});
+/* keep idle monsters gently animated (and positioned) on the title screen */
+G.system('monstersIdle',{order:41,modes:['title','paused','dead','ending'],update(dt){
+  const cam=G.camera.position;
+  for(const m of list){ if(G.state.mode==='paused')break; m.parts.root.position.copy(m.pos); if(m.kind==='hollow'){m.parts.body.position.y=.32+Math.sin(G.time*1.8+m.id)*.09;}
+    // smoke keeps curling off visible monsters on the title/ending cameras; far ones go quiet
+    m.fxK=m.dying?m.fxK:(1-U.smooth(45,55,Math.min(cam.distanceTo(m.pos),G.focus.distanceTo(m.pos))))*.7;
+    if(!m.dying&&m.fx)for(const h of m.fx.list)h.intensity=m.fxK; }
+}});
+})();
