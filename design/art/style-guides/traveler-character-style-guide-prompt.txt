@@ -1,0 +1,25 @@
+Generated with the built-in imagegen tool, using the Gentle Gothic visual style guide as reference.
+
+Use case: stylized-concept.
+Create ONE high-resolution professional MAIN PLAYER CHARACTER visual style guide for the original Gentle Gothic lighthouse adventure, using the provided most recent style guide as the reference. Focus SOLELY on the playable Traveler already depicted in that image. Preserve that character's youthful round face, large expressive warm brown eyes, short chestnut hair peeking from a deep violet hood, compact stylized proportions, violet shoulder cape and long cloak with restrained antique-gold botanical embroidery, layered brown practical travel clothes, leather belt and pouch, fitted dark trousers and worn lace-up brown ankle boots. An approachable young adult of ambiguous gender; consistent facial identity and adult identity in every view. Gentle, resourceful, curious, a little apprehensive. No weapons or new powers. No other characters, creatures, landscapes or buildings. This is a focused usable model/design reference for one character, not a general world board.
+
+Style: attractive soft cel-shaded 3D character concept art, simplified readable sculpted forms, hand-painted material texture, tactile matte wool and weathered leather, warm fairytale melancholy. Strong visual continuity with the Traveler study in the supplied image. Avoid photorealism and conflicting facial designs. Parchment board with fine charcoal dividers, subtle restrained botanical corner ornament, clear elegant dark typography, beautifully organized composition. Landscape 3:2, high detail and readable text. Short labels only, imagery dominant.
+
+Title exactly "THE TRAVELER"
+Subtitle "Gentle Gothic • Playable Character Guide"
+
+Layout with breathing room:
+UPPER TWO THIRDS LEFT AND CENTER: largest section "CHARACTER TURNAROUND". Four full-body orthographic-style views aligned to the same ground line and same scale, in order "Front", "Three-quarter", "Side", "Back". Relaxed neutral standing pose, feet visible, arms slightly separated enough to read clothing, cloak hangs naturally. Same exact clothing construction, embroidery placement, belt and pouch placement in all views. Make silhouette and garments legible without lantern light obscuring them. Hood up in these four views. Show hood depth, capelet, long practical cloak ending above ankles with split opening in front, layers and boots. Front and side show face, back shows simple sparse botanical embroidery along hem and a clear hood shape. No invented elaborate armor or excessive accessories.
+
+UPPER RIGHT: "FACE & EXPRESSIONS", five clean head studies of same character labeled "Neutral", "Curious", "Wary", "Determined", "Relieved". Include one clearly labeled "Hood down" head-and-shoulder study showing short slightly tousled chestnut hair and how hood folds against shoulders. Keep identity, hair, age, and proportions identical.
+
+LOWER LEFT: "CLOTHING & MATERIALS" closeup studies, not a costume swap: hood and capelet overlap, simple gold stitched leaf motifs along violet cloak edge, leather belt with small pouch, weathered boot. Short labels "Wool cloak", "Botanical stitching", "Leather pouch", "Travel boots". Include a compact five-swatch character palette named "Deep Violet", "Dusky Plum", "Warm Umber", "Antique Gold", "Ether Violet". Deep muted violet fabric must differ clearly from saturated luminous ether violet.
+
+LOWER CENTER: "ETHER LANTERN". One large clear brass lantern prop study with glass body and protective metal frame, top carrying handle, luminous liquid/plasma-like VIOLET ether suspended inside with a few oily black globules indicating corruption. Real physical lantern shape matches original reference, not oversized decorative weapon. Show one small close-up of hand gripping its top handle safely. Labels "Weathered brass", "Violet ether", "Corruption within". Violet light softly reflects on nearby fingers and fabric, restrained glow.
+
+LOWER RIGHT: "MOVEMENT & SILHOUETTE". Three small full-body action poses of SAME character with SAME costume: careful walking while holding lantern ahead, crouching to inspect ground (no environment necessary), bracing against wind while cloak lifts. Labels "Explore", "Inspect", "Brace". Cloak motion remains practical with feet readable.
+
+Slim footer with exact brief direction:
+"Soft cel shading • Clear silhouette • Practical layers • Quiet courage"
+
+Constraints: a single consistent protagonist, no alternate outfits or alternative characters, no animals, no world scenery, no extra anatomical limbs, no large paragraphs, no game HUD, no logos, no heavy armor, no sword. Accurate unclipped labels. Emphasize the existing character, not a redesign. A polished practical character art guide suitable to inform future 3D modeling.

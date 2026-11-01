@@ -9,8 +9,19 @@ const V=(x,y,z)=>new THREE.Vector3(x,y,z);
 const LM=()=>G.world.landmarks||{};
 const lmV=(k,fb)=>{const l=LM()[k]; return l?V(l.x,l.y,l.z):fb.clone();};
 
+/* ---------- shared hooks for the core-loop modules (fog.js, alchemy.js, moths.js) ----------
+   G.persist.register(key,{save:()=>json, load:(json)=>void}) — included in every save, restored on Continue.
+   G.quest.set(step, objective, sub, targetVector3|null, targetName) — set the objective + HUD marker.
+   G.loop.active — true once the core loop has begun (after the Hollow Stag falls); emits 'loop:start'. */
+const persist={};
+G.persist={register(key,h){persist[key]=h;}, get keys(){return Object.keys(persist);}};
+G.loop={active:false};
+function startLoop(restored){
+  if(G.loop.active)return; G.loop.active=true; G.flag('loop',true);
+  G.emit('loop:start',{restored:!!restored});
+}
 /* quest target for the HUD marker */
-G.quest={target:null,targetName:'',step:'start'};
+G.quest={target:null,targetName:'',step:'start',set:(...a)=>setStep(...a)};
 function setStep(step,objective,sub,target,targetName){
   G.quest.step=step; G.quest.target=target||null; G.quest.targetName=targetName||'';
   G.ui.objective(objective,sub||'');
@@ -50,7 +61,7 @@ function updatePickups(dt){
     if(p.life<4)p.mesh.visible=Math.floor(p.t*8)%2===0;
     if(p.life<=0){G.scene.remove(p.mesh);pickups.splice(i,1);}
   }
-  for(const s of shrooms){
+  for(const s of (G.alchemy&&G.alchemy.ownsMushrooms)?[]:shrooms){
     if(s.regrow>0){ s.regrow-=dt; if(s.regrow<=0&&s.mesh)s.mesh.visible=true; continue; }
     const d=Math.hypot(s.pos.x-P.pos.x,s.pos.z-P.pos.z);
     if(d<1.5&&Math.abs(s.pos.y-P.pos.y)<2&&P.hp<P.maxHp&&P.alive){
@@ -170,7 +181,8 @@ function snapshot(){
     lantern:{found:!!L.found,carried:!!L.carried,shut:!!L.shut,cured:!!L.cured,inCradle:!!L.inCradle,pos:arr(L.pos)},
     staff:!!G.items.staff.owned, cloak:!!(G.items.cloak&&G.items.cloak.owned),
     lampCured:!!(G.lighthouse&&G.lighthouse.cured), bossDead,
-    freed:(G.creatures&&G.creatures.negatives)?G.creatures.negatives.map((n,i)=>n.dead?i:-1).filter(i=>i>=0):[]};
+    freed:(G.creatures&&G.creatures.negatives)?G.creatures.negatives.map((n,i)=>n.dead?i:-1).filter(i=>i>=0):[],
+    loop:G.loop.active, mods:Object.fromEntries(Object.entries(persist).map(([k,h])=>{ try{return [k,h.save()];}catch(e){return [k,null];} }))};
 }
 function writeSave(){
   if(G.state.mode!=='play'&&G.state.mode!=='paused'&&G.state.mode!=='ending')return false;
@@ -190,6 +202,8 @@ function applySave(d){
   if(d.lampCured&&G.lighthouse&&G.lighthouse.restoreCured){ G.lighthouse.restoreCured(); G.emit('lamp:cured',{restored:true}); }
   bossDead=!!d.bossDead; if(bossDead){finaleArmed=false;}
   if(d.freed&&d.freed.length&&G.creatures&&G.creatures.restoreFreed){ G.creatures.restoreFreed(d.freed); G.state.freed=d.freed.length; }
+  if(d.loop)startLoop(true);
+  for(const k in (d.mods||{})){ if(persist[k]&&d.mods[k]!=null){ try{persist[k].load(d.mods[k]);}catch(e){console.error('load '+k,e);} } }
   if(d.cp){ G.state.checkpoint.set(d.cp[0],d.cp[1],d.cp[2]); G.state.checkpointYaw=d.cpYaw; G.state.checkpointName=d.cpName; }
   const p=d.pos||d.cp; if(p&&P.teleport)P.teleport(p[0],p[1],p[2],d.yaw||0);
   if(d.hp)P.hp=Math.max(2,Math.min(d.hp,P.maxHp));
@@ -226,6 +240,7 @@ document.addEventListener('pointerlockchange',()=>{
 });
 
 /* ---------- system ---------- */
+if(G.debug)G.debugStartLoop=()=>{ if(G.lighthouse&&G.lighthouse.restoreCured&&!G.lighthouse.cured){G.lighthouse.restoreCured();G.emit('lamp:cured',{restored:true});} G.items.staff.owned=true; if(G.lighthouse&&G.lighthouse.restoreStaff)G.lighthouse.restoreStaff(); G.emit('staff:pickup',{restored:true}); if(G.items.cloak){G.items.cloak.owned=true; G.player.setCloak&&G.player.setCloak(true);} bossDead=true; finaleArmed=false; startLoop(false); };
 G.system('flow',{order:60,modes:'always',
   init(){
     initShrooms();
@@ -245,7 +260,7 @@ G.system('flow',{order:60,modes:'always',
     ['lantern:pickup','staff:pickup','lamp:cured','boss:dead','player:respawn'].forEach(ev=>G.on(ev,d=>{ if(!(d&&d.restored))autosave(); }));
     $('resume').addEventListener('click',resume);
     $('rise').addEventListener('click',rise);
-    $('keep').addEventListener('click',()=>{ $('ending').hidden=true; $('hud').hidden=false; G.setMode('play'); G.input.lockPointer(); });
+    $('keep').addEventListener('click',()=>{ $('ending').hidden=true; $('hud').hidden=false; G.setMode('play'); G.input.lockPointer(); startLoop(false); autosave(); });
     $('again').addEventListener('click',()=>location.reload());
     G.on('door:blocked',onDoorBlocked);
     G.on('talk',onTalk);

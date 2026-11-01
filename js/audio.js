@@ -522,7 +522,9 @@ const SFX_LIST={
   hollow_whispers_loop:{loop:true},
   hollow_notice:{peak:1.07},
   hollow_windup:{peak:1.79},
-  hollow_claw:{peak:.6}
+  hollow_claw:{peak:.6},
+  'hollow_lunge-1':{peak:.6}, 'hollow_lunge-2':{peak:.53},   // grouped as hollow_lunge
+  'hollow_hurt-1':{peak:.16}, 'hollow_hurt-2':{peak:.23}      // grouped as hollow_hurt
 };
 const sfxBuf={}, sfxGroups={};
 for(const stem in SFX_LIST){ const base=stem.replace(/-\d+$/,''); (sfxGroups[base]=sfxGroups[base]||[]).push(stem); }
@@ -546,16 +548,19 @@ function decodeSfx(stem){
 function decodeAllSfx(){ for(const stem in sfxBuf)decodeSfx(stem); }
 function pickSfx(name){ const g=(sfxGroups[name]||[]).filter(st=>sfxBuf[st]&&sfxBuf[st].buf); return g.length?g[(Math.random()*g.length)|0]:null; }
 const hasSfx=name=>!!pickSfx(name);
-/** play a recorded sound. o: {pos, ref, gain, offset (s into the file), rate, vary, dest} -> {src,gain} or null */
+/** play a recorded sound. o: {pos, ref, gain, offset (s into the file), peakAt, rate, vary, dest} -> {src,gain,stem} or null
+    peakAt (s): start far enough in that this variant's own `peak` lands peakAt seconds from now (overrides offset) */
 function playSfx(name,o={}){
   const stem=pickSfx(name); if(!ctx||!stem)return null; const e=sfxBuf[stem];
   const t=ctx.currentTime, src=ctx.createBufferSource(), g=ctx.createGain();
   src.buffer=e.buf; src.playbackRate.value=(o.rate||1)*(1+(Math.random()-.5)*(o.vary==null?.08:o.vary));
-  const off=U.clamp((o.offset||0)+e.start,0,Math.max(0,e.buf.duration-.05)), peak=o.gain==null?1:o.gain;
-  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+(o.offset>0?.04:.006));
+  const offset=o.peakAt!=null?Math.max(0,((SFX_LIST[stem]||{}).peak||0)-o.peakAt):(o.offset||0);
+  const off=U.clamp(offset+e.start,0,Math.max(0,e.buf.duration-.05)), peak=o.gain==null?1:o.gain;
+  g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+(offset>0?.04:.006));
   src.connect(g); g.connect(o.dest||at(o.pos,o.ref||4)); src.start(t,off);
-  return {src,gain:g};
+  return {src,gain:g,stem,offset};
 }
+function fadeSfx(h,at,tau){ if(!h||!ctx)return; const t=Math.max(ctx.currentTime,at); try{ h.gain.gain.cancelScheduledValues(t); h.gain.gain.setTargetAtTime(0,t,tau); h.src.stop(t+tau*6); }catch(_){} }
 fetchSfx();
 
 /* whisper loops that follow each nearby hollow (the three closest), fading with distance and state */
@@ -623,9 +628,29 @@ function updatePlayerSounds(dt){
   tgt(amb.chargeG.gain,ch?.07:0,.08);
 }
 const mStates=new WeakMap();
+/* hollow hurt: recorded shriek+splash, random variant, rate-limited per hollow so combos don't pile up
+   (>=0.18 s apart, at most 2 overlapping — a third steals the oldest). Swarm ticks: much quieter, <=1 per second. */
+const HURT_GAP=.18, HURT_GAP_SWARM=1, hurtSt=new WeakMap(), lungeSnd=new WeakMap();
+function hollowHurt(m,swarm){
+  if(!ctx||!m||m.kind!=='hollow'||m.boss)return;
+  const t=ctx.currentTime; let H=hurtSt.get(m); if(!H){H={last:-9,lastSwarm:-9,live:[]};hurtSt.set(m,H);}
+  if(t-H.last<HURT_GAP||swarm&&t-H.lastSwarm<HURT_GAP_SWARM)return;
+  if(Math.hypot(m.pos.x-G.player.pos.x,m.pos.z-G.player.pos.z)>45)return;
+  H.last=t; if(swarm)H.lastSwarm=t;
+  fadeSfx(lungeSnd.get(m),t,.05); lungeSnd.delete(m);           // a hit cuts the lunge roar short
+  H.live=H.live.filter(h=>h.end>t); if(H.live.length>=2)fadeSfx(H.live.shift().h,t,.04);
+  const hp=new THREE.Vector3(m.pos.x,m.pos.y+1.6,m.pos.z);
+  const h=playSfx('hollow_hurt',{pos:hp,ref:swarm?3:5,gain:swarm?.3:1,vary:.12,rate:swarm?.92:1});
+  if(h){ H.live.push({h,end:t+h.src.buffer.duration}); return; }
+  if(!swarm)S.shriek(t,{dest:at(hp,4),f:1000,g:.12});              // synth fallback
+}
+let lastHurtSeen=new WeakMap();
+const LUNGE_HIT=.2; // s after entering 'attack' that a lunge strikes (monsters.js: v=lungeDist/.26)
 function updateMonsterSounds(){
   if(!G.monsters||!G.monsters.list)return; const t=ctx.currentTime, P=G.player;
   for(const m of G.monsters.list){
+    // player hits arrive via the 'strike' event (which records lastHit); any other hit is the moth swarm (creatures.js calls hb.hit directly)
+    if(m.kind==='hollow'&&m.lastHit!=null&&lastHurtSeen.get(m)!==m.lastHit){ lastHurtSeen.set(m,m.lastHit); if(!m.dying)hollowHurt(m,true); }
     const prev=mStates.get(m); const s=m.state; if(prev===s)continue; mStates.set(m,s); if(prev===undefined)continue;
     const d=Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z); if(d>45)continue;
     const out=at(new THREE.Vector3(m.pos.x,m.pos.y+1.2,m.pos.z),m.boss?10:4);
@@ -650,9 +675,14 @@ function updateMonsterSounds(){
       }
       else if(s==='attack'){
         if(m.atk==='claw'){ if(!playSfx('hollow_claw',{pos:hp,ref:5,gain:1,offset:.42}))S.whoosh(t,{dest:out,f0:500,f1:2200,dur:.25,g:.3}); }
-        else { S.whoosh(t,{dest:out,f0:300,f1:1600,dur:.4,g:.3}); playSfx('hollow_claw',{pos:hp,ref:5,gain:.8,offset:.38,rate:.82}); }
+        else {
+          // the dash covers lungeDist in .26 s; against a target 3.2-6.5 m off it typically connects ~.2 s in — land the roar's peak there.
+          // the recordings sustain for 2-3 s, so let the tail go after ~1 s (the hollow is already recovering)
+          const h=playSfx('hollow_lunge',{pos:hp,ref:6,gain:1,vary:.05,peakAt:LUNGE_HIT});
+          if(h){ lungeSnd.set(m,h); fadeSfx(h,t+1.0,.35); } else S.whoosh(t,{dest:out,f0:300,f1:1600,dur:.4,g:.3});
+        }
       }
-      else if(s==='hurt')S.shriek(t,{dest:out,f:1000,g:.12});
+      else if(s==='hurt')hollowHurt(m,false);
     }else if(m.kind==='hound'){
       if((s==='chase'||s==='stalk')&&(prev==='idle'||prev==='return'))S.howl(t,{dest:out,g:.11});
       else if(s==='windup')S.growl(t,{dest:out,f:78,dur:.5,g:.22});
@@ -672,6 +702,7 @@ function wire(){
     if(e&&e.spin){ S.whoosh(t,{f0:300,f1:2600,dur:.6,g:.38}); S.chime(t+.1,[74,81,86],{g:.07,step:.06,decay:.8}); return; }
     const c=(e&&e.combo)||1; S.whoosh(t,{f0:c===3?280:420,f1:c===3?1800:2600,dur:c===3?.36:.24,g:c===3?.36:.28}); });
   G.on('strike',e=>{ if(!ctx||!e||e.team!=='player')return; const t=ctx.currentTime;
+    for(const h of e.hits||[]){ const m=h.monster; if(m&&m.kind==='hollow'&&!m.dying){ lastHurtSeen.set(m,m.lastHit); hollowHurt(m,e.kind==='swarm'); } }
     const hb=e.hits&&e.hits[0]; const out=hb?at(new THREE.Vector3(hb.pos.x,hb.pos.y+1,hb.pos.z),5):sfxBus;
     if(e.kind==='swarm'){ S.hiss(t,{dest:out,dur:.25,f0:2000,f1:4500,g:.06}); return; }
     S.thud(t,{dest:out,g:.5,f0:150,f1:55,dur:.22,nf:2600}); S.hiss(t,{dest:out,dur:.12,f0:1800,f1:900,g:.12,Q:1});
