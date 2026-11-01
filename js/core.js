@@ -250,16 +250,174 @@ canvas.addEventListener('touchmove',e=>{for(const t of e.changedTouches){
 const endTouch=e=>{for(const t of e.changedTouches){if(t.identifier===joy.id){joy.on=false;joy.id=null;joy.x=joy.y=0;}if(t.identifier===look.id)look.id=null;}};
 canvas.addEventListener('touchend',endTouch); canvas.addEventListener('touchcancel',endTouch);
 
+/* ---------- gamepad (standard mapping — Xbox Wireless Controller over Bluetooth etc.) ----------
+   Polled once at the start of every frame (rAF loop and G.step). Buttons feed the same
+   pressed/held/released sets as keys; sticks feed move() and look(). While a menu/card is up,
+   the pad drives the card's buttons instead, and any button used there is ignored by gameplay
+   until it is released (so A on "Begin" doesn't also jump). */
+const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'pause',9:'pause',10:'sprint',11:'lock'};
+/* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
+   so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
+const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,invertY:false,trigger:.5,navDelay:.38,navRepeat:.14};
+const pad={connected:false,id:'',blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0};
+try{ const fp=document.featurePolicy||document.permissionsPolicy; if(fp&&fp.allowsFeature)pad.policy=!!fp.allowsFeature('gamepad'); }catch(_){}
+let device=isMobile?'touch':'keyboard';
+function setDevice(d){
+  if(device===d)return; device=d;
+  if(d!=='gamepad')document.querySelectorAll('.pad-focus').forEach(e=>e.classList.remove('pad-focus'));
+  G.emit('input:device',{device:d});
+}
+addEventListener('keydown',()=>setDevice('keyboard'),true);
+addEventListener('mousedown',e=>{ if(!e.sourceCapabilities||!e.sourceCapabilities.firesTouchEvents)setDevice(isMobile?'touch':'keyboard'); },true);
+addEventListener('mousemove',e=>{ if(Math.abs(e.movementX)+Math.abs(e.movementY)>3&&!isMobile)setDevice('keyboard'); },true);
+addEventListener('touchstart',()=>setDevice('touch'),{capture:true,passive:true});
+const padName=id=>/xbox|045e/i.test(id||'')?'Xbox Wireless Controller':String(id||'Controller').replace(/\s*\((?:STANDARD GAMEPAD\s*)?Vendor:.*$/i,'').trim()||'Controller';
+function padConnect(g){
+  if(pad.connected&&pad.id===g.id)return;
+  pad.connected=true; pad.id=g.id||''; setDevice('gamepad');
+  try{ G.ui.toast('Controller connected',padName(g.id)); }catch(_){}
+  G.emit('input:pad',{connected:true,id:pad.id,name:padName(pad.id)});
+}
+function padDisconnect(){
+  if(!pad.connected)return;
+  pad.connected=false; pad.last=null; padActs(new Set()); pad.prev=[]; pad.sup=[]; pad.mx=pad.my=pad.mmag=0;
+  if(device==='gamepad')setDevice(isMobile?'touch':'keyboard');
+  G.emit('input:pad',{connected:false,id:pad.id});
+}
+function padBlock(e){
+  if(pad.blocked)return; pad.blocked=true; pad.blockError=(e&&(e.name||e.message))||'blocked';
+  console.warn('Gamepad API blocked in this frame ('+pad.blockError+'). Open the game on its own page to use a controller.');
+  G.emit('input:padblocked',{error:pad.blockError});
+}
+try{
+  addEventListener('gamepadconnected',e=>{ try{ if(e.gamepad)padConnect(e.gamepad); }catch(_){} });
+  addEventListener('gamepaddisconnected',e=>{ try{ if(!e.gamepad||!pad.id||e.gamepad.id===pad.id)padDisconnect(); }catch(_){} });
+}catch(_){}
+function readPad(){
+  if(pad.blocked||!navigator.getGamepads)return null;
+  let list; try{ list=navigator.getGamepads(); }catch(e){ padBlock(e); return null; }
+  let pick=null;
+  for(const g of list||[]){ if(!g||g.connected===false)continue; if(g.mapping==='standard'){pick=g;break;} if(!pick)pick=g; }
+  return pick;
+}
+function padActs(next){
+  for(const a of next) if(!pad.acts.has(a))pressed.add(a);
+  for(const a of pad.acts) if(!next.has(a))released.add(a);
+  pad.acts=next;
+}
+/* ---- menus with the pad ---- */
+const shown=el=>!el.hidden&&!el.disabled&&el.getClientRects().length>0;
+function activeCard(){ const cs=[...document.querySelectorAll('.card')].filter(shown); return cs[cs.length-1]||null; }
+function focusables(card){ return [...card.querySelectorAll('button, input[type=range], input[type=checkbox]')].filter(shown); }
+function primaryOf(list){ return list.find(e=>e.classList.contains('btn')&&!e.classList.contains('ghost'))||list.find(e=>e.tagName==='BUTTON')||list[0]||null; }
+function padFocus(el){
+  if(!el)return;
+  document.querySelectorAll('.pad-focus').forEach(e=>{ if(e!==el)e.classList.remove('pad-focus'); });
+  try{ el.focus({focusVisible:true}); }catch(_){ try{el.focus();}catch(__){} }
+  el.classList.add('pad-focus');
+}
+function navigate(dir,list){
+  const cur=document.activeElement, i=list.indexOf(cur);
+  if(i<0){ padFocus(primaryOf(list)); return; }
+  if(cur.type==='range'&&(dir==='left'||dir==='right')){
+    const lo=+cur.min||0, hi=cur.max===''?100:+cur.max, st=Math.max(+cur.step||1,(hi-lo)/20);
+    cur.value=String(U.clamp(+cur.value+(dir==='left'?-st:st),lo,hi));
+    cur.dispatchEvent(new Event('input',{bubbles:true})); cur.dispatchEvent(new Event('change',{bubbles:true})); return;
+  }
+  // spatial: the nearest control in that direction (rows for up/down, same row for left/right)
+  const r0=cur.getBoundingClientRect(), cx=r0.left+r0.width/2, cy=r0.top+r0.height/2;
+  const cand=[];
+  for(const el of list){ if(el===cur)continue;
+    const r=el.getBoundingClientRect(), dy=r.top+r.height/2-cy;
+    const dx=r.right<r0.left?r.right-r0.left:r.left>r0.right?r.left-r0.right:0; // horizontal gap (0 = overlapping columns)
+    const sameRow=Math.abs(dy)<Math.max(r0.height,r.height)*.6;
+    if(dir==='up'&&dy<-4&&!sameRow||dir==='down'&&dy>4&&!sameRow)cand.push({el,row:Math.abs(dy),col:Math.abs(dx)});
+    else if((dir==='left'&&dx<0||dir==='right'&&dx>0)&&sameRow)cand.push({el,row:0,col:Math.abs(dx)}); }
+  let best=null;
+  if(cand.length){ const near=Math.min(...cand.map(c=>c.row)); // nearest row first, then the closest control in it
+    best=cand.filter(c=>c.row<=near+12).sort((a,b)=>a.col-b.col)[0].el; }
+  if(!best&&(dir==='left'||dir==='right'))best=list[i+(dir==='left'?-1:1)]||null; // wrap across rows
+  if(best)padFocus(best);
+}
+function padMenu(btn,lx,ly,dt){
+  const card=activeCard(); if(!card){pad.navDir='';return;}
+  const list=focusables(card); if(!list.length)return;
+  const edge=i=>btn[i]&&!pad.prev[i];
+  const cur=list.includes(document.activeElement)?document.activeElement:null;
+  if(cur&&!cur.classList.contains('pad-focus'))padFocus(cur);
+  const paused=G.state.mode==='paused'&&card.id==='pause';
+  if(edge(0)){ const el=cur||primaryOf(list); if(el&&el.type!=='range'){ padFocus(el); el.click(); } return; }
+  if(paused&&(edge(1)||edge(9)||edge(8))){ const r=document.getElementById('resume'); if(r&&shown(r))r.click(); return; }
+  if(card.id==='title'&&edge(9)){ const el=primaryOf(list); if(el)el.click(); return; }
+  const dir=(btn[12]||ly<-.5)?'up':(btn[13]||ly>.5)?'down':(btn[14]||lx<-.5)?'left':(btn[15]||lx>.5)?'right':'';
+  if(dir!==pad.navDir){ pad.navDir=dir; pad.navT=PAD.navDelay; if(dir)navigate(dir,list); }
+  else if(dir){ pad.navT-=dt; if(pad.navT<=0){ pad.navT=PAD.navRepeat; navigate(dir,list); } }
+}
+function menuActive(){ return G.state.mode!=='play'||!!activeCard(); }
+function pollPad(dt){
+  try{
+    const g=readPad();
+    pad.mx=pad.my=pad.mmag=0;
+    if(!g){ if(pad.connected&&navigator.getGamepads&&!pad.blocked)padDisconnect(); return; }
+    if(!pad.connected||pad.id!==g.id)padConnect(g);
+    pad.last=g;
+    const B=g.buttons||[], A=g.axes||[];
+    const btn=[];
+    for(let i=0;i<17;i++){ const b=B[i]; let v=0,p=false;
+      if(b!=null){ if(typeof b==='object'){v=+b.value||0;p=!!b.pressed;} else {v=+b||0;p=v>.5;} }
+      btn[i]=(i===6||i===7)?Math.max(v,p?1:0)>PAD.trigger:(p||v>.5); }
+    const ax=i=>U.clamp(+A[i]||0,-1,1);
+    const lx=ax(0), ly=ax(1), rx0=ax(2), ry0=ax(3);
+    // left stick: radial deadzone, rescaled to 0..1 (the last 5% counts as full, for worn sticks)
+    let mx=0,my=0,mm=0; const lm=Math.hypot(lx,ly);
+    if(lm>PAD.moveDead){ const k=U.clamp((lm-PAD.moveDead)/(.95-PAD.moveDead),0,1); mx=lx/lm*k; my=-ly/lm*k; mm=k; }
+    else if(btn[12]||btn[13]||btn[14]||btn[15]){ mx=(btn[15]?1:0)-(btn[14]?1:0); my=(btn[12]?1:0)-(btn[13]?1:0); const n=Math.hypot(mx,my); if(n>0){mx/=n;my/=n;mm=1;} }
+    // right stick: radial deadzone + response curve
+    let rx=0,ry=0; const rm=Math.hypot(rx0,ry0);
+    if(rm>PAD.lookDead){ const k=Math.pow(U.clamp((rm-PAD.lookDead)/(.95-PAD.lookDead),0,1),PAD.lookCurve); rx=rx0/rm*k; ry=ry0/rm*k; }
+    if(btn.some(Boolean)||lm>PAD.moveDead||rm>PAD.lookDead)setDevice('gamepad');
+    if(menuActive()){
+      padMenu(btn,lx,ly,dt);
+      for(let i=0;i<btn.length;i++) if(btn[i])pad.sup[i]=true;
+      padActs(new Set());
+    }else{
+      const acts=new Set();
+      for(let i=0;i<btn.length;i++){ if(!btn[i]){pad.sup[i]=false;continue;} if(!pad.sup[i]&&PAD_BTN[i])acts.add(PAD_BTN[i]); }
+      padActs(acts);
+      pad.mx=mx; pad.my=my; pad.mmag=mm;
+      lookX+=rx*PAD.lookX*dt; lookY+=(PAD.invertY?-ry:ry)*PAD.lookY*dt;
+      pad.navDir='';
+    }
+    pad.prev=btn;
+  }catch(e){ if(!pad._err){pad._err=1;console.error('gamepad',e);} }
+}
+
 G.input={
   BIND,
   /** held this frame */
-  down:a=>vheld.has(a)||BIND[a].some(c=>held.has(c)),
+  down:a=>vheld.has(a)||pad.acts.has(a)||BIND[a].some(c=>held.has(c)),
   /** went down since last frame */
   pressed:a=>pressed.has(a)||vpressed.has(a),
   released:a=>released.has(a),
-  /** {x: right+, y: forward+, mag} from keys or the touch stick */
+  /** {x: right+, y: forward+, mag} from keys, the touch stick or a gamepad (whichever is pushed furthest) */
   move(){ let x=0,y=0; if(this.down('right'))x+=1; if(this.down('left'))x-=1; if(this.down('forward'))y+=1; if(this.down('back'))y-=1;
-    if(joy.on){x+=joy.x;y-=joy.y;} const m=Math.hypot(x,y); if(m>1){x/=m;y/=m;} return {x,y,mag:Math.min(1,m)}; },
+    if(joy.on){x+=joy.x;y-=joy.y;} const m=Math.hypot(x,y); if(m>1){x/=m;y/=m;}
+    if(pad.mmag>Math.min(1,m))return {x:pad.mx,y:pad.my,mag:pad.mmag};
+    return {x,y,mag:Math.min(1,m)}; },
+  /** last-used device: 'keyboard' | 'touch' | 'gamepad' */
+  get device(){return device;},
+  /** {connected, id, name, blocked, error, policy} */
+  get gamepad(){return {connected:pad.connected,id:pad.id,name:pad.connected?padName(pad.id):'',blocked:pad.blocked,error:pad.blockError,policy:pad.policy};},
+  padConfig:PAD,
+  /** controller rumble, strength 0..1 for ms milliseconds; no-op without a rumble-capable pad */
+  rumble(strength=.5,ms=200){
+    const g=pad.last, a=g&&g.vibrationActuator; if(!pad.connected||!a||!a.playEffect)return false;
+    const s=U.clamp(+strength||0,0,1);
+    try{ const p=a.playEffect('dual-rumble',{startDelay:0,duration:Math.max(10,ms|0),weakMagnitude:s,strongMagnitude:U.clamp(s*.85,0,1)}); if(p&&p.catch)p.catch(()=>{}); }catch(_){ return false; }
+    return true;
+  },
+  /** called by the frame loop / G.step before systems update */
+  poll(dt){ pollPad(dt||0); },
   /** mouse / touch look in pixels since last frame */
   look(){ return {x:lookX,y:lookY}; },
   wheel:0,
@@ -450,6 +608,25 @@ G.system('occlusion',{order:85,modes:'always',update(){
 
 G.system('negTime',{order:0,modes:'always',update(){G.negTime.value=G.time;}});
 
+/* controller rumble from game events (only while the pad is the active device) */
+{
+  const padOn=()=>device==='gamepad'&&pad.connected;
+  let lastAtk={combo:1,charged:false,t:-9};
+  G.on('player:attack',e=>{ lastAtk={combo:(e&&e.combo)||0,charged:!!(e&&e.charged),t:G.time}; });
+  G.on('player:hurt',()=>{ if(padOn())G.input.rumble(.6,220); });
+  G.on('strike',e=>{ if(!e||e.team!=='player'||!padOn())return;
+    const big=e.kind&&e.kind!=='melee'||lastAtk.charged&&G.time-lastAtk.t<1.5||lastAtk.combo>=3&&G.time-lastAtk.t<1;
+    G.input.rumble(big?.55:.25,big?170:90); });
+  G.on('boss:dead',()=>{ if(padOn())G.input.rumble(1,900); });
+  let airTop=null;
+  G.system('padFeel',{order:99,modes:['play'],update(){
+    const P=G.player; if(!P||!P.pos)return;
+    if(P.grounded===false){ airTop=P.gliding||airTop==null?P.pos.y:Math.max(airTop,P.pos.y); return; }
+    if(airTop!=null){ const drop=airTop-P.pos.y; airTop=null;
+      if(drop>3.2&&drop<60&&padOn())G.input.rumble(U.clamp(.3+drop/20,0,.9),drop>7?260:150); }
+  }});
+}
+
 /* sun follows the focus so shadows stay crisp around the player */
 G.system('sunFollow',{order:95,modes:'always',update(){
   const d=G.lights.sunDir;
@@ -460,7 +637,7 @@ G.system('sunFollow',{order:95,modes:'always',update(){
 /** shared model builders (player.js defines G.models.lantern / G.models.staff) */
 G.models={};
 /** deterministic stepping for headless tests: runs every system's update n times without rendering */
-G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; for(let k=0;k<n;k++){ G.time+=dt; G.dt=dt; G.hints.length=0;
+G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; for(let k=0;k<n;k++){ G.input.poll(dt); G.time+=dt; G.dt=dt; G.hints.length=0;
   for(const s of systems){ if(!s.update)continue; if(s.modes!=='always'&&!s.modes.includes(mode))continue; try{s.update(dt);}catch(e){console.error('step '+s.name,e);} }
   G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt); G.input.endFrame(); } };
 G.systems=systems;
@@ -473,6 +650,7 @@ G.start=()=>{
   function frame(now){
     if(G.quality.cap&&now-last<1000/G.quality.cap-2){requestAnimationFrame(frame);return;}
     const dt=Math.min(.05,(now-last)/1000); last=now; G.dt=dt;
+    G.input.poll(dt);
     const mode=G.state.mode;
     if(mode!=='paused')G.time+=dt;
     G.hints.length=0;

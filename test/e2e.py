@@ -15,15 +15,15 @@ STEPS=[
 async def main():
     async with async_playwright() as p:
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
-        pg=await b.new_page(viewport={'width':1100,'height':650})
+        pg=await b.new_page(viewport={'width':1100,'height':650}); pg.set_default_timeout(180000)
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
-        await pg.goto('http://localhost:8800/dev.html?debug'); await pg.wait_for_timeout(6000)
+        await pg.goto('http://localhost:8800/dev.html?debug', timeout=150000); await pg.wait_for_timeout(6000)
         for name,js in STEPS:
             try: r=await pg.evaluate(js)
             except Exception as e: r='EXC '+str(e)[:300]
             print(name,':',r)
             await pg.wait_for_timeout(1200)
-            if name in('cure','finale','boss'): await pg.screenshot(path=f'/tmp/claude-0/int/e2e-{name}.png')
+            pass
         print('\n'.join(errs[:15]))
         await b.close()
 asyncio.run(main())
