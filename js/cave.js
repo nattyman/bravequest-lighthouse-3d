@@ -987,6 +987,8 @@ G.system('cave',{order:13,modes:'always',
   init(){
     const tb=performance.now();
     G.scene.add(caveRoot,mouthRoot);
+    // the Flooding Stair is a tide puzzle: no double jump from the crates to the ledge (combat.js hook)
+    if(G.moves&&G.moves.noDoubleJump)G.moves.noDoubleJump.push(p=>G.cave.inside&&room(p)==='stair');
     buildDressing(); buildIslandMouth();
     for(let i=0;i<3;i++){ const L=new THREE.PointLight(0xb48cff,0,19,1.6); L.position.set(0,-50,0); caveRoot.add(L); pool.push(L); }
     VIS.gates.channel=S.gates.channel;
