@@ -519,6 +519,7 @@ function updateThreats(dt){
   if(!ML||!sw.length)return;
   for(const mo of ML){
     if(!mo.alive||mo.dying||mo.state==='intro'||mo.state==='dying')continue;
+    if(mo.eatsMoths)continue; // brinelings eat moths themselves (monsters.js), don't double-count
     const cx=mo.pos.x, cy=mo.pos.y+(mo.kind==='hound'?.6:1.2), cz=mo.pos.z;
     let best=null, bd=KILL_R*KILL_R;
     for(const m of sw){ if(m.tgt==='gone')continue; const dx=m.p.x-cx,dy=m.p.y-cy,dz=m.p.z-cz,d=dx*dx+dy*dy*.6+dz*dz; if(d<bd){bd=d;best=m;} }

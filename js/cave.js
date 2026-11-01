@@ -88,8 +88,8 @@ const arenaF=(x,z)=>{const d=Math.hypot(x-AC.x,z-AC.z); return d<POOL_R?-4.6+nz(
 circ('arena','arena',AC.x,AC.z,AR,arenaF,(x,z)=>15-4*smooth(8,AR,Math.hypot(x-AC.x,z-AC.z)));
 circ('islet','arena',AC.x,AC.z,2.7,(x,z)=>1.35+nz(x,z,.06),15,{rough:.2});
 seg('causeway','arena',AC.x,AC.z+2.2,AC.x,AC.z+POOL_R+1,1.05,(x,z)=>1.0+nz(x,z,.08),15,{rough:.2});
-const WOUND=V(60,-6.4,8.5);
-circ('grotto','arena',60,9.5,9.5,(x,z)=>-6.6+nz(x,z,.7),11,{rough:.9});
+const WOUND=V(60,-3.9,8.5);
+circ('grotto','arena',60,9.5,9.5,(x,z)=>-4.1-1.6*smooth(4,9,Math.hypot(x-60,z-9.5))+nz(x,z,.5),11,{rough:.9});
 const TUN=[[43.5,-14.3],[31,-8.2],[20,-5],[7,-10.4]];
 for(let i=0;i<TUN.length-1;i++) seg('shortcut'+i,'arena',TUN[i][0],TUN[i][1],TUN[i+1][0],TUN[i+1][1],1.75,(x,z)=>lerp(.9,1.0,smooth(8,40,x))+nz(x,z,.05),4.4,{rough:.35});
 
@@ -213,7 +213,7 @@ const outsidePos=V(MX,apronF(MX,54.6),54.6);
 G.walkOverrides.push((x,z)=>{
   if(x<95||x>188||z<49||z>61||!loopOn())return null;
   if(inApron(x,z))return true;
-  if(cwDist(x,z)<CW_HW)return cwDry();
+  if(cwDist(x,z)<CW_HW&&cwDry())return true;   // covered: the island's own rule (deep water) applies
   return null;
 });
 G.floorProviders.push((x,z,y)=>{
@@ -249,7 +249,7 @@ G.cameraConstrainers.push((cam,target)=>{
   const L=Math.hypot(cx-tx,cy-ty,cz-tz), n=Math.max(1,Math.ceil(L/.12));
   let gx=tx,gy=ty,gz=tz;
   if(bad(tx,ty,tz)){ // target itself is tight: just keep the camera under the ceiling
-    cam.y=Math.min(cam.y,O.y+Cat(tx,tz)-.2); return; }
+    cam.set(target.x,Math.min(target.y,O.y+Cat(tx,tz)-.2),target.z); return; }
   for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
   cam.set(gx+O.x,gy+O.y,gz+O.z);
 });
@@ -301,7 +301,7 @@ function rockCanvas(g,s){
   for(let i=0;i<14;i++){ const y=r()*s, a=.05+r()*.07; g.fillStyle=`rgba(40,36,32,${a})`; g.fillRect(0,y,s,2+r()*5); g.fillStyle=`rgba(255,250,240,${a*.6})`; g.fillRect(0,y+5,s,1.5); }
   // cracks
   g.lineCap='round';
-  for(let i=0;i<38;i++){ let x=r()*s,y=r()*s,a=r()*TAU; const n=6+r()*14; g.strokeStyle=`rgba(22,18,20,${.25+r()*.3})`; g.lineWidth=.8+r()*1.8;
+  for(let i=0;i<22;i++){ let x=r()*s,y=r()*s,a=r()*TAU; const n=5+r()*10; g.strokeStyle=`rgba(22,18,20,${.12+r()*.18})`; g.lineWidth=.7+r()*1.3;
     wrapDraw((ox,oy)=>{ let px=x,py=y,aa=a; g.beginPath(); g.moveTo(px+ox,py+oy); for(let k=0;k<n;k++){aa+=(r()-.5)*.9;px+=Math.cos(aa)*7;py+=Math.sin(aa)*7;g.lineTo(px+ox,py+oy);} g.stroke(); }); }
   // speckles + lichen
   for(let i=0;i<2600;i++){ const x=r()*s,y=r()*s; g.fillStyle=r()<.5?`rgba(255,250,235,${.05+r()*.1})`:`rgba(20,16,14,${.06+r()*.12})`; g.fillRect(x,y,1+r()*2,1+r()*2); }
@@ -350,13 +350,14 @@ class Builder{ constructor(){this.list=[];} add(geo,color,x,y,z,ry,rx,rz){ const
 function boulderGeo(seed,detail){ const g=new THREE.IcosahedronGeometry(1,detail==null?2:detail); const p=g.attributes.position; const r=U.rng(seed);
   const o1=r()*10,o2=r()*10;
   for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
-    const k=1+.22*(vnoise(x*1.6+o1,z*1.6+y*1.3+o2)-.5)+.12*(vnoise(x*3.4+o2,y*3.4+o1)-.5); p.setXYZ(i,x*k,y*k*.82,z*k); }
-  g.computeVertexNormals(); return addWhite(g); }
+    let k=1+.38*(vnoise(x*1.3+o1,z*1.3+y*1.1+o2)-.5)+.16*(vnoise(x*3.1+o2,y*3.1+o1)-.5);
+    const yy=y*.78; const cut=y>.55?.55+(y-.55)*.35:y; p.setXYZ(i,x*k,cut*k*.8+yy*.0,z*k); }
+  const g2=g.index?g.toNonIndexed():g; g2.computeVertexNormals(); return addWhite(g2); }
 function addWhite(g){ g.setAttribute('color',new THREE.Float32BufferAttribute(new Float32Array(g.attributes.position.count*3).fill(1),3)); return g; }
 function tube(points,r,seg,rseg){ return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),seg||Math.max(4,points.length*4),r,rseg||5,false); }
 
 /* ---------- the rock shell: chunked floor + ceiling heightfields ---------- */
-const COL={rock:C('#6f6a66'),rock2:C('#5d6170'),sand:C('#8c7f69'),sandWet:C('#5f574b'),ceil:C('#55525a'),floorRock:C('#7a736a')};
+const COL={rock:C('#67646a'),rock2:C('#4f5463'),sand:C('#857a66'),sandWet:C('#565048'),ceil:C('#4c4a52'),floorRock:C('#6f6a63')};
 function buildShell(mat){
   const CH=40; // cells per chunk (16 m)
   const jx=new Float32Array(NX*NZ), jz=new Float32Array(NX*NZ);
@@ -438,7 +439,8 @@ function buildWater(){
         col=mix(col,vec3(.42,.44,.5)*(.06+att*.55+uAmb*.35),clamp(fo,0.,1.)*.85);
         float wd=length(lp-uWound.xz); float wk=uWoundK*(1.-smoothstep(1.5,11.,wd));
         col+=vec3(.32,.1,.75)*wk*(.55+.45*sin(uTime*1.25-wd*.7));
-        float a=mix(.5,.94,smoothstep(0.,1.5,d)); a=max(a,clamp(fo,0.,1.)*.9); a=mix(a,.42,wk);
+        float a=mix(.5,.94,smoothstep(0.,1.5,d)); a=max(a,clamp(fo,0.,1.)*.9); a=mix(a,.16,wk);
+        col+=vec3(.5,.25,1.)*wk*smoothstep(.55,.9,vn(lp*1.7+vec2(t*.35,-t*.2))*vn(lp*3.1-vec2(t*.2,t*.4))*1.8)*.35;
         gl_FragColor=vec4(col,a);
         #include <fog_fragment>
       }`});
@@ -490,7 +492,8 @@ function buildDressing(){
   const shell=rockMaterial({scale:.22});
   buildShell(shell);
   // stalactites (ceiling) + stalagmites at the wall foot
-  const coneG=new THREE.ConeGeometry(.24,1,6,3); coneG.translate(0,-.5,0); { const p=coneG.attributes.position; for(let i=0;i<p.count;i++){ const y=p.getY(i); p.setX(i,p.getX(i)*(1+.25*Math.sin(y*9))); } coneG.computeVertexNormals(); addWhite(coneG); }
+  const coneG=new THREE.LatheGeometry([[.3,0],[.27,-.12],[.2,-.3],[.17,-.45],[.12,-.62],[.08,-.8],[.035,-.95],[.01,-1]].map(p=>new THREE.Vector2(p[0],p[1])),7);
+  { const p=coneG.attributes.position; for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i); const k=1+.35*(vnoise(x*9+y*4,z*9)-.5)+.18*Math.sin(y*14); p.setXYZ(i,x*k,y,z*k*.85); } coneG.computeVertexNormals(); addWhite(coneG); }
   const stalMat=rockMaterial({scale:.6,tide:false});
   const st=[]; const r=U.rng(321);
   for(let t=0;t<9000&&st.length<340;t++){ const x=GX0+r()*(BOX.x1-BOX.x0), z=GZ0+r()*(BOX.z1-BOX.z0); const s=Sat(x,z); if(s>-.3)continue;
@@ -499,25 +502,25 @@ function buildDressing(){
     const L=Math.min(maxL,.4+r()*r()*3.2)*(s>-1.5?1.25:1); st.push([x,c+.15,z,L,.6+r()*.9,r()*TAU]); }
   const stal=new THREE.InstancedMesh(coneG,stalMat,st.length); const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), sc=new THREE.Vector3(), ps=new THREE.Vector3(), eu=new THREE.Euler();
   st.forEach((a,i)=>{ q.setFromEuler(eu.set((r()-.5)*.12,a[5],(r()-.5)*.12)); m4.compose(ps.set(a[0],a[1],a[2]),q,sc.set(a[4],a[3],a[4])); stal.setMatrixAt(i,m4); });
-  stal.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(st.length*3).fill(.62),3);
+  { const a=new Float32Array(st.length*3); for(let i=0;i<st.length;i++){ const v=.3+r()*.16; a[i*3]=v; a[i*3+1]=v*.97; a[i*3+2]=v*1.05; } stal.instanceColor=new THREE.InstancedBufferAttribute(a,3); }
   caveRoot.add(stal); stal.name='stalactites';
   const sgG=addWhite(new THREE.ConeGeometry(.3,1,6,2)); sgG.translate(0,.5,0);
   const sg=scatterOnWalls(160,77,(p)=>p.s<.35&&p.y>-1.6);
   const smi=new THREE.InstancedMesh(sgG,stalMat,sg.length);
   sg.forEach((p,i)=>{ const h=.35+r()*1.3; m4.compose(ps.set(p.x-p.nx*.1,p.y-.1,p.z-p.nz*.1),q.setFromEuler(eu.set(-p.nz*.15,r()*TAU,p.nx*.15)),sc.set(.7+r()*.8,h,.7+r()*.8)); smi.setMatrixAt(i,m4); });
-  smi.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(sg.length*3).fill(.66),3);
+  { const a=new Float32Array(sg.length*3); for(let i=0;i<sg.length;i++){ const v=.3+r()*.14; a[i*3]=v; a[i*3+1]=v; a[i*3+2]=v*1.04; } smi.instanceColor=new THREE.InstancedBufferAttribute(a,3); }
   caveRoot.add(smi);
   // barnacles + mussels along the tide band
   barnMat=G.toon('#d8d2c4');
   const bG=new THREE.ConeGeometry(.07,.08,6,1,true); const bb=scatterOnWalls(900,99,(p)=>p.y>-1.8&&p.y<HIGH_LINE+.2);
-  const bmi=new THREE.InstancedMesh(new THREE.SphereGeometry(.07,6,4,0,TAU,0,PI/2),barnMat,bb.length);
+  const bmi=new THREE.InstancedMesh(new THREE.SphereGeometry(.055,6,4,0,TAU,0,PI/2),barnMat,bb.length);
   const bcol=new Float32Array(bb.length*3);
-  bb.forEach((p,i)=>{ const up=V(p.nx,.3,p.nz).normalize(); q.setFromUnitVectors(V(0,1,0),up); const s=.6+r()*1.4; m4.compose(ps.set(p.x-p.nx*.05,p.y,p.z-p.nz*.05),q,sc.set(s,s*(.6+r()*.6),s)); bmi.setMatrixAt(i,m4);
-    const dark=r()<.4; bcol[i*3]=dark?.18:.8; bcol[i*3+1]=dark?.2:.78; bcol[i*3+2]=dark?.3:.72; });
+  bb.forEach((p,i)=>{ const up=V(p.nx,.5,p.nz).normalize(); q.setFromUnitVectors(V(0,1,0),up); const s=.6+r()*1.2; const y=clamp(p.y+(r()-.3)*.8,-1.8,HIGH_LINE); const w=wallSurface({x:p.x,z:p.z,nx:p.nx,nz:p.nz},y); m4.compose(ps.set(w.x,w.y,w.z),q,sc.set(s,s*(.6+r()*.6),s)); bmi.setMatrixAt(i,m4);
+    const dark=r()<.45; bcol[i*3]=dark?.1:.42; bcol[i*3+1]=dark?.11:.41; bcol[i*3+2]=dark?.17:.38; });
   bmi.instanceColor=new THREE.InstancedBufferAttribute(bcol,3); caveRoot.add(bmi);
   // kelp: draped ribbons on wet rock (mouth and stair pool)
-  const kG=new THREE.PlaneGeometry(.22,1.2,1,6); { const p=kG.attributes.position; for(let i=0;i<p.count;i++){ const y=p.getY(i)+.6; p.setZ(i,Math.sin(y*3)*.12+y*y*.15); p.setY(i,y); } kG.computeVertexNormals(); }
-  const kMat=G.toon('#3e4a2a',{side:THREE.DoubleSide});
+  const kG=new THREE.PlaneGeometry(.14,1.2,1,6); { const p=kG.attributes.position; for(let i=0;i<p.count;i++){ const y=p.getY(i)+.6; p.setZ(i,Math.sin(y*3)*.12+y*y*.15); p.setY(i,y); } kG.computeVertexNormals(); }
+  const kMat=G.toon('#2a3220',{side:THREE.DoubleSide});
   const kk=scatterOnWalls(150,55,(p,rr)=>p.y>-1.7&&p.y<1.2&&(roomAtL(p.x,p.z)==='mouth'||roomAtL(p.x,p.z)==='stair'||rr()<.25));
   const kmi=new THREE.InstancedMesh(kG,kMat,kk.length);
   kk.forEach((p,i)=>{ m4.compose(ps.set(p.x,p.y-.05,p.z),q.setFromEuler(eu.set(PI*.5+(r()-.5)*.6,Math.atan2(p.nx,p.nz)+(r()-.5),0)),sc.set(1,.6+r()*.9,1)); kmi.setMatrixAt(i,m4); });
@@ -543,19 +546,19 @@ function buildDressing(){
 /* ---------- timber, iron, rope ---------- */
 function buildTimber(){
   const wood=G.canvasTex(256,(g,s)=>{const r=U.rng(5);g.fillStyle='#4a3626';g.fillRect(0,0,s,s);
-    for(let x=0;x<s;x+=32){const l=26+r()*12;g.fillStyle=`hsl(${22+r()*8},${24+r()*10}%,${l}%)`;g.fillRect(x+1,0,30,s);
+    for(let x=0;x<s;x+=32){const l=30+r()*12;g.fillStyle=`hsl(${24+r()*8},${10+r()*8}%,${l}%)`;g.fillRect(x+1,0,30,s);
       for(let k=0;k<14;k++){g.strokeStyle='rgba(15,8,4,.3)';g.beginPath();const xx=x+3+r()*26;g.moveTo(xx,0);g.bezierCurveTo(xx+r()*6-3,s*.3,xx+r()*6-3,s*.6,xx,s);g.stroke();}
       g.fillStyle='rgba(90,110,80,.18)'; g.fillRect(x+1,s*r(),30,s*.2);}});
   wood.wrapS=wood.wrapT=THREE.RepeatWrapping;
   timberMat=G.toon('#ffffff',{vertexColors:true});
   timberMat.onBeforeCompile=sh=>{ sh.uniforms.uWood={value:wood};
     sh.vertexShader='varying vec3 vWP2;varying vec3 vWN2;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vWP2=(modelMatrix*vec4(transformed,1.)).xyz; vWN2=normalize(mat3(modelMatrix)*objectNormal);');
-    sh.fragmentShader='uniform sampler2D uWood;varying vec3 vWP2;varying vec3 vWN2;\n'+sh.fragmentShader.replace('#include <map_fragment>',`{ vec3 n=abs(normalize(vWN2)); vec2 uv=n.y>.6?vWP2.xz:(n.x>n.z?vWP2.zy:vWP2.xy); vec4 t=texture2D(uWood,uv*vec2(.5,.9)); diffuseColor.rgb*=pow(t.rgb,vec3(2.2))*2.2; }`); };
+    sh.fragmentShader='uniform sampler2D uWood;varying vec3 vWP2;varying vec3 vWN2;\n'+sh.fragmentShader.replace('#include <map_fragment>',`{ vec3 n=abs(normalize(vWN2)); vec2 uv=n.y>.6?vWP2.xz:(n.x>n.z?vWP2.zy:vWP2.xy); vec4 t=texture2D(uWood,uv*vec2(.5,.9)); diffuseColor.rgb*=pow(t.rgb,vec3(2.2))*1.7; }`); };
   timberMat.customProgramCacheKey=()=>'caveTimber';
   ironMat=G.toon('#ffffff',{vertexColors:true});
   ropeMat=G.toon('#8a7350');
   const T=new Builder(), I=new Builder(), R=[];
-  const wd='#c8b8a4', wdk='#8d7a66', rust='#7a4a30', ir='#3a3640';
+  const wd='#a49686', wdk='#6f6458', rust='#6a4434', ir='#3a3640';
   const post=(x,z,y0,y1,rr)=>T.cyl(rr||.12,(rr||.12)*1.1,y1-y0,wdk,x,(y0+y1)/2,z,6,0,(Math.random()-.5)*.05,(Math.random()-.5)*.05);
   // stair-room steps (4 treads, z -53 .. -61)
   for(let k=0;k<5;k++){ const y=1.0-.35*k, z0=-53-k*1.6; T.box(3.5,.14,1.62,wd,-7.75,y-.07,z0-.8); post(-9.3,z0-.8,-1,y-.14); post(-6.2,z0-.8,-1,y-.14); }
@@ -656,12 +659,13 @@ function buildArena(){
   const bg=boulderGeo(7,1), list=[]; const rr=U.rng(41);
   for(let y=-6;y<16;y+=2.1)for(let x=49;x<=71;x+=2.2){ const zz=4.3+(rr()-.5)*.9+Math.abs(x-60)*.02; list.push({p:V(x+(rr()-.5)*.6,y+(rr()-.5)*.5,zz),s:1.55+rr()*.55,rot:new THREE.Euler(rr()*3,rr()*3,rr()*3),v:0,d:rr()*1.6,spin:V((rr()-.5)*2,(rr()-.5)*2,(rr()-.5)*2)}); }
   const wm=new THREE.InstancedMesh(bg,rockMaterial({scale:.3}),list.length); wm.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  { const a=new Float32Array(list.length*3); for(let i=0;i<list.length;i++){ const v=.42+rr()*.2; a[i*3]=v; a[i*3+1]=v*.98; a[i*3+2]=v*1.06; } wm.instanceColor=new THREE.InstancedBufferAttribute(a,3); }
   VIS.wall={mesh:wm,list,t:-1}; updateWallMatrices(0); caveRoot.add(wm);
   // the Wound: a jagged crack in the grotto floor (black core, violet edges, slow pulse) + rising glow
-  const crack=[]; let x=WOUND.x-7, z=WOUND.z-1.5; const cr=U.rng(9);
-  for(let i=0;i<=26;i++){ crack.push([x,z,(1-Math.abs(i/26-.5)*2)]); x+=.55; z+=(cr()-.5)*.9+Math.sin(i*.7)*.25; }
+  const crack=[]; let x=WOUND.x-7.8, z=WOUND.z-1.2; const cr=U.rng(9);
+  for(let i=0;i<=26;i++){ crack.push([x,z,(1-Math.abs(i/26-.5)*2)]); x+=.6; z+=(cr()-.5)*.9+Math.sin(i*.7)*.25; }
   const pos=[],uv=[],idx=[];
-  crack.forEach((c,i)=>{ const w=.35+1.5*Math.pow(c[2],1.3); const y=Fat(c[0],c[1])+.04;
+  crack.forEach((c,i)=>{ const w=.3+2.1*Math.pow(c[2],1.2); const y=Fat(c[0],c[1])+.04;
     for(const s of [-1,0,1]){ pos.push(c[0],y+(s===0?-.08:0),c[1]+s*w*(1+.3*(cr()-.5))); uv.push(i/26,(s+1)/2); } });
   for(let i=0;i<crack.length-1;i++){ const a=i*3; idx.push(a,a+3,a+1,a+1,a+3,a+4,a+1,a+4,a+2,a+2,a+4,a+5); }
   const cg=new THREE.BufferGeometry(); cg.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); cg.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); cg.setIndex(idx); cg.computeVertexNormals();
@@ -676,8 +680,8 @@ function buildArena(){
         float edge=smoothstep(.95,.35,d)*smoothstep(0.,.55,d+sw*.25);
         float pulse=.65+.35*sin(t*1.25-vUv.x*6.);
         vec3 core=vec3(.004,.002,.01)+vec3(.12,.03,.25)*pow(sw*.6,3.)*pulse;
-        vec3 rim=vec3(.55,.2,1.3)*pulse*(.7+.6*sw);
-        vec3 c=mix(rim*1.4,core,smoothstep(.55,.05,d));
+        vec3 rim=vec3(.55,.16,1.5)*pulse*(.6+.7*sw);
+        vec3 c=mix(rim*1.3,core,smoothstep(.62,.28,d+sw*.12));
         float a=edge*uK; gl_FragColor=vec4(c*uK,a); }`});
   const cmesh=new THREE.Mesh(cg,cm); caveRoot.add(cmesh);
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#8c55ff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
@@ -686,7 +690,7 @@ function buildArena(){
   const shG=new THREE.CylinderGeometry(1.4,3.6,14,12,1,true); shG.translate(0,7,0);
   const shTex=G.canvasTex(64,(g,s)=>{const gr=g.createLinearGradient(0,0,0,s);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(1,'rgba(255,255,255,.9)');g.fillStyle=gr;g.fillRect(0,0,s,s);});
   const shM=new THREE.MeshBasicMaterial({map:shTex,color:C('#7b48ff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
-  const shaft=new THREE.Mesh(shG,shM); shaft.position.set(WOUND.x,WOUND.y,WOUND.z); shaft.scale.set(2.2,1,.7); caveRoot.add(shaft);
+  const shaft=new THREE.Mesh(shG,shM); shaft.position.set(WOUND.x,WOUND.y,WOUND.z); shaft.scale.set(2.6,1.2,.8); caveRoot.add(shaft);
   VIS.wound={u:wU,glow,shaft,shM,mesh:cmesh,k:0,ink:null}; cmesh.visible=glow.visible=shaft.visible=false;
 }
 function updateWallMatrices(dt){
@@ -737,12 +741,12 @@ function updateDrips(dt){
 function buildIslandMouth(){
   const rock=rockMaterial({scale:.3,tide:false});
   // arch shell: a rough half-tunnel cut into the cliff
-  const prof=[]; const R=2.55, SPR=2.05;
+  const prof=[]; const R=2.55, SPR=2.05; const slate=[C('#4a4e5b'),C('#5d6372'),C('#3e414c'),C('#6a645c')];
   prof.push([R,-.8],[R,.6],[R,1.4],[R,SPR]); for(let k=1;k<12;k++){const a=k/12*PI; prof.push([R*Math.cos(a),SPR+R*Math.sin(a)*.95]);} prof.push([-R,SPR],[-R,1.4],[-R,.6],[-R,-.8]);
   const nzs=10, pos=[], col=[], idx=[]; const z0=MZ_BACK-.5, z1=MZ_FACE+.4; const tc=new THREE.Color();
   for(let j=0;j<=nzs;j++){ const z=lerp(z0,z1,j/nzs); for(let i=0;i<prof.length;i++){ const [px,py]=prof[i];
     const d=.28*(vnoise(px*1.3+z*.9,py*1.3)-.5)+.14*(vnoise(px*3+z*2,py*3)-.5); const rr=Math.hypot(px,py-SPR*.5)||1;
-    pos.push(MX+px+px/rr*d,py+(py>SPR?(py-SPR)/rr*d:0),z); const k=.35+.65*smooth(z0,z1,z); tc.copy(C('#5b5966')).multiplyScalar(k*(.8+.4*vnoise(px*2,z*2))); col.push(tc.r,tc.g,tc.b); } }
+    pos.push(MX+px+px/rr*d,py+(py>SPR?(py-SPR)/rr*d:0),z); const k=.12+.5*smooth(z0,z1,z); tc.copy(C('#5d6372')).multiplyScalar(k*(.8+.4*vnoise(px*2,z*2))); col.push(tc.r,tc.g,tc.b); } }
   const np=prof.length; for(let j=0;j<nzs;j++)for(let i=0;i<np-1;i++){ const a=j*np+i,b=a+1,c=a+np,d=c+1; idx.push(a,c,b,b,c,d); }
   const ag=new THREE.BufferGeometry(); ag.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); ag.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); ag.setIndex(idx); ag.computeVertexNormals();
   const rockD=rockMaterial({scale:.3,tide:false,mat:{side:THREE.DoubleSide}});
@@ -756,10 +760,13 @@ function buildIslandMouth(){
     for(let k=0;k<n;k++){ const t=(k+r())/n, x=lerp(a[0],b[0],t), z=lerp(a[1],b[1],t); const dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz); const s=r()<.5?-1:1, off=CW_HW+.6+r()*1.6;
       B.push([x-dz/l*off*s,-1.3+r()*.5,z+dx/l*off*s,.45+r()*.75]); } }
   const bm=new THREE.InstancedMesh(bgeo,rockMaterial({scale:.4}),B.length); const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), eu=new THREE.Euler();
-  B.forEach((b,i)=>{ q.setFromEuler(eu.set(r()*3,r()*3,r()*3)); m4.compose(V(b[0],b[1],b[2]),q,V(b[3]*1.1,b[3]*.9,b[3])); bm.setMatrixAt(i,m4); });
+  const bcol=new Float32Array(B.length*3), tcc=new THREE.Color();
+  B.forEach((b,i)=>{ q.setFromEuler(eu.set((r()-.5)*.8,r()*6,(r()-.5)*.8)); m4.compose(V(b[0],b[1],b[2]),q,V(b[3]*1.15,b[3]*.95,b[3])); bm.setMatrixAt(i,m4);
+    tcc.copy(slate[i%4]).lerp(slate[(i+1)%4],r()).multiplyScalar(.55); bcol[i*3]=tcc.r; bcol[i*3+1]=tcc.g; bcol[i*3+2]=tcc.b; });
+  bm.instanceColor=new THREE.InstancedBufferAttribute(bcol,3);
   tUni.uOY.value=O.y; mouthRoot.add(bm);
   // apron sand + causeway (one mesh, vertex-coloured wet sand)
-  const sp=[],sc=[],si=[]; const sandW=C('#6c6253'), sandD=C('#8b7f69');
+  const sp=[],sc=[],si=[]; const sandW=C('#3f3b36'), sandD=C('#665c4c');
   const addStrip=(pts,hw,fn)=>{ const base=sp.length/3; let rows=0;
     for(let i=0;i<pts.length;i++){ const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)]; const dx=b[0]-a[0],dz=b[1]-a[1],l=Math.hypot(dx,dz)||1;
       for(let k=0;k<=6;k++){ const o=(k/6*2-1)*hw; const x=pts[i][0]-dz/l*o, z=pts[i][1]+dx/l*o; const y=fn(x,z); sp.push(x,y,z); tc.copy(sandW).lerp(sandD,smooth(-1.2,.3,y)); sc.push(tc.r,tc.g,tc.b); } rows++; }
@@ -777,9 +784,9 @@ function buildIslandMouth(){
   const blk=new THREE.Mesh(vg,new THREE.MeshBasicMaterial({color:C('#040306')})); blk.position.set(MX,0,MZ_BACK+.1); mouthRoot.add(blk);
   for(const [z,o] of [[51.6,.55],[52.7,.32]]){ const m=new THREE.Mesh(vg,new THREE.MeshBasicMaterial({color:C('#040306'),transparent:true,opacity:o,depthWrite:false})); m.position.set(MX,0,z); m.scale.set(.98,.98,1); mouthRoot.add(m); }
   // kelp on the apron edges, drips from the lip, a breath of mist from the dark
-  const kG=new THREE.PlaneGeometry(.25,1.3,1,5); { const p=kG.attributes.position; for(let i=0;i<p.count;i++){ const y=p.getY(i)+.65; p.setZ(i,Math.sin(y*3)*.15); p.setY(i,y);} kG.computeVertexNormals(); }
-  const km=new THREE.InstancedMesh(kG,G.toon('#3c4a2b',{side:THREE.DoubleSide}),28);
-  for(let i=0;i<28;i++){ const a=r()*PI, x=MX+Math.cos(a)*(3.2+r()*2), z=MZ_FACE+.4+Math.sin(a)*1.8; q.setFromEuler(eu.set(1.25+r()*.3,r()*TAU,0)); m4.compose(V(x,Math.max(apronF(x,z),-1.1)-.02,z),q,V(1,.6+r()*.8,1)); km.setMatrixAt(i,m4); }
+  const kG=new THREE.PlaneGeometry(.16,1.3,1,5); { const p=kG.attributes.position; for(let i=0;i<p.count;i++){ const y=p.getY(i)+.65; p.setZ(i,Math.sin(y*3)*.15); p.setY(i,y);} kG.computeVertexNormals(); }
+  const km=new THREE.InstancedMesh(kG,G.toon('#2b3320',{side:THREE.DoubleSide}),18);
+  for(let i=0;i<18;i++){ const a=r()*PI, x=MX+Math.cos(a)*(3.6+r()*2.2), z=MZ_FACE+.2+Math.sin(a)*2.2; q.setFromEuler(eu.set(1.45+r()*.12,r()*TAU,0)); m4.compose(V(x,Math.max(apronF(x,z),-1.1)+.02,z),q,V(.6,.5+r()*.6,1)); km.setMatrixAt(i,m4); }
   mouthRoot.add(km);
   VIS.outMist=[]; for(let i=0;i<4;i++){ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#8f8aab'),transparent:true,opacity:0,depthWrite:false})); s.userData={ph:i/4}; s.scale.set(5,2,1); mouthRoot.add(s); VIS.outMist.push(s); }
   const dg=new THREE.BufferGeometry(); dg.setAttribute('position',new THREE.BufferAttribute(new Float32Array(8*3),3));
@@ -831,8 +838,8 @@ function arrivalFor(roomId){
     return [0,mouthF(0,z),z,PI]; }
   const s=ROOMDEF[roomId].spawn; return [s[0],s[1]==null?0:s[1],s[2],s[3]];
 }
-function shiftSwarm(delta,to){
-  const P=G.player.pos, ms=(G.creatures&&G.creatures.moths)||[];
+function shiftSwarm(delta,to,from){
+  const P=from||G.player.pos, ms=(G.creatures&&G.creatures.moths)||[];
   for(const m of ms){ if(!m||!m.p||!SWARM.has(m.tgt))continue; if(m.p.distanceTo(P)>45)continue;
     m.p.add(delta); if(m.feedC&&m.feedC.isVector3&&m.feedC.distanceTo(P)<45)m.feedC.add(delta); }
   for(const fn of transferHooks){ try{fn(delta,{to});}catch(e){console.error('cave transfer',e);} }
@@ -844,10 +851,11 @@ function doTeleport(dir,roomId){
     if(!S.prevCp){ S.prevCp={p:G.state.checkpoint.clone(),yaw:G.state.checkpointYaw,name:G.state.checkpointName}; }
     const ma=arrivalFor('mouth'); G.state.checkpoint.copy(toWorld(ma[0],ma[1],ma[2])); G.state.checkpointYaw=0; G.state.checkpointName='the mouth of the sea cave';
   }else{ dest=outsidePos.clone(); yaw=0;
-    if(S.prevCp){ G.state.checkpoint.copy(S.prevCp.p); G.state.checkpointYaw=S.prevCp.yaw; G.state.checkpointName=S.prevCp.name; S.prevCp=null; } }
+    if(S.prevCp){ G.state.checkpoint.copy(S.prevCp.p); G.state.checkpointYaw=S.prevCp.yaw; G.state.checkpointName=S.prevCp.name; S.prevCp=null; }
+    else if(inBoxW(G.state.checkpoint.x,G.state.checkpoint.z)){ const st=G.world.landmarks.start||{x:164,y:42,z:-4,yaw:PI/2}; G.state.checkpoint.set(st.x,st.y,st.z); G.state.checkpointYaw=st.yaw||0; G.state.checkpointName='the lighthouse'; } }
   P.teleport(dest.x,dest.y,dest.z,yaw);
   const delta=P.pos.clone().sub(from);
-  shiftSwarm(delta,dir==='in'?'cave':'island');
+  shiftSwarm(delta,dir==='in'?'cave':'island',from);
   setInside(dir==='in');
   G.atmo.dark=G.atmo.darkTarget=dir==='in'?1:0;
   S.lastDry.copy(P.pos);
@@ -887,7 +895,7 @@ function updatePlayerWater(dt){
   const c=Cat(lx,lz); if(ly>c-1.65&&ly>f+.02){ P.pos.y=O.y+Math.max(f,c-1.65); }
   const under=ly<w-lim+.02;
   if(!under){ S.pushT=0; return; }
-  if(S.room==='mouth'&&!sump&&f>-50&&depth<2.3){ // the flood tide washes you up the beach
+  if(S.room==='mouth'&&!sump&&f>-50&&depth<1.8&&w>-.3){ // the flood tide washes you up the beach
     G.moveCharacter(P.pos,0,-(3.2+5*clamp(depth-1.1,0,1.2))*dt,P.radius||.38,'player'); if(Math.random()<dt*2)G.emit('cave:wash',{pos:P.pos.clone()}); return; }
   S.pushT+=dt; if(S.pushT<.18)return; S.pushT=0;
   const hurt=S.room!=='mouth';
@@ -917,7 +925,7 @@ function updateGatesVis(dt){
   if(VIS.grate){ const tgt=S.gates.shortcut?-3.8:.9; VIS.grate.position.y=U.damp(VIS.grate.position.y,tgt,1.4,dt); }
   if(VIS.wall&&VIS.wall.t>=0&&VIS.wall.t<20){ VIS.wall.t+=dt; updateWallMatrices(dt); if(VIS.wall.t>1.8)revealWound(false); }
   if(VIS.wound&&S.woundShown){ const W=VIS.wound; W.k=U.damp(W.k,1,.7,dt); const p=.75+.25*Math.sin(t*1.25);
-    W.u.uK.value=W.k; W.glow.material.opacity=.55*W.k*p; W.shM.opacity=.16*W.k*p; W.shaft.rotation.y+=dt*.05;
+    W.u.uK.value=W.k; W.glow.material.opacity=.7*W.k*p; W.shM.opacity=.07*W.k*p; W.shaft.rotation.y+=dt*.05;
     if(W.ink)W.ink.intensity=S.inside?W.k:0; if(waterMat)waterMat.uniforms.uWoundK.value=W.k; }
 }
 

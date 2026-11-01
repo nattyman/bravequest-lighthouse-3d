@@ -385,7 +385,7 @@ function steerMoths(){
   // weights for the shader + hit rule: how many moths are actually on each part
   sampN.fill(0);
   for(const m of utMoths){ const s=samples[m._ut]; if(m.p.distanceToSquared(s)<5.3)sampN[m._ut]++; }
-  for(let i=0;i<NS;i++){ sampW[i]=U.damp(sampW[i],Math.min(1,sampN[i]/3),5,G.dt||1/30); SH.uMW.value[i]=sampW[i]*(B.state==='dragWind'&&i<4?1.4:1); SH.uMP.value[i].copy(samples[i]); }
+  for(let i=0;i<NS;i++){ sampW[i]=U.damp(sampW[i],Math.min(1,sampN[i]/4),5,G.dt||1/30); SH.uMW.value[i]=sampW[i]*(B.state==='dragWind'&&i<4?1.4:1); SH.uMP.value[i].copy(samples[i]); }
 }
 function updateSamples(){
   for(let i=0;i<10;i++){ const j=Math.round(U.lerp(.1,.9,i/9)*(NB-1)); samples[i].copy(spine[j]); }
@@ -451,8 +451,9 @@ function startFight(){
   B.phaseName='';
 }
 function sink(){ setB('sinking'); G.ui.bossBar(null); releaseMoths(); B.lash=null; B.surge=null; B.slump=0; B.expose=0; for(const a of arms){a.mode='rest';a.k.wind=0;} }
-function chooseAttack(){
+function chooseAttack(force){
   const ph=phaseNow(), pp=G.player.pos;
+  if(force==='lash')ph.high=ph.drag=false;
   if(ph.drag&&B.dragCD<=0&&utMoths.length>=4){ B.dragCD=UT.dragEvery; setB('dragWind'); B.drag=0; telegraph('drag',A,UT.dragWind);
     if(!S.said.drag)later(.3,()=>{ say('drag','The lower coils are churning — it’s dragging the moths down with it! Strike the coils, or open the lantern and call them back.'); G.ui.toast&&G.ui.toast('The swarm is being pulled under','Strike the coils or open the lantern'); }); return; }
   if(ph.high&&rnd()<.6){ setB('surgeWind'); telegraph('surge',A,UT.surgeWind); B.surge=null; return; }
@@ -527,7 +528,7 @@ function updateFight(dt){
         let n=0; const wy=waterY();
         for(const m of utMoths.slice()){ if(n>=UT.dragN)break; if(m._ut>=4||m.p.y>wy+1.6)continue;
           if(G.moths&&G.moths.kill)G.moths.kill(m,true); else{ m.tgt='gone'; } n++; }
-        if(n){ G.emit('moths:lost',{n,pos:A.clone(),by:'undertow'}); G.ui.toast&&G.ui.toast('The Undertow',n+' moths dragged under'); }
+        if(n){ if(!(G.moths&&G.moths.kill))G.emit('moths:lost',{n,pos:A.clone(),by:'undertow'}); G.ui.toast&&G.ui.toast('The Undertow',n+' moths dragged under'); }
         B.drag=0; setB('recover'); }
       break;}
   }
@@ -565,7 +566,7 @@ function onDefeated(restored){
   S.defeated=true; B.state=restored?'dead':B.state; G.flag('undertowDead',true);
   G.ui.bossBar(null); releaseMoths();
   if(!B.built)buildUndertow();
-  lensHome.copy(pedestalPos()).add(V(0,1.25,0));
+  lensHome.copy(pedestalPos()).add(V(0,3.3,0));
   if(restored){ setB('dead'); setVisible(false); lensPos.copy(lensHome); showPage(3,true); return; }
   G.emit('cave:bossDead',{pos:A.clone()});
   G.emit('monster:killed',{kind:'undertow',pos:V(A.x,floorY,A.z),boss:true});
@@ -780,7 +781,7 @@ G.caveBoss={
   debug:G.debug?{save,load,S,B,
     kill:()=>{ if(!B.built)buildUndertow(); if(B.state==='sunk')startFight(); B.rise=1; B.hp=0; startDying(); },
     expose:()=>{ B.slumpDir=Math.atan2(G.player.pos.z-A.z,G.player.pos.x-A.x); B.expose=UT.exposeT; setB('miss'); },
-    attack:k=>{ if(k==='surge'){setB('surgeWind');telegraph('surge',A,UT.surgeWind);} else if(k==='drag'){B.dragCD=0;B.hp=Math.min(B.hp,UT.hp*.5);chooseAttack();} else { B.cool=0; const h=G.tide.level; chooseAttack(); void h; } },
+    attack:k=>{ if(k==='surge'){setB('surgeWind');telegraph('surge',A,UT.surgeWind);} else if(k==='drag'){B.dragCD=0;B.hp=Math.min(B.hp,UT.hp*.5);chooseAttack();} else { B.cool=0; chooseAttack('lash'); } },
     centre:()=>A.clone(), floorY:()=>floorY, samples, sampW, hbs, lensPos, spawnPack, clearMine}:null
 };
 })();
