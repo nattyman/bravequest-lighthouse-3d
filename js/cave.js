@@ -113,7 +113,7 @@ function Sraw(x,z){ const [m,r]=sdMin(x,z); return m+r*wallNoise(x,z); }
 function zoneFloor(x,z,y){ let f=null; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)>=0)continue;
   const h=Z.kind==='timber'?Z.floor(x,z):Z.floor(x,z); if(h<=y+.9&&(f==null||h>f))f=h; } return f; }
 function zonesAt(x,z){ const out=[]; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)<0)out.push(Z);} return out; }
-function inSump(x,z){ const zs=zonesAt(x,z); return zs.length>0&&zs.every(Z=>Z.sump||Z.id==='stairShore')&&zs.some(Z=>Z.sump); }
+function inSump(x,z){ const zs=zonesAt(x,z); return zs.some(Z=>Z.sump)&&!zs.some(Z=>!Z.sump&&Z.floor(x,z)>-.9); } // the low passage proper (not where the shore overlaps it)
 
 /* ---------- grid (built at script-evaluation time so anchors are ready for other modules) ---------- */
 const GS=.4, GX0=BOX.x0, GZ0=BOX.z0, NX=Math.round((BOX.x1-BOX.x0)/GS)+1, NZ=Math.round((BOX.z1-BOX.z0)/GS)+1;
@@ -888,7 +888,7 @@ function updatePlayerWater(dt){
   const under=ly<w-lim+.02;
   if(!under){ S.pushT=0; return; }
   if(S.room==='mouth'&&!sump&&f>-50&&depth<2.3){ // the flood tide washes you up the beach
-    G.moveCharacter(P.pos,0,-3.0*dt,P.radius||.38,'player'); if(Math.random()<dt*2)G.emit('cave:wash',{pos:P.pos.clone()}); return; }
+    G.moveCharacter(P.pos,0,-(3.2+5*clamp(depth-1.1,0,1.2))*dt,P.radius||.38,'player'); if(Math.random()<dt*2)G.emit('cave:wash',{pos:P.pos.clone()}); return; }
   S.pushT+=dt; if(S.pushT<.18)return; S.pushT=0;
   const hurt=S.room!=='mouth';
   G.emit('cave:splash',{pos:P.pos.clone(),deep:true});

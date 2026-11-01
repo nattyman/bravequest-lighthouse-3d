@@ -140,7 +140,7 @@ function updateRooms(dt){
 /* =====================================================================
    2. THE UNDERTOW
    ===================================================================== */
-const UT={hp:40,poolR:6.5,ringR:18,H:7.2,turns:2.15,
+const UT={hp:40,poolR:6.5,ringR:18,H:9,turns:2.15,
   lashWind:1.35,lashDur:.55,lashArc:1.9,lashReach:15.5,lashDmg:2,exposeT:3.4,
   surgeWind:1.6,surgeSpeed:7.5,surgeDmg:2,dragWind:2.2,dragN:6,dragEvery:11,coreMul:2,
   seeR:20,idleLo:[2.0,3.0],idleHi:[2.6,3.6]};
@@ -150,7 +150,12 @@ const B={built:false,state:'sunk',st:0,hp:UT.hp,rise:0,vis:0,reveal:0,flash:0,fa
 let A=V(), floorY=0, arenaOK=false;
 function arenaGeo(){
   A=anchor('arena','pool',LOCAL.arena.c);
-  const fy=floorAt(A.x+UT.poolR+2.5,A.z,A.y+4); floorY=fy>-1e8?fy:W(0,1,0).y; arenaOK=true;
+  // the pool's real size: walk out from the centre until the floor comes up to the ring
+  let ring=-1e9; for(const a of [0,1.6,3.2,4.7]){ const y=floorAt(A.x+Math.cos(a)*(UT.ringR-4),A.z+Math.sin(a)*(UT.ringR-4),A.y+6); if(y>ring)ring=y; }
+  floorY=ring>-1e8?ring:W(0,1,0).y;
+  const dirs=[.4,2.0,3.6,5.2]; let pr=0;
+  for(const a of dirs){ let r=3.5; for(;r<UT.ringR-3;r+=.25){ if(floorAt(A.x+Math.cos(a)*r,A.z+Math.sin(a)*r,floorY+3)>floorY-.6)break; } pr=Math.max(pr,r); }
+  UT.poolR=U.clamp(pr||6.5,4,12); arenaOK=true;
 }
 /* ---- shader: ink that only exists where the moths are ---- */
 const SN=G.SNOISE||'';
@@ -186,7 +191,7 @@ void main(){
   col+=uRim*uReveal*pow(f,3.)*.6;
   col+=uRim*(uFade<.98?smoothstep(uFade-.2,uFade,dn)*2.:0.);
   col+=vec3(.75,.6,1.)*uFlash*(.25+f);
-  float a=vis*(1.-smoothstep(.5,1.05,f+(n-.5)*.7)*.55);
+  float a=vis*(.22+.78*smoothstep(.15,.85,f+(n-.5)*.35))*(1.-smoothstep(.9,1.08,f)*.6);
   gl_FragColor=vec4(col,clamp(a,0.,1.));
   #include <fog_fragment>
 }`;
@@ -227,6 +232,7 @@ function setTube(T,pts,radAt){
   T.geo.attributes.position.needsUpdate=true; T.geo.attributes.normal.needsUpdate=true;
 }
 /* ---- build ---- */
+let glowPts=null; const NGLOW=140;
 let body,rope,arms=[],lensG=null,lensParts=[],lensCore,lensHalo,lensLight,ripples=[],surgeMesh=null;
 const spine=Array.from({length:NB},()=>V()), coilP=Array.from({length:NB},()=>V()), slumpP=Array.from({length:NB},()=>V());
 const ropePts=Array.from({length:NR},()=>V());
@@ -256,6 +262,10 @@ function buildUndertow(){
   lensHalo=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#8a5cff'),transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,opacity:0}));
   lensHalo.scale.setScalar(6); lensG.add(lensHalo);
   lensLight=new THREE.PointLight(0x9a6cff,0,16,1.6); lensG.add(lensLight);
+  // the swarm glows where it has settled on the body (the moths themselves are unlit and drown in the cave's fog)
+  { const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.BufferAttribute(new Float32Array(NGLOW*3).fill(-9999),3));
+    glowPts=new THREE.Points(g,new THREE.PointsMaterial({map:G.tex.soft,color:U.col('#efe2ff'),size:.75,sizeAttenuation:true,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+    glowPts.frustumCulled=false; glowPts.renderOrder=5; G.scene.add(glowPts); }
   // ripples on the pool (water, not the creature: visible in light — the only warning you get there)
   for(let i=0;i<5;i++){ const m=new THREE.Mesh(new THREE.RingGeometry(.92,1,48).rotateX(-PI/2),new THREE.MeshBasicMaterial({color:U.col('#a9c4d4'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
     m.renderOrder=2; m.visible=false; G.scene.add(m); ripples.push({m,t:9,life:1.6,r0:1,r1:4}); }
@@ -276,18 +286,18 @@ function buildUndertow(){
   G.combat.add(lensHB);
   setVisible(false);
 }
-function setVisible(v){ if(!B.built)return; body.mesh.visible=rope.mesh.visible=v; for(const a of arms)a.T.mesh.visible=v; }
+function setVisible(v){ if(!B.built)return; body.mesh.visible=rope.mesh.visible=v; if(!v&&glowPts)glowPts.visible=false; for(const a of arms)a.T.mesh.visible=v; }
 /* ---- pose ---- */
 function baseY(){ return waterY()-2.6-(1-B.rise)*(UT.H+4); }
 function computeCoil(t){
   const by=baseY(), bob=Math.sin(t*.7)*.25;
   for(let j=0;j<NB;j++){ const u=j/(NB-1);
-    let rc=U.lerp(3.1,1.6,u)*(1+.06*Math.sin(t*1.3+u*7));
+    let rc=U.lerp(3.6,2.3,u)*(1+.06*Math.sin(t*1.3+u*7));
     const head=U.smooth(.84,1,u); rc*=U.lerp(1,.35,head);
     const a=B.ang+u*UT.turns*TAU;
     coilP[j].set(A.x+Math.cos(a)*rc,by+u*UT.H+head*.9+bob*u+.18*Math.sin(t*1.1+u*9),A.z+Math.sin(a)*rc);
   }
-  lensCoil.set(A.x,by+UT.H*.5+bob*.5,A.z);
+  lensCoil.set(A.x,Math.max(by+UT.H*.55,floorY+3.3)+bob*.5,A.z);
 }
 function computeSlump(t){ // the coil throws itself across the ring floor; the lens lies at the end of it
   const d=V(Math.cos(B.slumpDir),0,Math.sin(B.slumpDir)), by=baseY();
@@ -305,7 +315,7 @@ function armPose(ar,t){
   const root=spine[ar.root], c=ar.ctrl;
   let th=ar.th; const sweeping=ar.mode==='sweep', winding=ar.mode==='wind';
   dirV(th,_d);
-  const lift=ar.hit*1.6, reach=sweeping?UT.lashReach:ar.mode==='slam'?UT.lashReach-.5:11+Math.sin(t*.4+ar.a*2)*1.2;
+  const lift=ar.hit*1.6, reach=sweeping?UT.lashReach:ar.mode==='slam'?UT.lashReach-.5:Math.min(UT.lashReach-1.5,5.5)+Math.sin(t*.4+ar.a*2)*1.2;
   // resting / sweeping: out of the pool and along the ring floor
   c[0].copy(root);
   c[1].set(root.x+_d.x*1.5,root.y+1.2,root.z+_d.z*1.5);
@@ -313,7 +323,7 @@ function armPose(ar,t){
   c[3].set(A.x+_d.x*(UT.poolR+1.4),floorY+.75+lift*.7,A.z+_d.z*(UT.poolR+1.4));
   const side=V(-_d.z,0,_d.x), curl=sweeping?-ar.sign*1.6:Math.sin(t*.5+ar.a)*1.2;
   c[4].set(A.x+_d.x*(UT.poolR+reach*.55),floorY+.65+lift*.4,A.z+_d.z*(UT.poolR+reach*.55)).addScaledVector(side,curl*.6);
-  c[5].set(A.x+_d.x*(Math.min(UT.ringR-1.2,UT.poolR+reach)),floorY+.55+lift*.3,A.z+_d.z*Math.min(UT.ringR-1.2,UT.poolR+reach)).addScaledVector(side,curl);
+  c[5].set(A.x+_d.x*(Math.min(UT.ringR-2.2,UT.poolR+reach)),floorY+.55+lift*.3,A.z+_d.z*Math.min(UT.ringR-2.2,UT.poolR+reach)).addScaledVector(side,curl);
   if(B.rise<1){ for(let i=2;i<6;i++){ c[i].lerp(_tmp.set(root.x+_d.x*i*.5,root.y-i*.8,root.z+_d.z*i*.5),1-B.rise); } }
   if(ar.k.wind>.001){ // rears up over the pool, the tip curled back: the lash is coming from here
     const w=ar.k.wind; dirV(ar.th,_d2);
@@ -333,8 +343,8 @@ function computeRope(t){
     ropePts[k].copy(_tmp).addScaledVector(_nn,Math.cos(ph)*r).addScaledVector(_bb,Math.sin(ph)*r);
   }
 }
-const bodyRad=u=>U.lerp(1.35,.45,Math.pow(u,.8))*(u>.94?Math.max(.1,(1-u)/.06):1)*(1+.04*Math.sin(G.time*3+u*20));
-const armRad=u=>U.lerp(.62,.07,Math.pow(u,.7));
+const bodyRad=u=>U.lerp(.95,.32,Math.pow(u,.8))*(u>.94?Math.max(.1,(1-u)/.06):1)*(1+.04*Math.sin(G.time*3+u*20));
+const armRad=u=>U.lerp(.5,.06,Math.pow(u,.7));
 /* ---- moths ---- */
 function mothsAll(){ const C=G.creatures; return (C&&C.moths)||[]; }
 function lanternLitNear(){
@@ -476,7 +486,7 @@ function updateFight(dt){
       const L=B.lash, ar=L.arm, k=Math.min(1,B.st/UT.lashDur);
       ar.k.wind=Math.max(0,1-k*4); ar.th=L.th0+(L.th1-L.th0)*U.smooth(0,1,k);
       // the arm along the floor strikes
-      for(let j=6;j<NA;j+=2){ const q=ar.pts[j]; if(Math.hypot(q.x-A.x,q.z-A.z)<UT.poolR-.4)continue;
+      for(let j=5;j<NA;j+=2){ const q=ar.pts[j]; if(q.y>floorY+2.6)continue;
         const h=G.combat.strike({x:q.x,y:floorY+.7,z:q.z,radius:.95,team:'enemy',damage:UT.lashDmg,knockback:10,kind:'melee',source:hbs[0],exclude:L.set});
         if(h.some(x=>x.team==='player'))L.hit=true; }
       if(FX()&&rnd()<.7){ const q=ar.pts[(8+rnd()*(NA-8))|0]; FX().puff(q.x,floorY+.2,q.z,(rnd()-.5)*3,1+rnd()*2,(rnd()-.5)*3,.6,.4,1.2,.6,null,0,2); }
@@ -498,7 +508,7 @@ function updateFight(dt){
       B.rise=1-.25*U.smooth(0,1,B.st/UT.surgeWind);
       if(rnd()<dt*5)ripple(A.x,A.z,UT.poolR*.6,UT.poolR+1.5,1.1,.55);
       if(rnd()<dt*14&&FX()){ const a=rnd()*TAU; FX().puff(A.x+Math.cos(a)*UT.poolR,waterY()+.1,A.z+Math.sin(a)*UT.poolR,Math.cos(a)*.6,1.4+rnd(),Math.sin(a)*.6,.8,.4,1.4,.5,null,0,1); }
-      if(B.st>=UT.surgeWind){ B.rise=1; B.surge={r:UT.poolR,hit:false}; setB('surge'); G.ui.shake&&G.ui.shake(.45); G.emit('cave:bossSurge',{}); voice('surge'); }
+      if(B.st>=UT.surgeWind){ B.rise=1; B.surge={r:3,hit:false}; setB('surge'); G.ui.shake&&G.ui.shake(.45); G.emit('cave:bossSurge',{}); voice('surge'); }
       break;
     case 'surge':{
       const s=B.surge; s.r+=UT.surgeSpeed*dt;
@@ -562,7 +572,8 @@ function onDefeated(restored){
   try{ G.cave&&G.cave.collapseWall&&G.cave.collapseWall(); }catch(e){console.error('collapseWall',e);}
   later(1.2,()=>{ G.ui.say('The black lets go of it all at once. What it was holding rises out of the pool — a piece of a keeper’s lens, still warm, still turning toward a light that isn’t there.'); G.ui.toast&&G.ui.toast('The Undertow','The lens is free'); });
   later(5.5,()=>{ try{ G.moths&&G.moths.jar&&G.moths.jar.give&&G.moths.jar.give(); }catch(e){console.error('jar',e);} showPage(3,false); });
-  later(10,()=>{ G.emit('cave:wound',{pos:anchor('arena','wound',[60,-6,8])}); G.ui.say('Through the fallen wall, far down: a crack in the sea floor, breathing violet. This is where it comes in.'); });
+  B.woundBeat=true;
+  if(!(G.cave&&G.cave.collapseWall))later(9,()=>G.emit('cave:wound',{pos:anchor('arena','wound',[60,-6,8])}));
 }
 function updateLens(dt){
   if(!lensG)return;
@@ -591,6 +602,10 @@ function renderUndertow(dt){
   for(const ar of arms)setTube(ar.T,ar.pts,armRad);
   updateSamples();
   B.vis=U.damp(B.vis,wantDark()?1:0,3,dt);
+  if(glowPts){ const a=glowPts.geometry.attributes.position.array; let k=0;
+    for(const m of utMoths){ if(k>=NGLOW)break; if(m.tgt!=='hunt')continue; a[k*3]=m.p.x;a[k*3+1]=m.p.y;a[k*3+2]=m.p.z; k++; }
+    for(let i=k;i<NGLOW;i++)a[i*3+1]=-9999; glowPts.geometry.attributes.position.needsUpdate=true;
+    glowPts.material.opacity=.55*B.vis*B.fade; glowPts.visible=k>0; }
   SH.uVis.value=B.vis; SH.uFade.value=B.fade; B.flash=Math.max(0,B.flash-dt*4); SH.uFlash.value=B.flash*.8; SH.uReveal.value=B.reveal;
 }
 /* ---- the fight's frame ---- */
@@ -707,6 +722,8 @@ function updateDiscovery(dt){
   for(const o of G.interact.list){ if(o._caveWrapped||G.interact.label(o)!=='Read the logbook')continue; o._caveWrapped=true;
     const use=o.use; o.use=function(){ const r=use.apply(this,arguments); if(looping()&&!S.discovered)later(4.5,()=>discover('logbook')); return r; }; }
 }
+G.on('cave:wound',()=>{ if(!B.woundBeat)return; B.woundBeat=false;   // cave.js reveals it once the far wall is down
+  later(4,()=>say('wound','Through the fallen wall, far down: a crack in the sea floor, breathing violet. This is where it comes in.')); });
 G.on('tide:low',()=>{ // a nudge each low tide until the player has been inside
   if(!S.discovered||S.entered||!looping())return; const P=G.player, mp=mouthPos(); if(!P||!mp)return;
   if(Math.hypot(P.pos.x-mp.x,P.pos.z-mp.z)<150)later(2.5,()=>{ if(!S.entered)setQuest(); });
