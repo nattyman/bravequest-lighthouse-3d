@@ -71,7 +71,7 @@ function rockGeo(r,seed,flat=.75){
 const COL=h=>U.col(h);
 
 /* ---------------------------------------------------------------- materials */
-function inkMat(){ return G.negMaterial?G.negMaterial({rim:'#a37cff',strength:1.9,ink:'#1c0c2c',inkStrength:.7,amp:.07,wisp:.3,flow:.22,scale:1.3,opaque:true})
+function inkMat(){ return G.negMaterial?G.negMaterial({rim:'#a37cff',strength:1.15,ink:'#1c0c2c',inkStrength:.55,amp:.07,wisp:.3,flow:.22,scale:1.3,opaque:true})
   :new THREE.MeshBasicMaterial({color:0x0a090c}); }
 const POOL_VS=`attribute vec2 aUv;varying vec2 vUv;
 #include <fog_pars_vertex>

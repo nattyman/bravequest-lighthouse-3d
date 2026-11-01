@@ -114,7 +114,7 @@ void main(){
 }`;
 const WALL_FS=`
 uniform float uTime; uniform vec2 uC; uniform float uR; uniform float uCamIn; uniform float uFlash; uniform float uDark;
-uniform vec3 uInLo; uniform vec3 uInHi; uniform vec3 uOutLo; uniform vec3 uOutHi; uniform vec3 uGlow; uniform vec3 uEther;
+uniform vec3 uInLo; uniform vec3 uInMid; uniform vec3 uInHi; uniform vec3 uOutLo; uniform vec3 uOutHi; uniform vec3 uGlow; uniform vec3 uEther;
 uniform vec2 uBeam; uniform float uBeamOn; uniform vec3 uFogColor; uniform float uFogDensity;
 varying vec3 vW; varying float vV; varying float vGround; varying float vLayer;
 ${G.SNOISE}
@@ -122,7 +122,7 @@ void main(){
   vec3 q=vec3(vW.x*.028, vW.y*.04-uTime*.06, vW.z*.028+vLayer*1.7);
   float n1=snoise(q);
   float n1b=snoise(q+vec3(0.,-.14,0.));
-  float n2=snoise(vec3(vW.x*.09+uTime*.03, vW.y*.11-uTime*.14, vW.z*.09-vLayer*2.3));
+  float n2=snoise(vec3(vW.x*.075+uTime*.02, vW.y*.022-uTime*.09, vW.z*.075-vLayer*2.3));   // tall drapes: the wall reads as a curtain, not a cloud
   float n=n1*.7+n2*.3;
   float la=vLayer<.5?.7:(vLayer<1.5?.95:.9);
   float above=vW.y-vGround;
@@ -132,12 +132,12 @@ void main(){
   float a=la*base*top;
   // fade where the camera passes through a band
   float dc=length(vW-cameraPosition);
-  a*=smoothstep(3.,22.,dc);
+  a*=smoothstep(1.5,9.,dc);
   if(a<.004)discard;
   float lit=clamp((n1-n1b)*3.5,-1.,1.);   // billow tops catch the light from above
-  float shade=.86+.2*lit+.1*n2;
-  vec3 inC=mix(uInLo,uInHi,smoothstep(.05,.8,vV))*shade;
-  inC+=uGlow*exp(-max(above,0.)/7.)*.3;    // the light presses on the foot of the wall
+  float shade=.84+.22*lit+.16*n2;
+  vec3 inC=mix(mix(uInLo,uInMid,smoothstep(.0,.35,vV)),uInHi,smoothstep(.3,.85,vV))*shade;
+  inC+=uGlow*exp(-max(above,0.)/6.)*.14;    // the light presses on the foot of the wall
   vec3 outC=mix(uOutLo,uOutHi,smoothstep(0.,.75,vV))*(.85+.2*lit);
   vec3 col=mix(outC,inC,uCamIn);
   // a silver lining along the billowing crest: the light behind the fog
@@ -177,7 +177,7 @@ function buildWall(){
   g.setIndex(idxIn); idxSide=true;
   wallU={uR:{value:fog.radius},uTime:{value:0},uH:{value:WALL_H},uC:{value:new THREE.Vector2(centre.x,centre.z)},
     uCamIn:{value:1},uFlash:{value:0},uDark:{value:0},
-    uInLo:{value:U.col('#e4dcef')},uInHi:{value:U.col('#8f86b3')},uOutLo:{value:U.col('#8678b0')},uOutHi:{value:U.col('#2c2940')},
+    uInLo:{value:U.col('#cdc4df')},uInMid:{value:U.col('#7d7399')},uInHi:{value:U.col('#4c456b')},uOutLo:{value:U.col('#8678b0')},uOutHi:{value:U.col('#2c2940')},
     uGlow:{value:U.col('#d4c4ff')},uEther:{value:U.col('#9150ff')},
     uBeam:{value:new THREE.Vector2(1,0)},uBeamOn:{value:0},uFogColor:{value:new THREE.Color()},uFogDensity:{value:.01}};
   const m=new THREE.ShaderMaterial({uniforms:wallU,vertexShader:WALL_VS,fragmentShader:WALL_FS,transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false});
@@ -208,8 +208,8 @@ let edgeEm=null, deepEm=null;
 const edgeAnchor={pos:new THREE.Vector3()}, deepAnchor={pos:new THREE.Vector3()};
 function buildEmitters(){
   if(!G.ink)return;
-  edgeEm=G.ink.emitter(edgeAnchor,{rate:7,radius:16,height:7,size:[7,16],life:[5,9],rise:.22,drift:.7,trail:0,alpha:.3,color:'#aaa3c2',intensity:0});
-  deepEm=G.ink.emitter(deepAnchor,{rate:5,radius:14,height:3,size:[5,12],life:[4,8],rise:.12,drift:.6,trail:0,alpha:.34,color:'#4a465e',intensity:0});
+  edgeEm=G.ink.emitter(edgeAnchor,{rate:8,radius:16,height:7,size:[4,9],life:[5,9],rise:.22,drift:.7,trail:0,alpha:.3,color:'#aaa3c2',intensity:0});
+  deepEm=G.ink.emitter(deepAnchor,{rate:6,radius:16,height:3,size:[2.5,6],life:[4,8],rise:.12,drift:.6,trail:0,alpha:.34,color:'#4a465e',intensity:0});
 }
 
 /* =====================================================================
