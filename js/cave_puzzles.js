@@ -22,8 +22,8 @@ const COL=h=>U.col(h);
 /* ---------------------------------------------------------------- numbers */
 const VEIN_COST=5;
 const SEALS={ gallery:{anchor:['gallery','seal',[0,3,-46]],needs:20,time:6,name:'The Gallery Seal',gate:'gallery',r:2.4},
-              channel:{anchor:['channel','seal',[47,1,-80]],needs:25,time:8,name:'The Sluice Seal',gate:'channel',r:3.6},
-              arena:  {anchor:['arena','door',[60,3,-38]],needs:30,time:8,name:'The Undertow Door',gate:'arena',r:2.6} };
+              channel:{anchor:['channel','seal',[47,1,-80]],needs:20,time:8,name:'The Sluice Seal',gate:'channel',r:3.6},
+              arena:  {anchor:['arena','door',[60,3,-38]],needs:20,time:8,name:'The Undertow Door',gate:'arena',r:2.6} };
 const RAFT_K=21,        // m of drift per unit of tide level change (one full flood ≈ 42 m ≥ the 38 m channel)
       RAFT_PUSH=3, RAFT_REACH=7;
 const GUST_PERIOD=6, GUST_LEAD=1.2, GUST_LEN=.8, GUST_R=3, GUST_PUSH=3.2, CLING_SHUT=.6, CLING_RAFT=1.0;
@@ -107,12 +107,19 @@ function buildVeins(){
     list.forEach((pos,i)=>{
       const v={room,i,pos,free:room==='mouth'&&pos.distanceTo(free)<.5};
       API.veins.push(v);
-      v.ipos=v.pos.clone().add(V(0,-1.3,0));   // veins sit up the wall; interact from the floor below
-      v.inter=G.interact.add({pos:()=>v.ipos,radius:2.8,priority:2,
+      v.ipos=veinStand(v.pos);                 // veins sit up the wall; interact from the open floor in front of it
+      v.inter=G.interact.add({pos:()=>v.ipos,radius:2.4,priority:2,
         enabled:()=>inside()&&isPlay()&&!S.lit[room]&&!(G.cave&&G.cave.isLit&&G.cave.isLit(room)),
         label:()=>veinLabel(v), use:()=>useVein(v)});
     });
   }
+}
+/** where a player can stand to reach a vein: step out from the rock (cave sdf) onto open floor */
+function veinStand(p){
+  const q=p.clone().add(V(0,-1.3,0)), sdf=G.cave&&G.cave.sdf; if(!sdf)return q;
+  const o=origin(); let x=p.x-o.x, z=p.z-o.z; const e=.2;
+  for(let i=0;i<40&&sdf(x,z)>-.9;i++){ const gx=sdf(x+e,z)-sdf(x-e,z), gz=sdf(x,z+e)-sdf(x,z-e), gl=Math.hypot(gx,gz)||1; x-=gx/gl*.12; z-=gz/gl*.12; }
+  const f=floorY(x+o.x,z+o.z,p.y+1); return V(x+o.x,isFinite(f)&&f>p.y-6?f:q.y,z+o.z);
 }
 function ether(){ return G.alchemy?G.alchemy.etherUnits|0:0; }
 function vials(){ return G.inv?G.inv.count('vial'):0; }
@@ -389,7 +396,8 @@ function takeLantern(){
   if(pick){ try{ pick.use(); }catch(e){console.error(e);} }
   if(!L.carried){ L.carried=true; L.inCradle=false; G.emit('lantern:pickup',{pos:G.player.pos.clone()}); }
 }
-G.on('lantern:pickup',()=>{ const r=API.raft; if(!r.lantern)return; r.lantern=false; raftDrifting=false; if(r.state!=='done'&&r.state!=='arrived')r.state='idle'; G.emit('cave:raft',{state:'taken'}); });
+// taking the lantern back before the sluice is open sends the empty raft home to its mooring (it can't be reached at the far end)
+G.on('lantern:pickup',()=>{ const r=API.raft; if(!r.lantern)return; r.lantern=false; raftDrifting=false; if(r.state!=='done')r.state='idle'; G.emit('cave:raft',{state:'taken'}); });
 G.on('player:attack',()=>{
   const P=G.player, r=API.raft; if(!built||!raftMesh||!inside()||!P||!P.pos||r.state==='done')return;
   const dx=r.pos.x-P.pos.x, dz=r.pos.z-P.pos.z, d=Math.hypot(dx,dz); if(d>3||Math.abs(r.pos.y-P.pos.y)>3.2)return;
@@ -403,12 +411,14 @@ function updateRaft(dt){
   const dl=prevLevel==null||dt<=0?0:(lv-prevLevel)/dt; prevLevel=lv;
   let v=0;
   if(r.state!=='done'&&r.lantern&&r.state!=='arrived'){
-    v=RAFT_K*dl;                                        // flood → toward the sluice, ebb → back toward the start
+    v=RAFT_K*Math.abs(dl);                              // flood or ebb, the channel runs toward the sluice (no waiting a whole tide for the right one)
     const moving=Math.abs(v)>.04;
     if(moving!==raftDrifting){ raftDrifting=moving; G.emit('cave:raft',{state:moving?'drifting':'slack',speed:+v.toFixed(2)});
-      if(moving&&!raftSaid.drift){ raftSaid.drift=1; G.ui.say(v>0?'The tide is coming in. The raft turns slowly, then begins to slide down the channel.':'The tide is going out. The raft creeps back the way it came.'); }
+      if(moving&&!raftSaid.drift){ raftSaid.drift=1; G.ui.say(dl>0?'The tide is coming in. The raft turns slowly, then begins to slide down the channel.':'The tide is going out, and the channel drains toward the sluice. The raft turns slowly and goes with it.'); }
       if(!moving&&!raftSaid.slack){ raftSaid.slack=1; G.ui.say('The water goes still and the raft stops. Slack tide. A shove with the staff would move it.'); } }
   }
+  // an empty raft swings back to its mooring by the jetty (a stray staff strike can't strand it out of reach)
+  if(!r.lantern&&r.state!=='done'&&r.state!=='arrived'&&r.t>0){ raftPush=0; r.t=Math.max(0,r.t-dt*1.2/raftLen); }
   if(raftPush!==0&&r.state!=='done'){ const k=Math.min(1,dt*3.5), step=raftPush*k; raftPush-=step; if(Math.abs(raftPush)<.01)raftPush=0; r.t+=step/raftLen; }
   r.t=U.clamp(r.t+v*dt/raftLen,0,1);
   raftSpeed=v;
@@ -452,7 +462,8 @@ function updateDrafts(dt){
   const tele0=GUST_PERIOD-GUST_LEAD; // telegraph runs in the last GUST_LEAD s of the cycle; the burst at clock 0
   let ph=gustClock>=tele0?'telegraph':gustClock<GUST_LEN?'burst':'idle';
   if(ph!==gustPhase){ gustPhase=ph;
-    if(ph==='telegraph')API.vents.forEach(v=>G.emit('cave:gust',{i:v.i,pos:v.pos.clone(),phase:'telegraph',lead:GUST_LEAD}));
+    if(ph==='telegraph'){ API.vents.forEach(v=>G.emit('cave:gust',{i:v.i,pos:v.pos.clone(),phase:'telegraph',lead:GUST_LEAD}));
+      if(P.pos.distanceTo(API.vents[0].pos)<22){ const L=lantern(); if(!(L&&L.shut))say('gustWarn','The floor ahead hisses, and the air drags toward the holes in it. Close the lantern’s shutter — the moths will cling to the cage — and cross between the gusts.'); } }
     if(ph==='burst'){ API.vents.forEach(v=>{ G.emit('cave:gust',{i:v.i,pos:v.pos.clone(),phase:'burst',lead:0});
       if(G.ink&&G.ink.burst)G.ink.burst(V(v.pos.x,v.pos.y+.6,v.pos.z),{n:14,speed:2.5,size:[.6,1.8],life:[.6,1.3],up:6,embers:0,color:'#c3d9de',alpha:.35}); });
       if(!gustSaid&&P.pos.distanceTo(API.vents[0].pos)<14){ gustSaid=true; say('gust','The sea breathes up through the floor — a roaring gust of spray. Any moth caught in it is simply gone.'); } }
@@ -473,6 +484,35 @@ function updateDrafts(dt){
   }
 }
 
+/* ================================================================ re-baiting underground
+   The alchemy table is on the island; down here, when the bait is about to go cold, a bead of ichor from the satchel
+   (cave monsters drop it) is smeared straight on the cage, so a long visit (tides, the raft, the Undertow) can't strand
+   the swarm. Automatic: it would otherwise fight the jar / the lantern for the one interact button. */
+const REBAIT_AT=4, REBAIT_S=120;
+function canRebait(){ const L=lantern(), A=G.alchemy;
+  return inside()&&isPlay()&&L&&L.found&&!L.inCradle&&G.moths&&G.moths.bait&&A&&A.known&&A.known.has('bait')&&G.inv&&G.inv.count('ichor')>0&&(G.moths.baitLeft||0)>0&&G.moths.baitLeft<REBAIT_AT; }
+function updateRebait(){
+  if(!canRebait()||!G.inv.take('ichor',1))return;
+  G.moths.bait(REBAIT_S);
+  if(!S.said.rebait){ S.said.rebait=1; G.ui.say('The bait is going cold. No alchemy table down here — but the bait is only ichor, and you smear a bead of it straight onto the cage. The moths stay.'); }
+  else G.ui.toast('Fresh bait on the lantern','1 ichor · '+G.inv.count('ichor')+' left');
+}
+
+/* ================================================================ first-time guidance (one line per mechanic) */
+G.on('cave:room',e=>{
+  const id=e&&e.id, L=lantern(); if(!id||!built)return;
+  if(id!=='mouth'&&id!=='arena'&&!S.lit[id]&&S.lit.mouth&&!(G.cave&&G.cave.isLit&&G.cave.isLit(id)))
+    say('veinHint',vials()?'Another seam of ether glints in the wall. A vial’s worth would wake it and light this room.':'Another seam of ether glints in the wall, dry and dark. A vial of ether from the alchemy table would wake it.');
+  if(id==='channel'&&!S.open.channel)setTimeout(()=>say('raftSeen','A raft is moored at the jetty, and the channel runs away from it to a black plug at the far sluice. A walkway follows the water along the wall above.'),900);
+});
+function updateGuidance(){
+  const P=G.player; if(!P||!P.pos||!API.crates.length)return;
+  const r=roomOf(P.pos); if(r!=='stair')return;
+  const wl=waterY()-origin().y;
+  if(wl>.9&&API.crates[0].pos.distanceTo(P.pos)<9)say('crates','The crates have floated up with the tide. From the landing a jump would reach the first — and from the last, the ledge on the far side.');
+  if(G.cave&&G.cave.lowPassageOpen&&G.cave.lowPassageOpen())say('lowPassage','The water has drained out of a low passage under the left-hand wall. It won’t stay drained for long.');
+}
+
 /* ================================================================ swarm cling + lifecycle */
 function updateCling(){
   const C=CR(); if(!C)return; const L=lantern();
@@ -489,6 +529,9 @@ function build(){
 }
 G.on('cave:bossDead',()=>{ S.bossDead=true; });
 G.on('cave:enter',()=>{ if(!built)build(); });
+/* out in the open the cured lantern has no shutter (player.js only offers it before the cure): never carry it out shut,
+   or it stays dark, recruits nothing and the swarm drifts off the moment you step onto the sand */
+G.on('cave:exit',()=>{ const L=lantern(); if(L&&L.shut){ L.shut=false; G.emit('lantern:shutter',{shut:false,cave:true}); } });
 
 /* ---------------------------------------------------------------- save / load */
 function save(){ return {v:1,lit:Object.keys(S.lit).filter(k=>S.lit[k]),open:Object.keys(S.open).filter(k=>S.open[k]),
@@ -520,9 +563,10 @@ G.system('cavePuzzles',{order:36,modes:'always',
       updateCling();
       const inC=inside();
       if(inC&&isPlay())updateShutter();
+      if(inC)updateRebait();
       updateSeals(dt);
       updateRaft(inC?dt:0);
-      if(inC){ updateCrates(dt); updateDrafts(dt); updateRoost(dt); }
+      if(inC){ updateCrates(dt); updateDrafts(dt); updateRoost(dt); if(isPlay())updateGuidance(); }
       else API.gust.phase='idle';
     }catch(e){ console.error('cavePuzzles',e); }
   }

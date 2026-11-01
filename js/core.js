@@ -458,6 +458,8 @@ G.world={
 };
 /** floor providers: fn(x,z,y) -> height or null. Return a height only when it is a surface a character standing at y could be on (<= y+0.9). */
 G.floorProviders=[];
+/** camera heading rules: fn(yaw, playerPos) -> the yaw the follow camera should ease to, or null (player.js applies them) */
+G.cameraYawRules=[];
 /* INTERIOR HOOK (cave.js): G.interior = null | {id, contains(x,z,y)->bool}. Inside contains(), terrain is ignored
    (floor providers only; -1e9 = a pit / open water) and walkable() is true. G.walkOverrides: fn(x,z)->true|false|null,
    consulted by walkable() before world.js (the cave's low-tide causeway). */

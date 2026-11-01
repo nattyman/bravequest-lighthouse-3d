@@ -62,19 +62,19 @@ const STATUES=[[-12.9,-30.2,PI/2],[-12.9,-35.5,PI/2],[-12.9,-40.8,PI/2],[12.9,-3
 STATUES.forEach((s,i)=>rect('alcove'+i,'gallery',s[0]<0?-14.6:11,s[0]<0?-11:14.6,s[1]-1.7,s[1]+1.7,.6,3.35,6.5,{rough:.4}));
 seg('galDoor','gallery',0,-43,0,-49.5,2.3,(x,z)=>lerp(3,1.0,smooth(-44.8,-48.6,z))+nz(x,z,.05),5,{rough:.35});
 // --- the flooding stair
-rect('landing','stair',-9.5,4,-53,-48.6,.6,(x,z)=>1.0+nz(x,z,.05),13,{rough:.5});
+rect('landing','stair',-9.5,4,-54.2,-48.6,.6,(x,z)=>1.0+nz(x,z,.05),13,{rough:.5});
 rect('stairPool','stair',-5,6.4,-74.5,-52.4,1.6,(x,z)=>-3.3+nz(x,z,.6),13);
 rect('stairShore','stair',-11.6,-4,-70,-51.6,1.2,(x,z)=>-.5+nz(x,z,.12)-.25*smooth(-6,-4,x),13,{sand:1});
 rect('stairSteps','stair',-9.5,-6,-61,-52,.05,stairF('z',-53,-61,1.0,-.4,4),13,{kind:'timber'});
-rect('ledge','stair',5.4,10.2,-75.2,-60,.8,(x,z)=>2.6+nz(x,z,.05),13,{rough:.5});
+rect('ledge','stair',4.6,10.2,-75.2,-60,.8,(x,z)=>2.6+nz(x,z,.05),13,{rough:.5});
 rect('ledgeLink','stair',-3,10.2,-78.4,-73.6,.6,(x,z)=>2.6+nz(x,z,.05),9,{rough:.35});
-seg('lowPassage','stair',-8,-68,-8,-79,1.8,(x,z)=>z>-76?-1+nz(x,z,.06):lerp(-1,.8,smooth(-76,-80.5,z)),(x,z)=>lerp(1.3,5,smooth(-75.5,-79.5,z)),{rough:.35,sump:1});
+seg('lowPassage','stair',-8,-68,-8,-79,1.8,(x,z)=>z>-75.2?-1+nz(x,z,.06):lerp(-1,.8,smooth(-75.2,-78,z)),(x,z)=>lerp(1.3,5,smooth(-75.5,-79.5,z)),{rough:.35,sump:1});
 // --- the channel
 rect('channelHead','channel',-11,4.2,-91,-78,1.0,(x,z)=>.8+nz(x,z,.1),9,{sand:1});
 rect('headStairs','channel',-9,-3,-87.5,-84.5,.05,stairF('x',-9,-3,.8,4,9),9,{kind:'timber'});
 rect('deck','channel',-3,4,-83,-77,.05,2.6,9,{kind:'timber'});
 rect('deckStairs','channel',0,4,-85.6,-82.2,.05,stairF('z',-83,-84.6,2.6,4,4),9,{kind:'timber'});
-rect('jetty','channel',3.5,6.6,-81.4,-79,.05,.9,9,{kind:'timber'});
+rect('jetty','channel',2.6,6.6,-81.4,-79,.05,.9,9,{kind:'timber',rough:.2});
 rect('channel','channel',4.2,47.6,-85.6,-76.5,.4,(x,z)=>-3+nz(x,z,.5),10);
 rect('walkway','channel',-3,47,-87.6,-84.5,.3,4,9,{rough:.3,shelf:3.86});
 // --- the sluice walk and the hall of drafts
@@ -110,8 +110,12 @@ function sdMin(x,z){ let m=1e9,r=.8; for(const Z of ZONES){ const b=Z.bb; if(x<b
 const wallNoise=(x,z)=>.62*vnoise(x*.33+11.1,z*.33+4.2)+.38*vnoise(x*.9-7.7,z*.9+2.9);
 function Sraw(x,z){ const [m,r]=sdMin(x,z); return m+r*wallNoise(x,z); }
 /** physics floor among zones at (x,z) for a character at y: highest floor <= y+.9 */
-function zoneFloor(x,z,y){ let f=null; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)>=0)continue;
-  const h=Z.kind==='timber'?Z.floor(x,z):Z.floor(x,z); if(h<=y+.9&&(f==null||h>f))f=h; } return f; }
+function zoneFloor(x,z,y){ let f=null, rock=null; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)>=0)continue;
+  const h=Z.floor(x,z);
+  if(Z.kind==='rock'){ if(rock==null||h>rock)rock=h; }      // overlapping rock zones: the highest is solid all the way down (as the visual field draws it)
+  else if(h<=y+.9&&(f==null||h>f))f=h; }                     // timber (stairs, decks, jetty) can be walked under
+  if(rock!=null&&(f==null||rock>f))f=rock;                    // may be above y+.9: then it is a ledge face (moveCharacter's step test blocks it), never a space underneath
+  return f; }
 function zonesAt(x,z){ const out=[]; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)<0)out.push(Z);} return out; }
 function inSump(x,z){ const zs=zonesAt(x,z); return zs.some(Z=>Z.sump)&&!zs.some(Z=>!Z.sump&&Z.floor(x,z)>-.9); } // the low passage proper (not where the shore overlaps it)
 
@@ -162,11 +166,11 @@ function wallSurface(w,y){ let px=w.x,pz=w.z;
   return V(px+w.nx*.05,y,pz+w.nz*.05); }
 const VEINDEF={
   mouth:[[-3,-9,-1,0,1.5],[3,-16,1,0,2.4],[-4,-18,-1,-.2,3.2]],
-  gallery:[[-8,-31.5,-1,0,4.9],[8,-38.5,1,0,4.9],[-5,-29,0,1,5.4]],
+  gallery:[[-8,-33,-1,0,4.9],[8,-38.5,1,0,4.9],[-5,-29,0,1,5.4]],
   stair:[[-7,-50.5,-1,.2,2.8],[8,-66,1,0,4.8],[0,-55,.3,1,4.2]],
   channel:[[-6,-88.5,0,-1,3.0],[18,-86,0,-1,6.6],[38,-86,0,-1,6.6]],
   drafts:[[58,-62,-1,0,4.6],[62,-48,1,0,4.6]],
-  arena:[[48,-24,-1,-.6,3.6],[72,-24,1,-.6,3.6],[60,-29,0,-1,4.4]],
+  arena:[[48,-24,-1,-.6,3.6],[72,-24,1,-.6,3.6],[73,-8,1,.4,4.0]],
 };
 const VEINS={}, LIGHTS={};
 for(const id in VEINDEF){ VEINS[id]=[]; LIGHTS[id]=[];
@@ -181,7 +185,7 @@ const W3=a=>toWorld(a[0],a[1],a[2]);
 const ANCH={
   mouth:{vein:VEINS.mouth[0].p, arrive:V(0,0,-1), exit:V(0,0,2.2)},
   gallery:{roost:V(8,3,-30),seal:V(0,3,-46),page:V(-7,3,-42.4)},
-  stair:{crates:V(.6,0,-58),crateSpots:[V(-1.5,0,-56),V(1.5,0,-60),V(3.2,0,-64)],ledge:V(7.6,2.6,-66),lowPassage:V(-8,-1,-73.5),landing:V(-2,1,-51)},
+  stair:{crates:V(.6,0,-58),crateSpots:[V(-1.3,0,-56.4),V(.9,0,-59),V(3.3,0,-61.6)],ledge:V(7.6,2.6,-66),lowPassage:V(-8,-1,-73.5),landing:V(-2,1,-51)},
   channel:{raftStart:V(7,0,-80),raftEnd:V(45,0,-80),seal:V(47,1,-80),walkway:V(22,4,-86.1),page:V(31,4,-86.9),jetty:V(5,.9,-80.2),gate:V(47,4,-86.5)},
   drafts:{vents:[V(58.4,3,-66),V(61.6,3,-58),V(58.4,3,-50)],door:V(60,3,-38)},
   arena:{pool:V(AC.x,0,AC.z),door:V(60,1.6,-34),pedestal:V(AC.x,1.35,AC.z),page:V(70,1,-27),wound:WOUND.clone(),exit:V(20,1,-5),grate:V(42.6,1,-13.9)},
@@ -223,6 +227,17 @@ G.floorProviders.push((x,z,y)=>{
   return null;
 });
 
+/* the sandbar and the arch hug the foot of the cliff: keep the follow camera out over the sea (it would sit inside the
+   cliff or the arch's rock otherwise), i.e. heading roughly north, never with its back to the sea */
+const CAM_COS=-.3, CAM_YAW=Math.acos(CAM_COS);
+G.cameraYawRules.push((yaw,p)=>{
+  if(S.inside||!loopOn()||p.x<95||p.x>190||p.z<48.5||p.z>62||p.y>4.5)return null;
+  // at the arch itself look straight in, or the jambs' rock sits between the camera and you
+  if(Math.hypot(p.x-MX,p.z-52.4)<7.5)return Math.abs(U.angDiff(yaw,PI))<.12?null:PI;
+  if(Math.cos(yaw)<=CAM_COS)return null;
+  return Math.sin(yaw)>=0?CAM_YAW:-CAM_YAW;
+});
+
 /* ================================================================ 4. PHYSICS (interior) */
 G.floorProviders.push((x,z,y)=>{
   if(!inBoxW(x,z))return null;
@@ -249,7 +264,7 @@ G.cameraConstrainers.push((cam,target)=>{
   const L=Math.hypot(cx-tx,cy-ty,cz-tz), n=Math.max(1,Math.ceil(L/.12));
   let gx=tx,gy=ty,gz=tz;
   if(bad(tx,ty,tz)){ // target itself is tight: just keep the camera under the ceiling
-    cam.set(target.x,Math.min(target.y,O.y+Cat(tx,tz)-.2),target.z); return; }
+    cam.set(target.x,O.y+Math.min(Math.max(ty,Fat(tx,tz)+.3),Cat(tx,tz)-.2),target.z); return; }
   for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
   cam.set(gx+O.x,gy+O.y,gz+O.z);
 });
@@ -267,6 +282,8 @@ function setGate(id,open){ open=!!open; if(S.gates[id]===open&&S.built)return; S
 }
 setGate('channel',false); setGate('shortcut',false);
 blockers.farWall={x:60,z:4.6,hw:11,hd:1.6,y0:-12,y1:30};
+// the walkway is a rock shelf: where it overhangs the channel head nothing may walk underneath it (you'd be inside the rock)
+blockers.underWalkway={x:.7,z:-86.05,hw:3.9,hd:1.75,y0:-6,y1:3.3};
 function room(pos){ if(!pos||!inBoxW(pos.x,pos.z)||pos.y<O.y-20)return null; return roomAtL(pos.x-O.x,pos.z-O.z); }
 const cave=G.cave={
   inside:false, origin:O.clone(), toWorld, toLocal, water, waterWorld:()=>O.y+water(), room, rooms, mouth:mouthPos.clone(),
@@ -795,6 +812,7 @@ function buildIslandMouth(){
 }
 
 /* ================================================================ 7. LIGHTING */
+const CAVE_FOG0=C('#020509'), CAVE_FOG1=C('#0c1a2a'), CAVE_SKY=C('#5d7896'), CAVE_GND=C('#141c26'), CAVE_LIT=C('#8a78c8');
 const pool=[]; // three pooled point lights for lit rooms (fixed count: no shader recompiles)
 function lightRoom(id,o){
   if(!ROOMDEF[id]||S.lit.has(id))return false;
@@ -850,7 +868,7 @@ function doTeleport(dir,roomId){
   if(dir==='in'){ const a=arrivalFor(roomId||'mouth'); dest=toWorld(a[0],a[1],a[2]); yaw=a[3];
     if(!S.prevCp){ S.prevCp={p:G.state.checkpoint.clone(),yaw:G.state.checkpointYaw,name:G.state.checkpointName}; }
     const ma=arrivalFor('mouth'); G.state.checkpoint.copy(toWorld(ma[0],ma[1],ma[2])); G.state.checkpointYaw=0; G.state.checkpointName='the mouth of the sea cave';
-  }else{ dest=outsidePos.clone(); yaw=0;
+  }else{ dest=outsidePos.clone(); yaw=-CAM_YAW; // facing home along the sandbar, the camera out over the water
     if(S.prevCp){ G.state.checkpoint.copy(S.prevCp.p); G.state.checkpointYaw=S.prevCp.yaw; G.state.checkpointName=S.prevCp.name; S.prevCp=null; }
     else if(inBoxW(G.state.checkpoint.x,G.state.checkpoint.z)){ const st=G.world.landmarks.start||{x:164,y:42,z:-4,yaw:PI/2}; G.state.checkpoint.set(st.x,st.y,st.z); G.state.checkpointYaw=st.yaw||0; G.state.checkpointName='the lighthouse'; } }
   P.teleport(dest.x,dest.y,dest.z,yaw);
@@ -859,6 +877,16 @@ function doTeleport(dir,roomId){
   setInside(dir==='in');
   G.atmo.dark=G.atmo.darkTarget=dir==='in'?1:0;
   S.lastDry.copy(P.pos);
+}
+
+/* ---------- checkpoints: dying deep in the cave puts you back at the deepest room reached, not at the mouth ---------- */
+const CP_ORDER=['mouth','gallery','stair','channel','drafts','arena'];
+const CP_AT={gallery:[0,3,-28,PI,'the Gallery of Keepers'],stair:[-3,1,-50.5,PI,'the Flooding Stair'],channel:[-6,.8,-82,PI/2,'the head of the Channel'],
+  drafts:[52,4,-86.5,PI/2,'the sluice'],arena:[60,3,-41,0,'the Undertow’s door']};
+function advanceCheckpoint(r){
+  if(!S.inside||!CP_AT[r]||!G.state||!G.state.checkpoint)return;
+  const cur=room(G.state.checkpoint)||'mouth'; if(CP_ORDER.indexOf(r)<=CP_ORDER.indexOf(cur))return;
+  const c=CP_AT[r], f=zoneFloor(c[0],c[2],c[1]+1); G.state.checkpoint.copy(toWorld(c[0],f==null?c[1]:f,c[2])); G.state.checkpointYaw=c[3]; G.state.checkpointName=c[4];
 }
 
 /* ================================================================ 9. INSIDE / OUTSIDE */
@@ -877,11 +905,22 @@ function setInside(v){
   if(v===S.inside)return;
   S.inside=v; cave.inside=v; G.interior=v?INTERIOR:null;
   caveRoot.visible=v; hideIsland(v);
+  // the sun is off underground: stop re-rendering its shadow map (~150 draw calls a frame); the stale map is multiplied by a 0-intensity light
+  if(G.renderer&&G.renderer.shadowMap){ G.renderer.shadowMap.autoUpdate=!v; if(!v)G.renderer.shadowMap.needsUpdate=true; }
   if(v){ S.room=room(G.player.pos)||'mouth'; G.emit('cave:enter',{room:S.room}); }
   else{ S.room=null; G.emit('cave:exit',{}); }
 }
 
 /* ================================================================ 10. DEEP WATER, TIDE WASH, CEILING */
+/** is cave-local (x,z) open, dry footing at water level w? */
+function dryAt(x,z,w){ const f=zoneFloor(x,z,50); return f!=null&&Sphys(x,z,f)<-.5&&w-f<.7&&!(inSump(x,z)&&w-f>-.1); }
+function findDry(x,z,w){
+  const r0=room(toWorld(x,0,z));
+  for(let r=1;r<=16;r+=.75) for(let k=0;k<16;k++){ const a=k/16*TAU, px=x+Math.cos(a)*r, pz=z+Math.sin(a)*r;
+    if(dryAt(px,pz,w)&&room(toWorld(px,0,pz))===r0){ const f=zoneFloor(px,pz,50); return toWorld(px,f,pz); } }
+  const s=ROOMDEF[r0]&&ROOMDEF[r0].spawn; if(s){ const f=zoneFloor(s[0],s[2],50); return toWorld(s[0],f==null?(s[1]||0):f,s[2]); }
+  return null;
+}
 function updatePlayerWater(dt){
   const P=G.player; if(!P||!P.pos||!P.alive||S.trans)return;
   const lx=P.pos.x-O.x, lz=P.pos.z-O.z, ly=P.pos.y-O.y, w=water();
@@ -900,6 +939,8 @@ function updatePlayerWater(dt){
   S.pushT+=dt; if(S.pushT<.18)return; S.pushT=0;
   const hurt=S.room!=='mouth';
   G.emit('cave:splash',{pos:P.pos.clone(),deep:true});
+  // the rising tide can drown the last dry footing itself (the stair shore): find higher ground nearby, else the room's way in
+  if(!dryAt(S.lastDry.x-O.x,S.lastDry.z-O.z,w)){ const d=findDry(lx,lz,w); if(d)S.lastDry.copy(d); }
   P.teleport(S.lastDry.x,S.lastDry.y,S.lastDry.z,P.heading);
   if(hurt&&P.hurt)P.hurt({damage:1,kind:'fall',dir:new THREE.Vector3(),knockback:0,ignoreIframes:true});
 }
@@ -963,11 +1004,15 @@ G.system('cave',{order:13,modes:'always',
     if(mouthRoot.visible) updateIslandMouth(dt);
     if(!S.inside)return;
     // darkness: lit rooms keep a little ambient
-    const r=room(P.pos)||S.room; if(r&&r!==S.room){ S.room=r; G.emit('cave:room',{id:r}); }
+    const r=room(P.pos)||S.room; if(r&&r!==S.room){ S.room=r; G.emit('cave:room',{id:r}); advanceCheckpoint(r); }
     const lit=S.room&&S.lit.has(S.room);
     if(mode!=='title') G.atmo.darkTarget=lit?.55:1;
     G.lights.sun.intensity=0;
-    if(lit){ G.lights.hemi.color.lerp(C('#8a6fc4'),.6); }
+    // underground the air is sea-dark, not dusk: blue-black fog (deep sea-blue once a room is lit), cool ambient; the veins stay violet
+    { const k=clamp((1-G.atmo.dark)/.45,0,1), fog=G.scene.fog;
+      if(fog){ fog.color.copy(CAVE_FOG0).lerp(CAVE_FOG1,k); if(G.scene.background&&G.scene.background.isColor)G.scene.background.copy(fog.color); }
+      G.lights.hemi.color.lerp(CAVE_SKY,.75); G.lights.hemi.groundColor.lerp(CAVE_GND,.75); }
+    if(lit){ G.lights.hemi.color.lerp(CAVE_LIT,.35); }
     const w=water(); tUni.uWater.value=w;
     if(waterMat){ const u=waterMat.uniforms; u.uWater.value=w; VIS.water.position.y=w;
       const L=G.items.lantern, lp=L.carried?(L.world.lengthSq()>0?L.world:P.pos):L.pos; u.uLamp.value.copy(lp); u.uLampI.value=(L.found&&L.lit())?2.2:0;

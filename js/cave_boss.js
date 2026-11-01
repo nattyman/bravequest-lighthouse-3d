@@ -90,7 +90,7 @@ function pickSpot(room,taken){
     let x,z;
     if(b&&b.min&&b.max){ x=U.lerp(b.min.x+2,b.max.x-2,rnd()); z=U.lerp(b.min.z+2,b.max.z-2,rnd()); }
     else{ const a=rnd()*TAU, d=Math.sqrt(rnd())*(LOCAL[room]?LOCAL[room].r*.75:8); x=c.x+Math.cos(a)*d; z=c.z+Math.sin(a)*d; }
-    const y=floorAt(x,z,c.y+3); if(y<c.y-3.5||y>c.y+3)continue;
+    const y=floorAt(x,z,c.y+3); if(y<c.y-3.5||y>c.y+(room==='stair'?1.2:3))continue; // (not up on the stair's ledge: unreachable at low water)
     if(G.world.walkable&&!G.world.walkable(x,z))continue;
     if(roomOf(V(x,y+.5,z))!==room&&k<30)continue;
     if(P&&Math.hypot(P.x-x,P.z-z)<(k<25?9:5))continue;
@@ -134,7 +134,8 @@ function updateRooms(dt){
   const P=G.player; if(!P||!P.pos)return;
   const id=roomOf(P.pos); curRoom=id;
   if(id&&PACKS[id]&&!spawned.has(id)&&isPlay())spawnPack(id);
-  for(let i=mine.length-1;i>=0;i--) if(!mine[i].alive)mine.splice(i,1);
+  for(let i=mine.length-1;i>=0;i--){ const m=mine[i]; if(!m.alive){ mine.splice(i,1); continue; }
+    if(m.pos.y<origin().y-12&&G.monsters.despawn){ G.monsters.despawn(m); mine.splice(i,1); } } // fell out of the cave (off a ledge into nothing)
 }
 
 /* =====================================================================
@@ -402,12 +403,15 @@ function hitBody(i,info){
   if(B.state==='sunk'||B.state==='dying'||B.state==='dead')return;
   if(info.kind==='swarm'){ return; }           // the moths only show it; they can't hurt it
   if(info.source&&info.source.undertow)return;
+  // one swing sweeps through several of the 16 body hurtboxes at once: it lands once (the core keeps its own rule)
+  if(G.time-(B.lastHitT||-9)<.3&&info.kind===B.lastHitKind)return;
   const pos=samples[i];
   if(sampW[i]<.28||B.vis<.5){                   // nothing there to hit: the staff passes through the black like water
     const I=INK(); I&&I.burst(V(pos.x,Math.min(pos.y,floorY+1.2),pos.z),{n:6,speed:1.5,size:[.3,.8],life:[.3,.7],up:.5,embers:0,drops:3,color:'#0b0a10'});
     if(B.vis<.5)later(.4,()=>say('through','The staff goes through the dark like it’s water. There is something there — you felt it give — but you can’t strike what you can’t see.'));
     return;
   }
+  B.lastHitT=G.time; B.lastHitKind=info.kind;
   damage(info.damage||1,info,false,pos);
   if(i>=10){ const ar=arms[(i-10)/3|0]; ar.hit=1; }
   if(B.state==='dragWind'&&i<4){ B.drag=0; setB('recover'); later(.2,()=>say('dragSaved','You strike at the coils dragging them down and they let go. The moths spill back up into the dark.')); }
@@ -572,6 +576,7 @@ function onDefeated(restored){
   G.emit('monster:killed',{kind:'undertow',pos:V(A.x,floorY,A.z),boss:true});
   try{ G.cave&&G.cave.collapseWall&&G.cave.collapseWall(); }catch(e){console.error('collapseWall',e);}
   later(1.2,()=>{ G.ui.say('The black lets go of it all at once. What it was holding rises out of the pool — a piece of a keeper’s lens, still warm, still turning toward a light that isn’t there.'); G.ui.toast&&G.ui.toast('The Undertow','The lens is free'); });
+  later(2.6,()=>{ try{ G.cave&&G.cave.lightRoom&&G.cave.lightRoom('arena'); }catch(e){console.error('arena light',e);} }); // the lens rises and the arena's veins catch its light
   later(5.5,()=>{ try{ G.moths&&G.moths.jar&&G.moths.jar.give&&G.moths.jar.give(); }catch(e){console.error('jar',e);} showPage(3,false); });
   B.woundBeat=true;
   if(!(G.cave&&G.cave.collapseWall))later(9,()=>G.emit('cave:wound',{pos:anchor('arena','wound',[60,-6,8])}));
@@ -673,12 +678,14 @@ function buildPage(n){
   const y=floorAt(pos.x,pos.z,pos.y+1.5); if(y>-1e8&&Math.abs(y-pos.y)<2.5)pos.y=y;
   const g=new THREE.Group(); g.position.copy(pos); g.rotation.y=rnd()*TAU;
   const tex=pageTex();
-  const geo=new THREE.PlaneGeometry(.34,.44,4,4).rotateX(-PI/2); { const p=geo.attributes.position; for(let i=0;i<p.count;i++)p.setY(i,.02*Math.sin(p.getX(i)*9)+.015*p.getZ(i)*p.getZ(i)*20); geo.computeVertexNormals(); }
-  const paper=new THREE.Mesh(geo,new THREE.MeshToonMaterial({map:tex,color:0xffffff,emissive:U.col('#3a2c1a'),emissiveIntensity:.5,side:THREE.DoubleSide,transparent:true}));
-  paper.position.y=.04; paper.rotation.y=.2; g.add(paper);
-  const stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.09,0),G.toon('#5d5a63')); stone.scale.set(1,.6,1); stone.position.set(.08,.07,-.12); g.add(stone);
+  // a curled page propped against a stone, tilted up so it reads from the follow camera (flat on the floor it was a white tile)
+  const geo=new THREE.PlaneGeometry(.42,.54,4,4).rotateX(-PI/2); { const p=geo.attributes.position; for(let i=0;i<p.count;i++)p.setY(i,.025*Math.sin(p.getX(i)*9)+.02*p.getZ(i)*p.getZ(i)*20); geo.computeVertexNormals(); }
+  const paper=new THREE.Mesh(geo,new THREE.MeshToonMaterial({map:tex,color:0xffffff,emissive:U.col('#3a2c1a'),emissiveIntensity:.6,side:THREE.DoubleSide,transparent:true}));
+  paper.position.set(0,.16,.02); paper.rotation.set(.62,.2,0,'YXZ'); g.add(paper);
+  const stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.17,0),G.toon('#5d5a63')); stone.scale.set(1.3,.75,1); stone.position.set(-.04,.1,-.26); g.add(stone);
+  if(G.outline)G.outline(stone,{thickness:.012});
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#e3b46a'),transparent:true,opacity:.28,depthWrite:false,blending:THREE.AdditiveBlending}));
-  glow.scale.setScalar(1.1); glow.position.y=.2; g.add(glow);
+  glow.scale.setScalar(1.5); glow.position.y=.3; g.add(glow);
   G.scene.add(g);
   const o={n,g,pos,paper,glow,shown:n!==3,fade:n!==3?1:0};
   g.visible=o.shown;
@@ -696,7 +703,7 @@ function readPage(n){
 function updatePages(dt){
   if(!inCave())return;
   for(const n of [1,2,3]){ const o=buildPage(n); if(!o.shown)continue;
-    o.fade=Math.min(1,o.fade+dt*.6); o.paper.material.opacity=o.fade; o.glow.material.opacity=(.18+.1*Math.sin(G.time*1.7+n))*o.fade*(S.pages[n]?.6:1); }
+    o.fade=Math.min(1,o.fade+dt*.6); o.paper.material.opacity=o.fade; o.glow.material.opacity=(.26+.12*Math.sin(G.time*1.7+n))*o.fade*(S.pages[n]?.5:1); }
 }
 
 /* =====================================================================
@@ -742,6 +749,61 @@ function setupHalloran(){
       if(!S.discovered)later(5,()=>discover('halloran')); }});
 }
 
+/* ---- the objective while underground: one line per room, the marker only ever points inside the cave ---- */
+let objT=0, objKey='';
+function caveGoal(room){
+  const cp=G.cavePuzzles||{}, open=id=>!!(cp.open&&cp.open(id)), lit=id=>isLit(id), L=lantern();
+  const sw=(G.moths&&G.moths.swarm)||0, baited=!!(G.moths&&G.moths.baited), a=(r,k)=>anchor(r,k,null);
+  const T='The Drowned Keepers’ Cave';
+  if(S.defeated){
+    if(room==='arena'&&!(G.moths&&G.moths.jar&&G.moths.jar.owned))return [T,'The lens is free — something waits on the pedestal',null];
+    return [T,'The way out: the shortcut tunnel from the Undertow, then the mouth',room==='arena'?a('arena','exit'):null,'Shortcut'];
+  }
+  switch(room){
+    case 'mouth':
+      if(!lit('mouth'))return [T,'Wake the ether vein in the wall — the old ether in it still answers a light',a('mouth','vein'),'Ether vein'];
+      return [T,'Go deeper, into the Gallery of Keepers',roomCentre('gallery'),'Gallery'];
+    case 'gallery':
+      if(!open('gallery')){
+        if(!baited&&sw<20)return ['The Gallery Seal','Bait the lantern — the cave moths on the roost will follow it',a('gallery','roost'),'Moth roost'];
+        if(sw<20)return ['The Gallery Seal','Gather moths at the roost: '+sw+' of 20',a('gallery','roost'),'Moth roost'];
+        return ['The Gallery Seal','Bring the swarm to the black plug — '+sw+' moths (20 needed)',a('gallery','seal'),'Seal'];
+      }
+      return [T,'Down the passage to the Flooding Stair',null];
+    case 'stair':
+      return ['The Flooding Stair',(G.cave&&G.cave.lowPassageOpen&&G.cave.lowPassageOpen())?'Low water — the passage under the left wall is open':
+        (waterY()-origin().y>.9?'High water — the floating crates reach the ledge on the right':'The tide decides the way: low water opens the passage below, high water floats the crates'),null];
+    case 'channel':{
+      const r=cp.raft||{};
+      if(!open('channel')){
+        if(r.state==='arrived')return ['The Sluice Seal','The raft is at the gate — keep the swarm feeding',a('channel','seal'),'Sluice seal'];
+        if(r.lantern)return ['The Channel','Guard the raft from the walkway above — the turning tide carries it to the sluice',null];
+        if(!(L&&L.carried))return ['The Channel','Pick your lantern up again',null];
+        if(!baited)return ['The Channel','Bait the lantern, then set it on the raft',a('channel','jetty'),'Raft'];
+        return ['The Channel','Set the baited lantern on the raft — the swarm will ride it to the sluice',a('channel','jetty'),'Raft'];
+      }
+      if(r.lantern&&!(L&&L.carried))return ['The Channel','Hook the lantern back off the raft from the walkway',null];
+      return [T,'The sluice is open — on, past the gate at the end of the walkway',a('channel','gate'),'Sluice gate'];
+    }
+    case 'drafts':
+      if(!open('arena'))return ['The Hall of Drafts','Shut the lantern before each gust (the swarm clings tight), then feed the door seal — '+((cp.seals&&cp.seals.arena&&cp.seals.arena.needs)||20)+' moths',a('arena','door'),'Door seal'];
+      return ['The Hall of Drafts','On through the door',null];
+    case 'arena':
+      if(B.state!=='sunk'&&B.state!=='dead')return ['The Undertow',wantDark()?'Strike where the moths settle · it overreaches — hit the lens':'Shut the lantern — let the moths show it to you',null];
+      return ['The Undertow','Something waits in the pool',null];
+  }
+  return [T,'',null];
+}
+function updateObjective(dt){
+  if(!inCave()||!G.quest){ objKey=''; return; }
+  objT-=dt; if(objT>0)return; objT=.5;
+  const room=roomOf(G.player.pos)||curRoom||'mouth'; let g;
+  try{ g=caveGoal(room); }catch(e){ g=['The Drowned Keepers’ Cave','',null]; }
+  const key=room+'|'+g[0]+'|'+g[1]+'|'+(g[2]?Math.round(g[2].x)+','+Math.round(g[2].z):'');
+  if(key===objKey&&/^cave:/.test(G.quest.step||''))return; objKey=key;
+  G.quest.set('cave:'+room,g[0],g[1],g[2]?g[2].clone().add(V(0,.5,0)):null,g[2]?(g[3]||''):'');
+}
+
 /* =====================================================================
    5. SAVE / LOAD, SYSTEM, API
    ===================================================================== */
@@ -770,13 +832,14 @@ G.system('caveBoss',{order:42,modes:['play','dead'],
       if(inCave()&&isPlay())updateRaftRaiders(dt);
       updatePages(dt);
       updateBoss(dt);
+      updateObjective(dt);
     }catch(e){ if(!this._err){console.error('caveBoss',e);this._err=1;} }
   }
 });
 
 G.caveBoss={
   get state(){return B.state;}, get hp(){return B.hp;}, maxHp:UT.hp, get defeated(){return S.defeated;}, get discovered(){return S.discovered;},
-  get pages(){return Object.keys(S.pages).map(Number);}, get room(){return curRoom;}, get moths(){return utMoths.length;},
+  get pages(){return Object.keys(S.pages).map(Number);}, get entered(){return S.entered;}, get room(){return curRoom;}, get moths(){return utMoths.length;},
   undertow:B, params:UT, discover:src=>discover(src||'tide'), readPage, monsters:mine,
   debug:G.debug?{save,load,S,B,
     kill:()=>{ if(!B.built)buildUndertow(); if(B.state==='sunk')startFight(); B.rise=1; B.hp=0; startDying(); },

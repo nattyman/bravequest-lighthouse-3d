@@ -722,7 +722,8 @@ function buildJar(){
 }
 function jarMoths(){ const o=[]; for(const m of mothList()) if(m.tgt==='jar')o.push(m); return o; }
 function nearSwarm(r){ const P=G.player; if(!P||!P.pos)return []; const o=[];
-  for(const m of mothList()) if((m.tgt==='lantern'||m.tgt==='hunt'||m.tgt==='satchel')&&m.p.distanceToSquared(P.pos)<r*r)o.push(m); return o; }
+  // the swarm proper (not the few moths nosing at the ichor in the satchel: they'd make "Release" unreachable while you carry ichor)
+  for(const m of mothList()) if((m.tgt==='lantern'||m.tgt==='hunt')&&m.p.distanceToSquared(P.pos)<r*r)o.push(m); return o; }
 const JAR={capacity:JAR_CAP, owned:false,
   get count(){ return jarCount; },
   get freedLeft(){ return S.jarLeft; },
@@ -830,7 +831,7 @@ G.system('moths',{order:32,modes:'always',
       updateSpring(dt);
       updateJar(dt);
       if(lostKill>0){ G.emit('moths:lost',{n:lostKill,pos:lostKillPos.clone()}); lostKill=0; }
-      let n=0; for(const m of mothList()) if(m.tgt==='lantern')n++; API.swarm=n;
+      let n=0; for(const m of mothList()) if(m.tgt==='lantern'||m.tgt==='hunt')n++; API.swarm=n; // hunting moths (e.g. on the Undertow) are still the player's swarm
       updateHud(dt);
     }catch(e){ console.error('moths',e); }
   }

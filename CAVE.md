@@ -47,7 +47,7 @@ Floating things (crates, the raft) ride the surface.
   light, a few point lights max per room) and stays lit after reloading. Lit rooms make enemies easier to see and calm the
   music. Dark rooms are navigable by lantern only.
 - **Seals**: corruption plugs (use `G.negMaterial`, `G.ink`) that need N moths feeding for T s (gallery 20 moths/6 s, channel
-  25/8 s, arena door 30/8 s). Reuse/extend the blight feeding logic from moths.js (don't duplicate it badly).
+  20/8 s, arena door 20/8 s — were 25 and 30: out of reach with only the roost's 40 after the losses on the way). Reuse/extend the blight feeding logic from moths.js (don't duplicate it badly).
 - **Cave-moth roost** (`gallery`): ~40 pale cave moths that a baited lantern can recruit, so the dungeon works even if the
   player arrives without a swarm. Ichor for bait comes from cave monsters.
 - **Floating crates** (`stair`): 2–3 crates ride the water; at high tide they lift the player to the upper ledge.

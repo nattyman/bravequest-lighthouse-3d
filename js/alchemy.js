@@ -319,6 +319,7 @@ function onLowTide(){
   if(!looping())return;
   spawnHarvest();
   G.emit('tide:low',{});
+  if(G.cave&&G.cave.inside)return; // underground: no word of the south beach (the harvest is there when you come out)
   if(!S.firsts.lowtide){ S.firsts.lowtide=1; G.ui.say('The sea draws back… something glows on the wet sand.'); override('Low tide — something glows on the south beach',beachPos(),'South beach',30); }
   else{ bigToast('Low tide','The south beach is uncovered'); override('Low tide — the south beach is uncovered',beachPos(),'South beach',18); }
 }
@@ -719,7 +720,12 @@ function updateChain(dt){
   chainT-=dt; if(chainT>0)return; chainT=.5;
   // another module (e.g. moths.js at a blight) set its own objective: let it stand ~20 s, then take the chain back
   const qs=G.quest&&G.quest.step;
-  if(myStep&&qs&&qs!==myStep&&qs!=='done'&&!/^loop-/.test(qs)){ if(foreignAt<0)foreignAt=G.time; if(G.time-foreignAt<20)return; }
+  // the sea cave (cave_boss.js): its objective owns the HUD while the player is inside, and the discovery quest
+  // ('cave') stands until the cave has been entered once; after that the chain takes the marker straight back
+  const caveStep=/^cave/.test(qs||''), CB=G.caveBoss;
+  if((G.cave&&G.cave.inside)||(caveStep&&qs==='cave'&&CB&&!CB.entered)){ foreignAt=-1; return; }
+  if(caveStep)foreignAt=G.time-99;
+  else if(myStep&&qs&&qs!==myStep&&qs!=='done'&&!/^loop-/.test(qs)){ if(foreignAt<0)foreignAt=G.time; if(G.time-foreignAt<20)return; }
   foreignAt=-1;
   const vials=G.inv.count('vial'), caps=G.inv.count('glowcap');
   if(ov&&G.time>ov.until)ov=null;
@@ -783,7 +789,7 @@ function onKilled(e){
 function onLoopStart(e){
   A.learn('tincture',{silent:true});
   for(const p of pages)p.mesh.visible=!p.found&&!A.known.has(p.id);
-  if(!(e&&e.restored)){
+  if(!(e&&e.restored)&&!(G.cave&&G.cave.inside)){
     setTimeout(()=>G.ui.say('The beam holds the fog back, but only so far. Already the light is dimming, and the lamp will need feeding. The keeper’s glowcaps, and the alchemy table in the shed…'),900);
   }
   chainNow();
