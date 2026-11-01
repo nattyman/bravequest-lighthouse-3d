@@ -250,6 +250,16 @@ canvas.addEventListener('touchmove',e=>{for(const t of e.changedTouches){
 const endTouch=e=>{for(const t of e.changedTouches){if(t.identifier===joy.id){joy.on=false;joy.id=null;joy.x=joy.y=0;}if(t.identifier===look.id)look.id=null;}};
 canvas.addEventListener('touchend',endTouch); canvas.addEventListener('touchcancel',endTouch);
 
+/* ---------- control settings (pause menu), persisted as JSON in localStorage 'bq-controls' ---------- */
+G.settings=G.settings||{};
+G.settings.invertY=false;
+try{ const c=JSON.parse(localStorage.getItem('bq-controls')||'{}'); if(c&&typeof c.invertY==='boolean')G.settings.invertY=c.invertY; }catch(_){}
+G.setInvertY=(on)=>{
+  G.settings.invertY=!!on;
+  try{localStorage.setItem('bq-controls',JSON.stringify({invertY:G.settings.invertY}));}catch(_){}
+  if(G.emit)G.emit('settings',{invertY:G.settings.invertY});
+};
+
 /* ---------- gamepad (standard mapping — Xbox Wireless Controller over Bluetooth etc.) ----------
    Polled once at the start of every frame (rAF loop and G.step). Buttons feed the same
    pressed/held/released sets as keys; sticks feed move() and look(). While a menu/card is up,
@@ -258,7 +268,7 @@ canvas.addEventListener('touchend',endTouch); canvas.addEventListener('touchcanc
 const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'pause',9:'pause',10:'sprint',11:'lock'};
 /* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
    so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
-const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,invertY:false,trigger:.5,navDelay:.38,navRepeat:.14};
+const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,trigger:.5,navDelay:.38,navRepeat:.14};
 const pad={connected:false,id:'',blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0};
 try{ const fp=document.featurePolicy||document.permissionsPolicy; if(fp&&fp.allowsFeature)pad.policy=!!fp.allowsFeature('gamepad'); }catch(_){}
 let device=isMobile?'touch':'keyboard';
@@ -385,7 +395,7 @@ function pollPad(dt){
       for(let i=0;i<btn.length;i++){ if(!btn[i]){pad.sup[i]=false;continue;} if(!pad.sup[i]&&PAD_BTN[i])acts.add(PAD_BTN[i]); }
       padActs(acts);
       pad.mx=mx; pad.my=my; pad.mmag=mm;
-      lookX+=rx*PAD.lookX*dt; lookY+=(PAD.invertY?-ry:ry)*PAD.lookY*dt;
+      lookX+=rx*PAD.lookX*dt; lookY+=ry*PAD.lookY*dt;
       pad.navDir='';
     }
     pad.prev=btn;
@@ -418,8 +428,12 @@ G.input={
   },
   /** called by the frame loop / G.step before systems update */
   poll(dt){ pollPad(dt||0); },
-  /** mouse / touch look in pixels since last frame */
-  look(){ return {x:lookX,y:lookY}; },
+  /** mouse / touch / right-stick look in pixels since last frame (+y = look down unless inverted).
+      Invert is applied here, once, so every source respects G.settings.invertY. */
+  look(){ return {x:lookX,y:G.settings.invertY?-lookY:lookY}; },
+  /** "old school" flight-stick look: mouse/stick up tilts the camera down. Persisted in localStorage 'bq-controls'. */
+  get invertY(){return G.settings.invertY;},
+  set invertY(v){G.setInvertY(v);},
   wheel:0,
   /** virtual buttons for touch UI: G.input.setVirtual('attack', true|false) */
   setVirtual(a,on){ if(on){ if(!vheld.has(a))vpressed.add(a); vheld.add(a);} else vheld.delete(a); },

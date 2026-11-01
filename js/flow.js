@@ -231,7 +231,8 @@ function rise(){
 }
 let wasLocked=false, pausedAt=0;
 function pause(){ if(G.state.mode!=='play')return; pausedAt=performance.now(); G.setMode('paused'); G.input.unlockPointer(); $('pause').hidden=false; $('saveNote').textContent=''; syncQuality(); $('resume').focus(); }
-function syncQuality(){ document.querySelectorAll('#qualitySeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===G.quality.level))); }
+function syncQuality(){ document.querySelectorAll('#qualitySeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===G.quality.level)));
+  document.querySelectorAll('#invertSeg button').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.invert==='1')===!!G.settings.invertY))); }
 function resume(){ $('pause').hidden=true; G.setMode('play'); G.input.lockPointer(); }
 document.addEventListener('pointerlockchange',()=>{
   const locked=document.pointerLockElement!=null;
@@ -254,6 +255,7 @@ G.system('flow',{order:60,modes:'always',
     $('saveBtn').addEventListener('click',()=>{ $('saveNote').textContent=writeSave()?'Saved. You can close the game and pick up here later.':'Couldn’t save: this browser is blocking storage.'; });
     $('quitBtn').addEventListener('click',()=>{ writeSave(); location.reload(); });
     document.querySelectorAll('#qualitySeg button').forEach(b=>b.addEventListener('click',()=>{ G.setQuality(b.dataset.q); syncQuality(); }));
+    document.querySelectorAll('#invertSeg button').forEach(b=>b.addEventListener('click',()=>{ G.setInvertY(b.dataset.invert==='1'); syncQuality(); }));
     G.on('mode',e=>{ $('pauseBtn').hidden=!(e.mode==='play'||e.mode==='paused'); });
     document.addEventListener('visibilitychange',()=>{ if(document.hidden&&G.state.mode==='play'){ writeSave(); pause(); } });
     G.on('cloak:found',onCloak);

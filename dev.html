@@ -255,6 +255,10 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <div class="seg" id="qualitySeg" role="group" aria-label="Graphics quality">
         <button type="button" data-q="saver">Battery saver</button><button type="button" data-q="balanced">Balanced</button><button type="button" data-q="high">High</button>
       </div><small id="qualityNote">Battery saver caps the game at 30 fps and turns off shadows and glow, so laptops stay cool.</small></div>
+    <div class="setting"><span id="invertLbl">Invert camera up/down</span>
+      <div class="seg" id="invertSeg" role="group" aria-labelledby="invertLbl">
+        <button type="button" data-invert="0">Normal</button><button type="button" data-invert="1">Inverted</button>
+      </div><small>Inverted: pushing the mouse or right stick up tilts the camera down, flight-stick style.</small></div>
     <div class="actions"><button class="btn" id="resume" type="button">Resume</button><button class="btn ghost" id="saveBtn" type="button">Save game</button><button class="btn ghost" id="quitBtn" type="button">Save and quit</button></div>
     <p class="savenote" id="saveNote"></p>
   </div>
