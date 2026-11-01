@@ -106,16 +106,60 @@ function updateWorldUI(dt){
 /* ---------- prompts ---------- */
 const promptEl=$('prompt'); let lastPrompt='';
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
+/* controller glyphs: Xbox face buttons as coloured badges, bumpers/triggers/menu as dark pills */
+const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X'};
+function glyph(n){
+  const face={A:'a',B:'b',X:'x',Y:'y'}[n];
+  if(face)return `<span class="pad pad-${face}" role="img" aria-label="${n} button">${n}</span>`;
+  if(n==='LS'||n==='RS')return `<span class="pad pad-stick" role="img" aria-label="${n==='LS'?'Left':'Right'} stick">${n[0]}</span>`;
+  if(n==='Menu')return `<span class="pad pad-pill" role="img" aria-label="Menu button">&#9776;</span>`;
+  return `<span class="pad pad-pill" role="img" aria-label="${n}">${esc(n)}</span>`;
+}
+G.ui.glyph=glyph;
+const usingPad=()=>G.input.device==='gamepad';
+function keyCap(k,isInteract){
+  if(usingPad()){ const g=isInteract?'Y':PAD_OF_KEY[k]; if(g)return glyph(g); }
+  return k?`<kbd>${esc(k)}</kbd>`:'';
+}
 function updatePrompt(){
   let html='';
   if(G.state.mode==='play'){
     const rows=[]; const c=G.interact.current;
-    if(c)rows.push([G.isMobile?'Use':(c.key||'E'),G.interact.label(c)]);
-    for(const h of G.hints){ if(!rows.some(r=>r[1]===h.label))rows.push([h.key,h.label]); }
-    html=rows.slice(0,3).map(r=>`<div>${r[0]?`<kbd>${esc(r[0])}</kbd>`:''}${esc(r[1])}</div>`).join('');
+    if(c)rows.push([G.isMobile&&!usingPad()?'Use':(c.key||'E'),G.interact.label(c),true]);
+    for(const h of G.hints){ if(!rows.some(r=>r[1]===h.label))rows.push([h.key,h.label,false]); }
+    html=rows.slice(0,3).map(r=>`<div>${keyCap(r[0],r[2])}${esc(r[1])}</div>`).join('');
   }
   if(html!==lastPrompt){promptEl.innerHTML=html;lastPrompt=html;}
 }
+
+/* ---------- controller legend + notices ---------- */
+const keysEl=$('keys'), keysHTML=keysEl?keysEl.innerHTML:'';
+const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Menu','pause']];
+const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(t)}</span>`).join('');
+const BLOCKED_MSG='Your browser blocked controller access in this view. Open the game on its own page, or run the local copy.';
+let keysFade=0, padHint=false;
+function refreshPadUI(){
+  const st=G.input.gamepad, pad=usingPad();
+  if(keysEl){ const want=pad?padRows():keysHTML; if(keysEl.dataset.mode!==(pad?'pad':'kb')){ keysEl.innerHTML=want; keysEl.dataset.mode=pad?'pad':'kb'; keysFade=0; } }
+  document.querySelectorAll('[data-pad-legend]').forEach(el=>{
+    if(!el.dataset.filled){ el.innerHTML=`<span class="eyebrow">Controller supported</span><div class="controls">${padRows()}</div>`; el.dataset.filled='1'; }
+    el.hidden=!st.connected;
+  });
+  document.querySelectorAll('[data-kb-legend]').forEach(el=>{ el.hidden=pad&&st.connected; });
+  const note=$('padNote');
+  if(note){
+    if(st.blocked){ note.hidden=false; note.classList.add('warn'); note.textContent=BLOCKED_MSG; }
+    else if(!st.connected&&!G.isMobile){ note.hidden=false; note.classList.remove('warn'); note.textContent='Using a controller? Press any button.'; }
+    else note.hidden=true;
+  }
+  lastPrompt='';
+}
+G.on('input:device',refreshPadUI);
+G.on('input:pad',refreshPadUI);
+G.on('input:padblocked',()=>{ refreshPadUI();
+  // one-time notice for players already past the title card
+  if(!padHint&&G.state.mode!=='title'){ padHint=true; G.ui.toast('Controller unavailable','Open the game on its own page'); toastT=6; } });
+refreshPadUI();
 
 /* ---------- touch buttons ---------- */
 document.querySelectorAll('#touch button').forEach(b=>{
@@ -146,12 +190,11 @@ if(cv){
 /* ---------- events ---------- */
 G.on('player:hurt',e=>{G.ui.flash();G.ui.shake(.35);});
 G.on('staff:pickup',()=>{$('staffChip').hidden=false;});
-let keysFade=0;
 
 G.system('hud',{order:90,modes:'always',
   update(dt){
     updateCaption(dt);
-    if(toastT>0){toastT-=dt; if(toastT<=0)toastEl.classList.remove('show');}
+    if(toastT>0){toastT-=(dt||G.dt||0); if(toastT<=0)toastEl.classList.remove('show');}
     if(G.state.mode!=='play'&&stickId!==null){stickId=null;stick.classList.remove('on');}
     if(G.state.mode==='title')return;
     updateHearts(); updateWorldUI(dt); updatePrompt();

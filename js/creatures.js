@@ -239,7 +239,11 @@ function lanternPos(){
   if(L&&L.found){ if(L.world&&L.world.lengthSq()>0)return L.world; return L.pos; }
   const s=lmPoint('lanternSpot',{x:-160,z:9}); _lp.set(s.x,s.y+.35,s.z); return _lp;
 }
-const _lp=V();
+const _lp=V(), _sp=V();
+function satchelPos(){ const P=G.player; if(!P||!P.pos)return lanternPos(); const h=P.heading||0; // left hip, slightly behind
+  return _sp.set(P.pos.x+Math.cos(h)*.28-Math.sin(h)*.18,P.pos.y+1.05,P.pos.z-Math.sin(h)*.28-Math.cos(h)*.18); }
+/* the core loop (moths.js): after the cure a *baited* lit lantern recruits again */
+const baited=()=>!!(G.moths&&G.moths.baited);
 function mothTarget(m,t,o){
   const g=lhGeo();
   let c;
@@ -254,6 +258,9 @@ function mothTarget(m,t,o){
     case 'lantern': case 'spot': c=lanternPos(); break;
     case 'hunt': c=m.prey?m.prey.center:lanternPos(); break;
     case 'lamp': c=getLH().lampCenter; break;
+    case 'satchel': c=satchelPos(); break;                       // loop: drawn to the ichor in the player's satchel
+    case 'feed': if(m.feedC)return o.set(m.feedC.x+Math.cos(m.ph+t*m.sp*.35)*m.rad,m.feedC.y+Math.sin(t*2.1+m.ph)*.18,m.feedC.z+Math.sin(m.ph+t*m.sp*.35)*m.rad); c=lanternPos(); break;
+    case 'gone': return o.copy(m.p);
     case 'wander':
       if(!m.home){const p=patches.length?patches[m.idx%patches.length]:{x:0,z:0};const a=rnd()*TAU,r=8+rnd()*22;const x=p.x+Math.cos(a)*r,z=p.z+Math.sin(a)*r;m.home=V(x,H(x,z)+2.2,z);}
       c=m.home; break;
@@ -301,7 +308,7 @@ function wallClamp(m,px,pz,py,g){
   }
 }
 function toLanternOrHome(m){
-  if(!cured){m.tgt='lantern';m.rad=.35+rnd()*1.4;m.prey=null;}
+  if(!cured||baited()){m.tgt='lantern';m.rad=.35+rnd()*1.4;m.prey=null;}
   else toPatch(m);
 }
 function toPatch(m){m.tgt=patches.length?'patch':'wander';m.idx=(rnd()*Math.max(1,patches.length))|0;m.rad=.6+rnd()*1.6;m.prey=null;m.home=null;}
@@ -342,12 +349,16 @@ function updateMoths(dt){
   let lc=0;
   // glass distribution follows the corruption as it moves
   glassT-=dt; if(glassT<=0){glassT=6; assignGlass(false);}
-  const canRecruit=play&&!cured&&L&&L.found&&!L.inCradle;
+  const bait=cured&&baited()&&L&&L.lit&&L.lit();
+  const canRecruit=play&&(!cured||bait)&&L&&L.found&&!L.inCradle, recR2=bait?144:81;
+  const loopOn=!!(G.loop&&G.loop.active);
   for(const p of preys){const st=preyState.get(p.key)||{acc:0,count:0}; st.count=0; preyState.set(p.key,st);}
   for(let i=0;i<NM;i++){
     const m=moths[i];
     if(m.delay>0){m.delay-=dt; if(m.delay<=0&&m.next){m.tgt=m.next;m.next=null;}}
-    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander')&&lanternCount<90&&m.p.distanceToSquared(lp)<81&&rnd()<dt*.9){m.tgt='lantern';m.rad=.35+rnd()*1.4;}
+    if(m.tgt==='gone'){ if(!m.hidden){m.hidden=true;_m4.makeScale(0,0,0);_m4.setPosition(0,-999,0);mothMesh.setMatrixAt(i,_m4);} continue; }
+    m.hidden=false;
+    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander')&&lanternCount<90&&m.p.distanceToSquared(lp)<recR2&&rnd()<dt*.9){m.tgt='lantern';m.rad=.35+rnd()*1.4;}
     if(m.tgt==='lantern'||m.tgt==='hunt')lc++;
     mothTarget(m,t,tmp);
     route(m,g);
@@ -360,6 +371,7 @@ function updateMoths(dt){
     const px=m.p.x,pz=m.p.z,py=m.p.y;
     m.p.addScaledVector(m.v,dt);
     wallClamp(m,px,pz,py,g);
+    if(loopOn&&(m.tgt==='lantern'||m.tgt==='feed'||m.tgt==='satchel'))flowAround(m,g);
     if(hunting&&m.prey&&m.p.distanceToSquared(m.prey.center)<m.prey.r*m.prey.r){
       const st=preyState.get(m.prey.key); if(st)st.count++;
       if(m.prey.neg){m.prey.neg.hits++; m.prey.neg.bite+=dt*.075;}
@@ -386,7 +398,21 @@ function updateMoths(dt){
       try{p.hb.hit({damage:1,kind:'swarm',dir,knockback:.5,source:API});}catch(e){console.error(e);} } }
     else st.acc=Math.max(0,st.acc-dt*.25); }
 }
-function swarmAt(pos,r=2){let n=0;const r2=r*r;for(const m of moths)if(m.p.distanceToSquared(pos)<r2)n++;return n;}
+/* herding outdoors: keep the swarm above the ground and flowing around trunks / rocks / posts */
+function flowAround(m,g){
+  const p=m.p; if(Math.hypot(p.x-g.cx,p.z-g.cz)<g.outerR+2.5)return; // the tower has its own routing
+  const f=G.floorAt?G.floorAt(p.x,p.z,p.y+.5):H(p.x,p.z);
+  if(p.y<f+.3){p.y=f+.3; if(m.v.y<0)m.v.y*=-.3;}
+  if(!G.collidersNear)return;
+  for(const c of G.collidersNear(p.x,p.z)){
+    if(c.y1!=null&&p.y>c.y1+.2)continue;
+    const dx=p.x-c.x, dz=p.z-c.z, d=Math.hypot(dx,dz), R=(c.r||0)+.18;
+    if(d<R&&d>1e-4){ const nx=dx/d, nz=dz/d; p.x=c.x+nx*R; p.z=c.z+nz*R;
+      const vr=m.v.x*nx+m.v.z*nz; if(vr<0){m.v.x-=nx*vr*1.2; m.v.z-=nz*vr*1.2;}
+      m.v.x+=-nz*m.sp*.4; m.v.z+=nx*m.sp*.4; m.v.y+=.6; }      // slip round the side and a little up
+  }
+}
+function swarmAt(pos,r=2){let n=0;const r2=r*r;for(const m of moths)if(m.tgt!=='gone'&&m.p.distanceToSquared(pos)<r2)n++;return n;}
 
 /* ---------------------------------------------------------------- sculpting helpers
    sdfGeo: smooth-union of ellipsoids / round cones, meshed with surface nets → one smooth,
@@ -1368,6 +1394,7 @@ G.on('lamp:cured',()=>{
 
 /* ---------------------------------------------------------------- API + system */
 const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negatives,moths,patches,get halloran(){return hal;},
+  toPatch, lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
   ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),
   get glassOpen(){return glassOpen;}, get cured(){return cured;}};
 

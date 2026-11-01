@@ -150,6 +150,18 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
 .controls span{display:flex;align-items:center;gap:6px}
 .controls kbd{color:#21161f;background:rgba(255,255,255,.35);border-color:rgba(40,25,30,.45)}
 .loading{font-size:13px;color:#6c3f5f}
+/* controller glyphs (Xbox-style face buttons, dark pills for bumpers/triggers/menu) */
+span.pad{display:inline-flex;align-items:center;justify-content:center;gap:0;min-width:21px;height:21px;padding:0;border-radius:50%;font:700 11.5px/1 var(--body);color:#fff;
+  background:#2b2830;box-shadow:inset 0 -2px 0 rgba(0,0,0,.3),0 1px 2px rgba(0,0,0,.45);text-shadow:none;letter-spacing:0;flex:none}
+span.pad-a{background:#4fa82b}span.pad-b{background:#d2372f}span.pad-x{background:#2e6fd0}span.pad-y{background:#e7b21a;color:#2a1f00}
+span.pad-pill{border-radius:11px;padding:0 6px;min-width:28px;border:1px solid rgba(241,233,216,.5);font-size:10px;letter-spacing:.03em}
+span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
+.prompt span.pad{min-width:24px;height:24px;font-size:13px}.prompt span.pad-pill{min-width:32px;font-size:11px}
+.pad-focus{outline:2px solid var(--ether)!important;outline-offset:3px;box-shadow:0 0 0 5px rgba(165,108,255,.25)}
+.padlegend{display:grid;gap:8px}
+.padlegend .eyebrow{color:#4b3863}
+.padnote{font-size:13px!important;line-height:1.4!important;color:#6c5a5f!important}
+.padnote.warn{color:#6c3f5f!important}
 </style>
 
 <canvas id="c" tabindex="0" aria-label="The island of the lighthouse"></canvas>
@@ -206,7 +218,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
     <h1>The Lighthouse at the Edge of the Fog</h1>
     <p>You wake at the foot of a dead lighthouse, high on a sea cliff. Fog is coming in off the water. The great lamp is dark, the doorway darker still, and somewhere past the moor there is a forest that is not entirely empty.</p>
     <div class="rule"></div>
-    <div class="controls">
+    <div class="controls" data-kb-legend>
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
       <span>Mouse look</span>
       <span><kbd>Shift</kbd> sprint</span>
@@ -217,8 +229,10 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
       <span><kbd>E</kbd> interact</span>
       <span><kbd>F</kbd> lantern shutter</span>
     </div>
+    <div class="padlegend" data-pad-legend hidden></div>
     <div class="actions"><button class="btn" id="continue" type="button" hidden>Continue</button><button class="btn" id="begin" type="button">Begin</button><span class="loading" id="loading">Building the island…</span></div>
     <p class="savenote" id="saveInfo" hidden></p>
+    <p class="padnote" id="padNote" hidden></p>
   </div>
 </div>
 
@@ -226,7 +240,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
   <div class="sheet">
     <span class="eyebrow">Paused</span>
     <h2>Catch your breath</h2>
-    <div class="controls">
+    <div class="controls" data-kb-legend>
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
       <span><kbd>Shift</kbd> sprint</span>
       <span><kbd>Space</kbd> jump, hold to glide</span>
@@ -236,6 +250,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
       <span><kbd>E</kbd> interact</span>
       <span><kbd>F</kbd> lantern shutter</span>
     </div>
+    <div class="padlegend" data-pad-legend hidden></div>
     <div class="setting"><span>Graphics</span>
       <div class="seg" id="qualitySeg" role="group" aria-label="Graphics quality">
         <button type="button" data-q="saver">Battery saver</button><button type="button" data-q="balanced">Balanced</button><button type="button" data-q="high">High</button>
@@ -250,6 +265,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
     <span class="eyebrow">The fog closes in</span>
     <h2>Not yet.</h2>
     <p id="deadText">Something in you refuses to come apart. You wake again where you last felt safe.</p>
+    <div class="padlegend" data-pad-legend hidden></div>
     <div class="actions"><button class="btn" id="rise" type="button">Rise</button></div>
   </div>
 </div>
@@ -281,6 +297,9 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
 <script src="js/flow.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/audio.js"></script>
+<script src="js/fog.js"></script>
+<script src="js/alchemy.js"></script>
+<script src="js/moths.js"></script>
 <script>window.G&&G.start();</script>
 
 </body></html>
