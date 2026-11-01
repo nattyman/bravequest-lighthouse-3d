@@ -986,6 +986,7 @@ function nearestMoth(pos,R,dyMax){
 /* eat one moth. Prefers the moth system's own API (so the swarm count/HUD stay right); falls back to the moth record. */
 function eatMoth(mo,m){
   if(G.moths&&typeof G.moths.eat==='function'){ try{G.moths.eat(mo,{by:m.kind,pos:m.pos.clone()});return;}catch(e){console.error(e);} }
+  if(G.moths&&typeof G.moths.kill==='function'){ try{G.moths.kill(mo,true);return;}catch(e){console.error(e);} }
   mo.tgt='gone'; mo.feedB=null; mo.prey=null; mo.next=null; mo.delay=0; mo._rel=0;
   const I=INK(); I&&I.burst(mo.p,{n:5,speed:1.2,size:[.12,.45],life:[.5,1.1],up:.5,alpha:.75,color:'#efe6cf',embers:1});
   G.emit('moths:lost',{n:1,pos:mo.p.clone(),by:m.kind});

@@ -274,7 +274,9 @@ function buildCrates(){
   let homes=anchor('stair','crates',[-2,0,-60]);
   const ledge=anchor('stair','ledge',[3,2.6,-65]);
   if(!Array.isArray(homes)){ const c=homes, d=V(ledge.x-c.x,0,ledge.z-c.z); if(d.lengthSq()<.01)d.set(1,0,0); d.normalize(); const pr=V(-d.z,0,d.x);
-    homes=[-1,0,1].map(k=>c.clone().addScaledVector(d,k*1.85).addScaledVector(pr,(k===0?.35:-.2))); }
+    homes=[-1,0,1].map(k=>c.clone().addScaledVector(d,k*1.5).addScaledVector(pr,(k===0?.25:-.15)));
+    // stepping stones: the last crate sits a short jump from the ledge
+    const far=Math.hypot(ledge.x-homes[2].x,ledge.z-homes[2].z); if(far>2.2)homes.forEach(h=>h.addScaledVector(d,far-1.7)); }
   const mat=G.toon('#ffffff',{vertexColors:true});
   homes.slice(0,3).forEach((h,i)=>{
     const g=crateGeo(i); const mesh=new THREE.Mesh(g,mat); mesh.castShadow=true; G.scene.add(mesh); if(G.outline)G.outline(mesh,{thickness:.025});
@@ -319,8 +321,8 @@ function updateCrates(dt){
     c.prev.copy(c.pos); const prevTop=c.top;
     const floating=wy-.1>c.bed+.5;
     const drift=floating?1:0;
-    c.pos.x=c.home.x+(Math.sin(t*.13+c.ph)*.32+Math.sin(t*.29+c.ph*2)*.12)*drift;
-    c.pos.z=c.home.z+(Math.cos(t*.11+c.ph*1.7)*.28)*drift;
+    c.pos.x=c.home.x+(Math.sin(t*.13+c.ph)*.16+Math.sin(t*.29+c.ph*2)*.06)*drift;
+    c.pos.z=c.home.z+(Math.cos(t*.11+c.ph*1.7)*.16)*drift;
     const bob=floating?.05*Math.sin(t*1.4+c.ph)+.02*Math.sin(t*2.7+c.ph):0;
     c.pos.y=Math.max(wy+.1+bob,c.bed+CRATE_H/2);
     c.top=c.pos.y+CRATE_H/2;

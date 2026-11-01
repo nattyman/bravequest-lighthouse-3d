@@ -552,7 +552,7 @@ function updateMusic(_dt,mode){
       if(st.s==='title'&&k==='core'&&!rec.bufs.title&&have)tw=.6;   // no title excerpt: gentle core instead
       if(paused)tw*=.5;
       const up=tw>rec.w[k], fast=st.s==='combat'||st.s==='boss'||st.s==='caveBoss'||st.s==='caveCombat';
-      rec.w[k]=U.damp(rec.w[k],tw,up?(fast?2.2:.6):(st.s==='dead'?1.2:.45),dt);
+      rec.w[k]=U.damp(rec.w[k],tw,up?(fast?2.2:.6):(st.s==='dead'?1.2:st.s==='caveResolve'?1:.45),dt);
       n.gain.gain.setTargetAtTime(rec.w[k],t,.08); }
     coreLP.frequency.setTargetAtTime(M.lp,t,.8); coreWarm.gain.setTargetAtTime(M.warm,t,1.5); }
   // generative clock: locked to the recording's bar grid when it plays
@@ -970,7 +970,7 @@ function caveRead(){
 let caveLastT=0;
 function updateCave(_dt,mode){
   caveRead();
-  const dt=U.clamp(ctx.currentTime-(caveLastT||ctx.currentTime),0,.25); caveLastT=ctx.currentTime;   // audio clock: real-world pacing
+  const dt=U.clamp(ctx.currentTime-(caveLastT||ctx.currentTime),0,1); caveLastT=ctx.currentTime;   // audio clock: real-world pacing
   const t=ctx.currentTime, play=mode==='play', k0=cv.k;
   cv.k=U.damp(cv.k,cv.inside?1:0,cv.inside?1.6:2.2,dt); if(cv.k<.001&&!cv.inside)cv.k=0;
   const k=cv.k;
@@ -1012,7 +1012,7 @@ function updateCave(_dt,mode){
     if((R.knockT-=dt)<=0){ R.knockT=rnd(1.6,3.4); cfx('cave_raft_knock',rp,'knock',{ref:5,arg:{g:.1,f:150}}); } }
   // seals being fed: moth crackle on ink
   for(const [id,F] of cv.feeds){ if(t>F.until){ cv.feeds.delete(id); continue; }
-    const out=at(F.pos,4); for(let n=28*dt;n>0;n-=1)if(Math.random()<Math.min(1,n))CS.crackle(t+Math.random()*dt,out,rnd(.02,.06));
+    const out=at(F.pos,4); for(let n=(t<F.thin?9:28)*dt;n>0;n-=1)if(Math.random()<Math.min(1,n))CS.crackle(t+Math.random()*dt,out,rnd(.02,.06));
     if(Math.random()<dt*1.2)S.hiss(t,{dest:out,dur:rnd(.2,.4),f0:2500,f1:5000,g:.03,Q:1}); }
   // after the reveal the Wound throbs, slow and low, while you're in the arena
   if(cv.wound&&cv.room==='arena'&&(cv.woundT-=dt)<=0){ cv.woundT=3.2; const wp=V3(anchor('arena','wound'))||pNear(-6);
@@ -1080,7 +1080,9 @@ function wireCave(){
   G.on('cave:seal',e=>{ if(!ctx)return; const id=(e&&(e.id||e.room))||'seal', st=e&&e.state, F=cv.feeds.get(id);
     if(st==='stop'){ cv.feeds.delete(id); return; }
     if(st==='seen'){ const o=at(sealPos(e),6), t=now(); S.rumble(t,{dest:o,g:.15,dur:1.6,f0:44,f1:38,lp:160}); S.hiss(t+.3,{dest:o,dur:.9,f0:300,f1:700,g:.04}); return; }
-    const dur=st==='stall'?1.2:(e&&e.dur)||4; if(F)F.until=Math.max(st==='stall'?0:F.until,now()+dur); else { cv.feeds.set(id,{pos:sealPos(e),until:now()+dur}); cv.log.push('cave_seal_crackle'); } });
+    // 'feed' fires once when feeding starts and lasts until 'stop' / cave:sealOpen (60 s safety); 'stall' thins it for a few s
+    if(st==='stall'){ if(F)F.thin=now()+3; return; }
+    const dur=(e&&e.dur)||60; if(F)F.until=Math.max(F.until,now()+dur); else { cv.feeds.set(id,{pos:sealPos(e),until:now()+dur,thin:0}); cv.log.push('cave_seal_crackle'); } });
   G.on('cave:sealOpen',e=>{ const id=(e&&(e.id||e.room))||'seal'; const F=cv.feeds.get(id); cv.feeds.delete(id); if(!ctx||(e&&e.restored))return; cfx('cave_seal_open',F?F.pos:sealPos(e),'sealOpen',{ref:6}); });
   // raft: loaded | drifting | slack | pushed | taken | arrived | done, plus {bump:true}
   G.on('cave:raft',e=>{ if(!ctx)return; const st=String((e&&e.state)||''); if(e&&e.pos)cv.raft.pos=V3(e.pos);
