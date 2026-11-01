@@ -17,6 +17,8 @@ const P={
   hollow:{hp:6,radius:.5,height:2.5,aggro:16,speed:3.1,wander:1.1,clawRange:2.3,clawWind:.65,lungeWind:.8,lungeMin:3.2,lungeMax:6.5,lungeDist:3.2,
     clawDmg:2,lungeDmg:2,recover:.75,hurt:.4,lightSlow:.6,lightR:5},
   hound:{hp:4,radius:.42,height:1.1,aggro:18,speed:6.5,wander:1.6,circleR:5.5,dashWind:.5,dashSpeed:13,dashMax:.55,biteDmg:1,recover:.6,hurt:.35},
+  brineling:{hp:3,radius:.42,height:.7,speed:2.6,scuttle:4.4,wander:1.3,mothR:12,eatR:2,eatRate:2,shyR:3.2,angryT:7,
+    pinchRange:1.35,pinchWind:.45,pinchDmg:1,recover:.6,hurt:.3},
   stag:{hp:48,radius:2.0,height:4.8,speed:3.2,chargeWind:1.0,chargeSpeed:17,chargeLen:30,stagger:2.0,sweepWind:.75,stompWind:.95,
     chargeDmg:3,sweepDmg:2,stompDmg:2,ringSpeed:11,ringMax:14}
 };
@@ -397,6 +399,77 @@ function buildStag(S){
   return {root,body,head,neck,tail,legs,eyes,crown,crownMat,flames,halo,light,ribbonsDef:ribbons,ribbonMat:tMat,back,mouth,hooves,tipAnchors,mats:[mat,tMat,crownMat],extra:[],tendrils:[]};
 }
 
+/* ---- Brineling: a knee-high crab of ink under a barnacled shell (the Drowned Keepers' Cave) ----
+   Local +z is its face; it scuttles along local x (sideways). Shell, claws and barnacles are
+   cel-shaded so the lantern picks them out; everything under the shell is living ink. */
+function buildBrineling(S){
+  const mat=inkMat(S,{amp:.018,wisp:.6,flow:.4,scale:3.2,rimK:1.1});
+  const legMat=inkMat(S,{amp:.008,wisp:.45,flow:.5,scale:4,rimK:1.3});
+  const shellMat=G.toon('#ffffff',{emissive:'#0d0816',vertexColors:true});
+  const clawMat=G.toon('#2c2633',{emissive:'#0d0816'});
+  const barnMat=G.toon('#9d9384',{emissive:'#0a0710'});
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body); body.position.y=.3;
+  // ink body (wide, flat) — the part that bleeds smoke
+  addMesh(body,sweep([[-.31,-.02,0,.04],[-.22,-.01,0,.2,.11],[0,0,0,.26,.14],[.22,-.01,0,.2,.11],[.31,-.02,0,.04]],12,3),mat);
+  // carapace dome, flattened, with a notched front lip
+  const dome=new THREE.SphereGeometry(.36,26,12,0,TAU,0,PI*.5);
+  { const p=dome.attributes.position; for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+      const a=Math.atan2(x,z), ridge=.012*Math.sin(a*9)*(1-y/.36), lip=z>.18&&y<.08?-.025:0;
+      p.setXYZ(i,x*(1.06+ridge),y*.5+lip+.02*Math.sin(x*14)*Math.cos(z*11),z*.84); }
+    dome.computeVertexNormals();
+    // wet slate, sea-green mottling, a darker rim where the ink seeps out
+    const col=new Float32Array(p.count*3), cA=U.col('#2a2433'), cB=U.col('#33464a'), cR=U.col('#120e18'), c=new THREE.Color();
+    for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i);
+      const n=U.vnoise?U.vnoise(x*9+3,z*9-1):(.5+.5*Math.sin(x*21)*Math.cos(z*17));
+      c.copy(cA).lerp(cB,U.smooth(.45,.75,n)).lerp(cR,1-U.smooth(.0,.09,y));
+      col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b; }
+    dome.setAttribute('color',new THREE.BufferAttribute(col,3)); }
+  const shell=addMesh(body,dome,shellMat,0,.02,-.02); G.outline(shell,{thickness:.012,color:'#06040a'});
+  // barnacles: little open cones and pearls crusted on the back half of the shell
+  const bl=[]; const r2=U.rng(4411);
+  for(let k=0;k<26;k++){ const a=(r2()-.5)*3.6+PI, el=.18+r2()*1.1, R=.36;
+    const nx=Math.sin(a)*Math.cos(el), ny=Math.sin(el), nz=Math.cos(a)*Math.cos(el);
+    const px=nx*R*1.06, py=ny*R*.5+.02, pz=nz*R*.84-.02;
+    const n=V(nx/1.06,ny/.5,nz/.84).normalize();
+    const s=.8+r2()*.9, g=k%4===3?new THREE.SphereGeometry(.024*s,6,4):new THREE.CylinderGeometry(.012*s,.035*s,.045*s,7,1,true);
+    if(k%4!==3)g.translate(0,.02*s,0);
+    const q=new THREE.Quaternion().setFromUnitVectors(V(0,1,0),n); g.applyMatrix4(new THREE.Matrix4().compose(V(px,py,pz),q,V(1,1,1)));
+    bl.push(g); }
+  addMesh(body,mergeGeos(bl),barnMat);
+  // eye stalks with violet glints
+  const eyes=[], stalks=[];
+  for(const s of [-1,1]){ const st=new THREE.Group(); st.position.set(s*.07,.1,.22); body.add(st);
+    addMesh(st,sweep([[0,0,0,.022],[s*.01,.09,.03,.016],[s*.02,.17,.04,.013]],6,3),legMat);
+    const e=eyeSprite('#7f45ff',.085,.9,.3); e.position.set(s*.02,.18,.05); st.add(e); eyes.push(e); stalks.push(st); }
+  // pincers: the right one is the big one
+  const claws=[];
+  for(const s of [-1,1]){ const big=s>0?1.3:1;
+    const sh=new THREE.Group(); sh.position.set(s*.19,.0,.17); body.add(sh);
+    addMesh(sh,sweep([[0,0,0,.038],[s*.08,.04,.1,.034],[s*.1,.05,.2,.03]],8,3),legMat);
+    const el=new THREE.Group(); el.position.set(s*.1,.05,.2); sh.add(el);
+    addMesh(el,sweep([[0,0,0,.034],[-s*.02,.02,.1,.04*big]],8,2),clawMat);
+    const hand=new THREE.Group(); hand.position.set(-s*.02,.02,.11); hand.scale.setScalar(big); el.add(hand);
+    const palm=addMesh(hand,sweep([[0,0,-.03,.05,.04],[0,0,.07,.068,.05],[0,-.012,.15,.04,.03],[0,-.02,.22,.006]],10,3),clawMat);
+    G.outline(palm,{thickness:.01,color:'#06040a'});
+    const fing=new THREE.Group(); fing.position.set(0,.035,.05); hand.add(fing);
+    addMesh(fing,sweep([[0,0,0,.026],[0,.035,.08,.022],[0,.01,.17,.005]],8,3),clawMat);
+    claws.push({sh,el,hand,fing,s,tip:anchor(hand,0,0,.2)}); }
+  // six legs, tripod gait
+  const legs=[], feet=[];
+  for(const s of [-1,1])for(let i=0;i<3;i++){ const z=.1-i*.12;
+    const hip=new THREE.Group(); hip.position.set(s*.2,-.01,z); body.add(hip);
+    addMesh(hip,sweep([[0,0,0,.032],[s*.12,.1,0,.027],[s*.22,.12,0,.022]],7,3),legMat);
+    const knee=new THREE.Group(); knee.position.set(s*.22,.12,0); hip.add(knee);
+    addMesh(knee,sweep([[0,0,0,.022],[s*.08,-.15,0,.018],[s*.13,-.37,0,.003]],6,3),legMat);
+    hip.rotation.y=s*(i-1)*-.45;
+    const ft=anchor(knee,s*.13,-.36,0); feet.push(ft);
+    legs.push({hip,knee,s,i,y0:hip.rotation.y}); }
+  // smoke seeps from under the shell rim; ink drips from the claws
+  const rim=[]; for(let k=0;k<6;k++){const a=k/6*TAU; rim.push(anchor(body,Math.sin(a)*.3,-.02,Math.cos(a)*.26));}
+  return {root,body,shell,eyes,stalks,claws,legs,feet,rim,shellMats:[shellMat,clawMat,barnMat],
+    mats:[mat,legMat],extra:[shellMat,clawMat,barnMat],tendrils:[],clawTips:claws.map(c=>c.tip)};
+}
+
 /* ---------------------------------------------------------------- per-monster fx (smoke, drips, pools) */
 function attachFx(m){
   const I=INK(), c=m.parts; m.fx={list:[]};
@@ -410,6 +483,10 @@ function attachFx(m){
     m.fx.body=add(I.emitter(c.back,{rate:9,radius:.12,size:[.45,1.3],life:[.7,1.4],rise:.35,drift:.15,trail:1,alpha:.75,color:'#0b0712'}));
     m.fx.legs=add(I.emitter(c.paws,{rate:7,radius:.12,size:[.4,1.1],life:[.5,1.0],rise:.15,drift:.25,trail:.9,alpha:.6,color:'#16101f'}));
     m.fx.pool=add(I.pool(m.pos,{radius:.85,alpha:.6}));
+  }else if(m.kind==='brineling'){
+    m.fx.body=add(I.emitter(c.rim,{rate:7,radius:.08,size:[.25,.7],life:[.6,1.2],rise:.25,drift:.12,trail:1,alpha:.7,color:'#0b0712'}));
+    m.fx.claws=add(I.emitter(c.clawTips,{rate:0,radius:.03,drip:1.6,alpha:.6}));
+    m.fx.pool=add(I.pool(m.pos,{radius:.6,alpha:.6}));
   }else{
     m.fx.body=add(I.emitter(c.back,{rate:22,radius:.55,height:.4,size:[1.5,3.9],life:[1.6,2.7],rise:.8,drift:.35,trail:.8,alpha:.75,color:'#0a0710'}));
     m.fx.mouth=add(I.emitter(c.mouth,{rate:9,radius:.08,size:[.35,1.3],life:[.8,1.6],rise:.25,drift:.3,trail:.6,alpha:.6,drip:1.2}));
@@ -523,6 +600,41 @@ function animHound(m,dt){
   if(k>0&&A)puff(m.pos.x,m.pos.y+.6+rnd()*.2,m.pos.z,0,.1,0,.8+rnd()*.4,.45,.9,.6,cInk,0,2);
 }
 
+function animBrineling(m,dt){
+  const c=m.parts, t=G.time, s=m.state, W=s==='windup', A=s==='attack', E=s==='eat', Hh=s==='hurt', B=s==='board';
+  const sp=m.speedNow||0; m.phase+=dt*Math.max(sp,0)*7.5;
+  const amp=Math.min(1,sp/2.4);
+  c.body.position.y=U.damp(c.body.position.y,.3+(W?-.07*m.flare:0)+(B?.05:0)+(sp>.3?Math.abs(Math.sin(m.phase))*.03:Math.sin(t*2.3+m.id)*.008),18,dt);
+  c.body.rotation.z=U.damp(c.body.rotation.z,-(m.lat||0)*amp*.14+(Hh?Math.sin(t*40)*.06:0),9,dt);
+  c.body.rotation.x=U.damp(c.body.rotation.x,W?-.22*m.flare:A?.16:E?.1:Hh?-.15:0,12,dt);
+  for(const l of c.legs){
+    const off=((l.i%2)^(l.s>0?1:0))?PI:0, ph=m.phase+off;
+    const lift=sp>.2?Math.max(0,Math.sin(ph))*amp:(B?.6:0);
+    l.hip.rotation.z=U.damp(l.hip.rotation.z,l.s*(lift*.55+(W?.12:0)),20,dt);
+    l.hip.rotation.y=l.y0+(sp>.2?Math.cos(ph)*.32*amp:Math.sin(t*1.7+l.i+l.s)*.03);
+    l.knee.rotation.z=U.damp(l.knee.rotation.z,l.s*(sp>.2?Math.cos(ph)*.28*amp:0)-(B?l.s*.5:0),20,dt);
+  }
+  for(const cl of c.claws){
+    let rx=-.15+Math.sin(t*1.3+cl.s)*.06, ry=0, fx=-(.18+.14*Math.max(0,Math.sin(t*2.1+cl.s*1.7)));
+    if(W){ rx=-1.05*m.flare; ry=cl.s*.55*m.flare; fx=-.95*m.flare; }
+    else if(A){ rx=.2; ry=-cl.s*.3; fx=0; }
+    else if(E){ const k=Math.max(0,Math.sin(t*13+(cl.s>0?0:PI))); rx=-.45-.5*k; fx=-.6*k; ry=-cl.s*.2*k; }
+    else if(Hh){ rx=.5; fx=-.3; }
+    else if(sp>.3){ rx=-.35; fx=-.1; }
+    cl.sh.rotation.x=U.damp(cl.sh.rotation.x,rx,A?34:14,dt); cl.sh.rotation.y=U.damp(cl.sh.rotation.y,ry,A?34:14,dt);
+    cl.fing.rotation.x=U.damp(cl.fing.rotation.x,fx,A?40:18,dt);
+  }
+  c.stalks.forEach((st,i)=>{ st.rotation.z=Math.sin(t*2.6+i*2+m.id)*.18; st.rotation.x=U.damp(st.rotation.x,W?-.35*m.flare:E?.25:0,10,dt); });
+  eyesFlare(c,.09,m.flare*1.2,m.fade);
+  const f=m.flash;
+  for(const mt of c.shellMats){ mt.emissive.setRGB(.05+f*.55,.03+f*.38,.09+f*.85); }
+  const k=m.fxK;
+  if(m.fx.body)m.fx.body.intensity=k*(1+m.flare*1.4+(sp>.3?.5:0));
+  if(m.fx.claws)m.fx.claws.intensity=k*(E?2.2:1);
+  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade)*(m.onRaft||B?0:1);
+  if(k>0&&W&&rnd()<dt*16*m.flare)gather(m.pos.x,m.pos.y+.35,m.pos.z,.6,1);
+}
+
 function animStag(m,dt){
   const c=m.parts, t=G.time, s=m.state;
   animQuadLegs(c,m,dt,m.speedNow,s==='charge'?1.1:1.5,s==='charge');
@@ -619,7 +731,7 @@ function spawn(kind,pos,opts={}){
   const p=P[kind];
   const S=sharedUniforms(kind==='stag'?'#b58cff':'#a37cff',kind==='stag'?1.8:1.7,kind==='stag'?'#2a1446':'#24103a',kind==='stag'?.5:.65);
   const mat={uniforms:S}; // one set of uniforms drives every ink part of this monster (fade, flash, rim)
-  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):buildStag(S);
+  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):kind==='brineling'?buildBrineling(S):buildStag(S);
   const y=G.floorAt(pos.x,pos.z,(pos.y!=null?pos.y:H(pos.x,pos.z))+1);
   const m={kind,boss:kind==='stag',parts,mat,rimBase:mat.uniforms.uRim.value.clone(),pos:V(pos.x,y,pos.z),home:V(pos.x,y,pos.z),
     zone:opts.zone||{x:pos.x,z:pos.z,r:20,name:'adhoc'},heading:opts.heading!=null?opts.heading:rnd()*TAU,hp:p.hp,maxHp:p.hp,
@@ -627,8 +739,8 @@ function spawn(kind,pos,opts={}){
     wt:null,pause:rnd()*2,phase:rnd()*10,speedNow:0,orbit:rnd()<.5?1:-1,orbitA:rnd()*TAU,fled:false,hitSet:new Set(),
     atk:null,dashDir:V(),travel:0,didHit:false,summoned:false,aggro:!!opts.aggro,center:V(),id:list.length,finale:!!opts.finale};
   m.hb={team:'enemy',pos:m.pos,radius:p.radius+(kind==='stag'?.2:.1),height:p.height,targetable:true,corrupt:true,
-    name:kind==='hollow'?'Hollow':kind==='hound'?'Shade Hound':'The Hollow Stag',
-    lockOffset:kind==='stag'?3.2:kind==='hound'?.8:1.7, monster:m,
+    name:kind==='hollow'?'Hollow':kind==='hound'?'Shade Hound':kind==='brineling'?'Brineling':'The Hollow Stag',
+    lockOffset:kind==='stag'?3.2:kind==='hound'?.8:kind==='brineling'?.35:1.7, monster:m,
     alive:()=>m.alive&&!m.dying, hit:info=>onHit(m,info)};
   G.combat.add(m.hb);
   parts.root.position.copy(m.pos); parts.root.rotation.y=m.heading; parts.root.name='monster_'+kind;
@@ -639,7 +751,10 @@ function spawn(kind,pos,opts={}){
   m.ground=S.uGround;
   if(opts.intro){m.state='intro';m.fade=0;S.uFade.value=0;
     const I=INK(); if(I){ const w=puddle(m.pos.x,m.pos.y,m.pos.z,kind==='stag'?4.5:1.3,kind==='stag'?4:2.2,.9); if(w)w.grow=.4; } }
+  if(kind==='brineling'){ m.eatsMoths=true; m.mothRate=P.brineling.eatRate; }  // moths.js: monsters with eatsMoths do their own eating (don't add the generic kill on top)
+  if(opts.cave)m.cave=opts.cave;
   list.push(m);
+  if(opts.board){ const R=raftInfo(); if(R)startBoard(m,R); }
   return m;
 }
 function onHit(m,info){
@@ -656,7 +771,7 @@ function onHit(m,info){
   m.kv.x+=dir.x*kb; m.kv.z+=dir.z*kb;
   m.aggro=true;
   if(m.hp<=0){die(m,info);return;}
-  if(!m.boss&&info.kind!=='swarm'){ dropToken(m); setState(m,'hurt'); }
+  if(!m.boss&&info.kind!=='swarm'){ dropToken(m); if(m.state!=='board')setState(m,'hurt'); }
   if(m.boss&&m.state==='staggered')G.ui.shake&&G.ui.shake(.15);
 }
 function die(m,info){
@@ -677,6 +792,12 @@ function remove(m){
   if(m===boss){ boss=null; G.ui.bossBar(null); G.emit('boss:dead'); }
 }
 
+/* quietly remove a monster without a kill (no ichor, no event); sink=true leaves a small splash */
+function despawn(m,sink){
+  if(!m||!m.alive)return;
+  if(sink){ const I=INK(); I&&I.burst(V(m.pos.x,m.pos.y+.2,m.pos.z),{n:10,speed:1.4,size:[.3,.8],life:[.5,1.1],up:.8,embers:2,drops:5}); }
+  remove(m);
+}
 /* movement helpers */
 function faceTo(m,x,z,rate,dt){const want=Math.atan2(x-m.pos.x,z-m.pos.z);m.heading+=U.angDiff(want,m.heading)*Math.min(1,rate*dt);return want;}
 function stepMove(m,dx,dz){
@@ -849,6 +970,144 @@ function updateHound(m,dt){
   }
   if(m.state!=='attack')separation(m,dt);
 }
+/* ---- Brineling ----
+   Hunts moths first: the nearest swarm moth within mothR, eaten at eatRate within eatR. It boards
+   the raft (G.cavePuzzles.raft) to get at the moths riding it. It only fights the player when hit
+   (angry for angryT s) or crowded (the player stays on top of it while it hunts). */
+const MOTH_SKIP={gone:1,patch:1,wander:1,glass:1,lamp:1,spot:1,roost:1,jar:1};
+function mothsAll(){const c=G.creatures; return (c&&c.moths)||[];}
+function swarmMoth(mo){return !!mo&&!MOTH_SKIP[mo.tgt]&&!mo.hidden&&!mo.undertow;}
+function nearestMoth(pos,R,dyMax){
+  let best=null, bd=R*R;
+  for(const mo of mothsAll()){ if(!swarmMoth(mo))continue; const dy=mo.p.y-pos.y; if(dy<-1.5||dy>(dyMax||6))continue;
+    const dx=mo.p.x-pos.x, dz=mo.p.z-pos.z, d=dx*dx+dz*dz; if(d<bd){bd=d;best=mo;} }
+  return best;
+}
+/* eat one moth. Prefers the moth system's own API (so the swarm count/HUD stay right); falls back to the moth record. */
+function eatMoth(mo,m){
+  if(G.moths&&typeof G.moths.eat==='function'){ try{G.moths.eat(mo,{by:m.kind,pos:m.pos.clone()});return;}catch(e){console.error(e);} }
+  mo.tgt='gone'; mo.feedB=null; mo.prey=null; mo.next=null; mo.delay=0; mo._rel=0;
+  const I=INK(); I&&I.burst(mo.p,{n:5,speed:1.2,size:[.12,.45],life:[.5,1.1],up:.5,alpha:.75,color:'#efe6cf',embers:1});
+  G.emit('moths:lost',{n:1,pos:mo.p.clone(),by:m.kind});
+}
+function raftInfo(){
+  const cp=G.cavePuzzles, r=cp&&cp.raft; if(!r||r.active===false||r.visible===false)return null;
+  const pos=(r.pos&&r.pos.isVector3&&r.pos)||(r.position&&r.position.isVector3&&r.position)||(r.mesh&&r.mesh.position)||(r.group&&r.group.position)||(r.root&&r.root.position);
+  if(!pos)return null;
+  return {pos,deckY:r.deckY!=null?r.deckY:pos.y+(r.deck!=null?r.deck:.2),r:r.radius||1.4,raw:r};
+}
+function crabFace(m,mv,dt,rate){ // body side-on to the motion; picks whichever side needs the smaller turn
+  const a1=mv+PI/2, a2=mv-PI/2;
+  const want=Math.abs(U.angDiff(a1,m.heading))<Math.abs(U.angDiff(a2,m.heading))?a1:a2;
+  m.heading+=U.angDiff(want,m.heading)*Math.min(1,rate*dt);
+  m.lat=Math.sign(Math.sin(mv-m.heading))||0;
+}
+function crabMove(m,mv,speed,dt){
+  crabFace(m,mv,dt,9);
+  if(moveDir(m,mv,speed,dt)){m.speedNow=speed;return true;}
+  for(const d of [.7,-.7,1.4,-1.4]){ if(moveDir(m,mv+d*m.orbit,speed*.8,dt)){m.speedNow=speed*.8;return true;} }
+  m.orbit*=-1; m.speedNow=0; return false;
+}
+function startBoard(m,R){
+  const a=rnd()*TAU, rr=Math.sqrt(rnd())*R.r*.6;
+  m.board={from:m.pos.clone(),off:{x:Math.cos(a)*rr,z:Math.sin(a)*rr},dur:.75};
+  m.onRaft=null; setState(m,'board');
+  const I=INK(); I&&I.burst(V(m.pos.x,m.pos.y+.2,m.pos.z),{n:8,speed:1.5,size:[.2,.6],life:[.4,.9],up:1,embers:2,drops:4});
+  G.emit('brineling:board',{pos:m.pos.clone()});
+}
+function crabWander(m,dt,p){
+  if(!m.wt||U.dist2(m.pos,m.wt)<.6){
+    if(m.pause>0){m.pause-=dt;m.speedNow=0;return;}
+    let x,z,k=0; do{const a=rnd()*TAU,r=1.5+rnd()*Math.min(6,m.zone.r*.4);x=m.home.x+Math.cos(a)*r;z=m.home.z+Math.sin(a)*r;k++;}while(!okGround(x,z)&&k<10);
+    m.wt=V(x,0,z); m.pause=1+rnd()*3; return;
+  }
+  if(!crabMove(m,Math.atan2(m.wt.x-m.pos.x,m.wt.z-m.pos.z),p.wander,dt))m.wt=null;
+}
+function updateBrineling(m,dt){
+  const p=P.brineling, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9;
+  m.flare=U.damp(m.flare,0,5,dt);
+  m.cool-=dt;
+  const R=raftInfo(); if(m.onRaft&&!R)m.onRaft=null;
+  m.scanT=(m.scanT||0)-dt;
+  if(m.scanT<=0||(m.prey&&!swarmMoth(m.prey))){ m.scanT=.3; m.prey=nearestMoth(m.pos,m.onRaft?R.r+2.5:p.mothR,m.onRaft?3:6); }
+  const angry=!m.onRaft&&G.time-(m.lastHit||-99)<p.angryT;
+  const near=pp&&dP<1.8&&Math.abs(pp.y-m.pos.y)<1.5;
+  m.crowd=near?(m.crowd||0)+dt:Math.max(0,(m.crowd||0)-dt*.5);
+  const canPinch=()=>m.cool<=0&&pp&&playerAlive()&&dP<p.pinchRange&&Math.abs(pp.y-m.pos.y)<1.4&&takeToken(m);
+  const prey=m.prey;
+  switch(m.state){
+    case 'idle':
+      if(prey){setState(m,'hunt');break;}
+      if(angry&&!playerFar(m)){setState(m,'chase');break;}
+      if(pp&&dP<p.shyR&&Math.abs(pp.y-m.pos.y)<2){ crabMove(m,Math.atan2(m.pos.x-pp.x,m.pos.z-pp.z),p.scuttle,dt); m.wt=null; break; } // shy: skitters off sideways
+      crabWander(m,dt,p);
+      break;
+    case 'hunt':{
+      if(!prey){setState(m,angry?'chase':'idle');break;}
+      if((angry||m.crowd>1.2)&&canPinch()){setState(m,'windup');break;}
+      const dx=prey.p.x-m.pos.x, dz=prey.p.z-m.pos.z, d=Math.hypot(dx,dz);
+      if(d<p.eatR*.85&&prey.p.y-m.pos.y<2.6){m.eatAcc=0;setState(m,'eat');break;}
+      if(R&&!m.onRaft&&Math.hypot(prey.p.x-R.pos.x,prey.p.z-R.pos.z)<R.r+.9&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<R.r+4.5){startBoard(m,R);break;}
+      const mv=Math.atan2(dx,dz);
+      if(m.onRaft){ const o=m.onRaft, s=p.speed*.5*dt; o.x+=Math.sin(mv)*s; o.z+=Math.cos(mv)*s; const l=Math.hypot(o.x,o.z), mx=R.r*.75; if(l>mx){o.x*=mx/l;o.z*=mx/l;} crabFace(m,mv,dt,9); m.speedNow=p.speed*.5; }
+      else crabMove(m,mv,d>4?p.scuttle:p.speed,dt);
+      if(playerFar(m)&&!m.onRaft&&U.dist2(m.pos,m.home)>m.zone.r+LEASH)setState(m,'return');
+      break;}
+    case 'eat':{
+      m.speedNow=0;
+      if(prey)faceTo(m,prey.p.x,prey.p.z,8,dt);
+      if((angry||m.crowd>1.2)&&canPinch()){setState(m,'windup');break;}
+      m.eatAcc=(m.eatAcc||0)+dt*p.eatRate;
+      while(m.eatAcc>=1){ m.eatAcc-=1; const mo=nearestMoth(m.pos,p.eatR,2.6); if(!mo){m.eatAcc=0;break;} eatMoth(mo,m); m.ate=(m.ate||0)+1; }
+      if(!prey||Math.hypot(prey.p.x-m.pos.x,prey.p.z-m.pos.z)>p.eatR){ m.prey=nearestMoth(m.pos,p.eatR,2.6); if(!m.prey)setState(m,'hunt'); }
+      break;}
+    case 'chase':{
+      if(!angry||m.onRaft){setState(m,prey?'hunt':'idle');break;}
+      if(playerFar(m)||U.dist2(m.pos,m.home)>m.zone.r+LEASH){setState(m,'return');break;}
+      if(canPinch()){setState(m,'windup');break;}
+      const mv=Math.atan2(pp.x-m.pos.x,pp.z-m.pos.z);
+      if(dP>2.2)crabMove(m,mv,p.scuttle,dt); else { faceTo(m,pp.x,pp.z,8,dt); m.speedNow=0; }
+      break;}
+    case 'windup':
+      if(pp)faceTo(m,pp.x,pp.z,m.st<p.pinchWind*.7?9:2,dt);
+      m.flare=Math.min(1,m.st/p.pinchWind*1.2); m.speedNow=0;
+      if(m.st>=p.pinchWind){m.hitSet.clear();setState(m,'attack');}
+      break;
+    case 'attack':{
+      m.flare=1; const fx=Math.sin(m.heading), fz=Math.cos(m.heading);
+      if(m.st<.16){ if(!m.onRaft)moveDir(m,m.heading,3,dt); strikeAt(m,m.pos.x+fx*.7,m.pos.y+.35,m.pos.z+fz*.7,.6,p.pinchDmg,4,'melee'); }
+      if(m.st>.26)setState(m,'recover');
+      break;}
+    case 'recover':
+      m.speedNow=0;
+      if(m.st>p.recover){dropToken(m);m.cool=1.2+rnd()*1.2;m.crowd=0;setState(m,prey?'hunt':angry?'chase':'idle');}
+      break;
+    case 'hurt':
+      m.speedNow=0;
+      if(m.st>p.hurt){m.cool=Math.max(m.cool,.5);setState(m,m.onRaft?'hunt':'chase');}
+      break;
+    case 'return':
+      goHome(m,dt,p.scuttle); crabFace(m,m.heading,dt,6);
+      if(prey&&!playerFar(m))setState(m,'hunt');
+      break;
+    case 'board':{
+      const b=m.board; if(!b||!R){m.board=null;setState(m,'idle');break;}
+      const k=Math.min(1,m.st/b.dur), tx=R.pos.x+b.off.x, tz=R.pos.z+b.off.z;
+      m.pos.x=U.lerp(b.from.x,tx,k); m.pos.z=U.lerp(b.from.z,tz,k);
+      m.pos.y=U.lerp(b.from.y,R.deckY,k)+Math.sin(k*PI)*Math.max(.8,(R.deckY-b.from.y)*.5+.8);
+      faceTo(m,tx,tz,10,dt); m.speedNow=0;
+      if(k>=1){ m.onRaft=b.off; m.board=null; m.prey=null; m.scanT=0; setState(m,'hunt');
+        const I=INK(); I&&I.burst(V(m.pos.x,m.pos.y+.1,m.pos.z),{n:6,speed:1,size:[.2,.5],life:[.3,.7],up:.4,embers:0,drops:5}); }
+      break;}
+  }
+  // riding the raft: glued to the deck; with nothing left to eat it drops back into the water
+  if(m.onRaft&&R){ m.pos.set(R.pos.x+m.onRaft.x,R.deckY,R.pos.z+m.onRaft.z); m.kv.set(0,0,0);
+    if(!prey){ m.raftIdle=(m.raftIdle||0)+dt; if(m.raftIdle>3.5){ m.onRaft=null; m.leaving=true; m.vy=2.5; const a=Math.atan2(m.pos.x-R.pos.x,m.pos.z-R.pos.z); m.kv.set(Math.sin(a)*3,0,Math.cos(a)*3); } } else m.raftIdle=0; }
+  m.noSettle=!!m.onRaft||m.state==='board';
+  if(m.leaving&&m.pos.y<(G.cave&&G.cave.waterWorld?G.cave.waterWorld():-1e9)-.4){ despawn(m,true); return; }
+  if(m.state!=='attack'&&!m.noSettle)separation(m,dt);
+}
+
 /* ---- The Hollow Stag ---- */
 function arenaOf(){
   const f=LM().finale; const L=lh();
@@ -996,7 +1255,7 @@ function updateMonster(m,dt){
     if(m.parts.root){ const j=loose*(m.boss?.06:.04); m.parts.root.position.set(m.pos.x+(rnd()-.5)*j,m.pos.y-(m.boss?0:loose*.3),m.pos.z+(rnd()-.5)*j);
       if(!m.boss){ m.parts.body.scale.set(1+loose*.35,1-loose*.25,1+loose*.35); } }
     if(m.boss){ G.ui.bossBar('The Hollow Stag',0); animStag(m,dt); }
-    else if(m.kind==='hollow')animHollow(m,dt); else animHound(m,dt);
+    else if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else animHound(m,dt);
     if(m.parts.eyes)eyesFlare(m.parts,m.boss?.3:.1,loose,m.fade);
     if(m.parts.extra)m.parts.extra.forEach(x=>{x.transparent=true;x.opacity=m.fade;});
     if(m.st>dur){ const I=INK(); if(I){ m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.45,m.pos.z);
@@ -1010,10 +1269,10 @@ function updateMonster(m,dt){
   if(m.state==='intro'&&!m.boss){ m.fade=Math.min(1,m.st/1.2); m.mat.uniforms.uFade.value=m.fade; if(m.st>1.2){m.fade=1;m.mat.uniforms.uFade.value=1;setState(m,'chase');} }
   else if(m.kind==='hollow')updateHollow(m,dt);
   else if(m.kind==='hound')updateHound(m,dt);
+  else if(m.kind==='brineling'){ updateBrineling(m,dt); if(!m.alive)return; }
   else updateStag(m,dt);
   if(m.state!=='return'&&!m.boss&&m.st>0&&m.zone)leashHeal(m,dt);
-  applyKnock(m,dt);
-  settle(m,dt);
+  if(!m.noSettle){ applyKnock(m,dt); settle(m,dt); }
   m.flash=Math.max(0,m.flash-dt*5); m.mat.uniforms.uFlash.value=m.flash*.9;
   m.ground.value=m.pos.y;
   // rim flares bright on wind-ups (the main telegraph)
@@ -1025,7 +1284,7 @@ function render(m,dt){
   const c=m.parts;
   c.root.position.copy(m.pos); c.root.rotation.y=m.heading;
   c.root.updateMatrixWorld(true);
-  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(!m.dying)animStag(m,dt);
+  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(!m.dying)animStag(m,dt);
 }
 
 /* ---------------------------------------------------------------- spawning */
@@ -1066,7 +1325,7 @@ G.on('player:respawn',()=>{
   for(const m of list.slice()){
     if(!m.alive||m.dying)continue;
     if(m.finale&&m.kind==='hound'&&boss){remove(m);continue;}  // summoned hounds vanish; boss re-summons
-    m.hp=m.maxHp; m.kv.set(0,0,0); m.pos.copy(m.home); m.state=m.boss?'stalk':'idle'; m.st=0; m.flare=0; m.cool=1.5; m.aggro=false; m.fled=false;
+    m.hp=m.maxHp; m.kv.set(0,0,0); m.pos.copy(m.home); m.onRaft=null; m.board=null; m.noSettle=false; m.lastHit=-99; m.state=m.boss?'stalk':'idle'; m.st=0; m.flare=0; m.cool=1.5; m.aggro=false; m.fled=false;
     if(m.boss){m.summoned=false;m.summonDone=false;m.state='stalk';}
     if(m.finale&&!m.boss)m.state='chase';
     dropToken(m);
@@ -1076,7 +1335,10 @@ G.on('player:respawn',()=>{
 });
 G.monsters={list,spawn:(kind,pos,opts)=>spawn(kind,pos,opts||{aggro:false}),
   alive:()=>list.filter(m=>m.alive&&!m.dying).length,
-  get boss(){return boss;}, tokens, startFinale, params:P};
+  get boss(){return boss;}, tokens, startFinale, params:P, despawn:(m,sink)=>despawn(m,sink),
+  kill:(m,info)=>{ if(m&&m.alive&&!m.dying)die(m,info||{}); },
+  // shared ink kit (cave_boss.js builds the Undertow with the same look)
+  fx:{puff,ember,splash,sparks,gather,puddle,inkMat,sharedUniforms,sweep,mergeGeos,tendril,stepTendril,eyeSprite,anchor,ringMesh,raftInfo,nearestMoth,eatMoth,swarmMoth}};
 G.system('monsters',{order:40,modes:['play'],
   init(){
     glowTex=G.tex.flame;

@@ -2,7 +2,10 @@
    BRAVE QUEST: LIGHTHOUSE — creatures.js  (Creatures agent)
    Moth swarm, corruption patches, passive negatives (the Shadows),
    Halloran (one of the Unmade).
-   API: G.creatures = {lanternCount, swarmAt(pos,r), freed, total, negatives, halloran, ash(pos,n,spread)}
+   API: G.creatures = {lanternCount, swarmAt(pos,r), freed, total, negatives, halloran, ash(pos,n,spread),
+        moths, toPatch(m), toRoost(m), setRoost([{p,n}]), roost, clingR (null | max swarm radius, set per frame by cave_puzzles)}
+   Moth states (m.tgt): glass spot lantern hunt lamp patch wander satchel feed gone + roost (cave) jar (moth jar).
+   Post-cure hunting: a corrupt hurtbox with hb.mothPrey (bool|fn) draws the swarm (hb.mothRange m, hb.mothWant n, hb.mothDamage).
    ===================================================================== */
 (function(){
 'use strict';
@@ -138,7 +141,9 @@ function updatePatchWisps(){
 }
 
 /* ---------------------------------------------------------------- moths */
-const NM=260, N_GLASS=70, N_SPOT=14, N_WANDER=26;
+const NM=300, N_GLASS=70, N_SPOT=14, N_WANDER=26,
+      N_ROOST=40; /* cave moths (cave_puzzles.js): the last 40 of the pool cling to the roost in the Gallery of Keepers */
+const roost={pts:[],centre:null}; // set by G.creatures.setRoost([{p:Vector3,n:Vector3}])
 const moths=[];
 let mothMesh=null, glassOpen=false, cured=false, lanternCount=0;
 const mothMat=new THREE.ShaderMaterial({
@@ -201,12 +206,33 @@ function buildMoths(){
       scale:.11+rnd()*.05,delay:0,press:rnd()*TAU};
     if(i<N_GLASS){m.tgt='glass';m.scale*=1.25;}
     else if(i<N_GLASS+N_SPOT){m.tgt='spot';m.rad=.35+rnd()*1.2;}
-    else if(i>=NM-N_WANDER||!patches.length){m.tgt='wander';m.rad=3+rnd()*4;}
+    else if(i>=NM-N_ROOST){m.tgt='roost';m.cave=true;m.scale*=.85;m.p.set(0,-999,0);} // hidden until a roost exists
+    else if(i>=NM-N_ROOST-N_WANDER||!patches.length){m.tgt='wander';m.rad=3+rnd()*4;}
     moths.push(m);
   }
   assignGlass(true);
-  for(const m of moths){mothTarget(m,0,m.p); if(m.tgt==='glass')m.p.addScaledVector(dirOut(m.gp,geo),.4);}
+  for(const m of moths){ if(m.tgt==='roost')continue; mothTarget(m,0,m.p); if(m.tgt==='glass')m.p.addScaledVector(dirOut(m.gp,geo),.4);}
 }
+/* ---- cave support (cave_puzzles.js / moths.js) ---- */
+const caveO=()=>(G.cave&&G.cave.origin)||_caveO;
+const _caveO=V(0,60,800);
+/** true when p is in the cave interior's region (far off-island) */
+function inCaveRegion(p){ const o=caveO(); return Math.hypot(p.x-o.x,p.z-o.z)<170&&p.y>o.y-40; }
+function toRoost(m){
+  if(!roost.pts.length){ toPatch(m); return; }
+  const r=roost.pts[(rnd()*roost.pts.length)|0];
+  m.tgt='roost'; m.rp=r.p; m.rn=r.n; m.prey=null; m.home=null; m.feedB=null; m.next=null;
+}
+/** points [{p:Vector3(world),n:Vector3(unit normal)}] on a rock face; roost-born moths settle there */
+function setRoost(points){
+  roost.pts=points||[]; roost.centre=null;
+  if(!roost.pts.length)return;
+  const c=V(); for(const r of roost.pts)c.add(r.p); roost.centre=c.multiplyScalar(1/roost.pts.length);
+  let k=0;
+  for(const m of moths){ if(!m.cave||m.tgt!=='roost')continue; const r=roost.pts[k++%roost.pts.length];
+    m.rp=r.p; m.rn=r.n; m.p.copy(r.p).addScaledVector(r.n,.05); m.v.set(0,0,0); }
+}
+function jarPos(){ const f=G.moths&&G.moths.jarPos; const p=f&&f(); return p||satchelPos(); }
 function dirOut(p,g){const dx=p.x-g.cx,dz=p.z-g.cz,d=Math.hypot(dx,dz)||1;return V(dx/d,0,dz/d);}
 /* the fair-play clue: moths on the glass cluster densest over the corruption inside */
 function blobCenter(){
@@ -261,6 +287,13 @@ function mothTarget(m,t,o){
     case 'satchel': c=satchelPos(); break;                       // loop: drawn to the ichor in the player's satchel
     case 'feed': if(m.feedC)return o.set(m.feedC.x+Math.cos(m.ph+t*m.sp*.35)*m.rad,m.feedC.y+Math.sin(t*2.1+m.ph)*.18,m.feedC.z+Math.sin(m.ph+t*m.sp*.35)*m.rad); c=lanternPos(); break;
     case 'gone': return o.copy(m.p);
+    case 'roost':{ // cave moths clinging to the rock; now and then one lifts off and settles again
+      if(!m.rp)return o.copy(m.p);
+      const f=Math.sin(t*.31+m.ph*3.7)+.4*Math.sin(t*.83+m.ph);
+      if(f>1.2){ const a=m.ph+t*m.sp*.6; return o.copy(m.rp).addScaledVector(m.rn,.45+.2*Math.sin(t+m.ph)).add(tmp2.set(Math.cos(a)*.35,Math.sin(t*1.7+m.ph)*.2,Math.sin(a)*.35)); }
+      return o.copy(m.rp).addScaledVector(m.rn,.04);
+    }
+    case 'jar': return o.copy(jarPos());
     case 'wander':
       if(!m.home){const p=patches.length?patches[m.idx%patches.length]:{x:0,z:0};const a=rnd()*TAU,r=8+rnd()*22;const x=p.x+Math.cos(a)*r,z=p.z+Math.sin(a)*r;m.home=V(x,H(x,z)+2.2,z);}
       c=m.home; break;
@@ -269,6 +302,10 @@ function mothTarget(m,t,o){
   const a=m.ph+t*m.sp;
   let rad=m.rad;
   if((m.tgt==='lantern'||m.tgt==='spot')&&zoneOf(c,g)!=='out')rad=Math.min(rad,1.05);
+  if(m.tgt==='lantern'&&API.clingR!=null){ // a shut lantern in the cave / the raft: the swarm clings tight
+    const cr=API.clingR*(.3+.7*Math.min(1,m.rad/1.75));
+    return o.set(c.x+Math.cos(a*.6)*cr, c.y-.05+m.hy*.12+Math.sin(t*1.9+m.ph)*.1, c.z+Math.sin(a*.6)*cr);
+  }
   return o.set(c.x+Math.cos(a)*rad, c.y+m.hy*.5+Math.sin(t*1.3+m.ph)*.45-(m.tgt==='lamp'?.5:0), c.z+Math.sin(a)*rad);
 }
 const tmp=V(), tmp2=V(), wp=V(), _q=new THREE.Quaternion(), _e=new THREE.Euler(0,0,0,'YXZ'), _m4=new THREE.Matrix4(), _s=V(), _X=V(), _Y=V(), _Z=V();
@@ -311,7 +348,7 @@ function toLanternOrHome(m){
   if(!cured||baited()){m.tgt='lantern';m.rad=.35+rnd()*1.4;m.prey=null;}
   else toPatch(m);
 }
-function toPatch(m){m.tgt=patches.length?'patch':'wander';m.idx=(rnd()*Math.max(1,patches.length))|0;m.rad=.6+rnd()*1.6;m.prey=null;m.home=null;}
+function toPatch(m){ if(roost.pts.length&&inCaveRegion(m.p)){ toRoost(m); return; } m.tgt=patches.length?'patch':'wander';m.idx=(rnd()*Math.max(1,patches.length))|0;m.rad=.6+rnd()*1.6;m.prey=null;m.home=null;}
 
 /* swarm hunting: anything corrupt near the lantern gets engulfed */
 const preyState=new Map(); // key -> {acc, count}
@@ -321,7 +358,10 @@ function preyList(){
   for(const hb of G.hurtboxes){ if(!hb.corrupt||(hb.alive&&!hb.alive()))continue;
     if(!hb._swarmCenter)hb._swarmCenter=V();
     hb._swarmCenter.set(hb.pos.x,hb.pos.y+(hb.height||1.6)*.55,hb.pos.z);
-    out.push({key:hb,hb,center:hb._swarmCenter,alive:()=>!(hb.alive&&!hb.alive()),r:(hb.radius||.6)+1.4}); }
+    // loop/cave: after the cure only hurtboxes that opt in (hb.mothPrey: bool | ()=>bool) draw the swarm
+    out.push({key:hb,hb,center:hb._swarmCenter,alive:()=>!(hb.alive&&!hb.alive()),r:(hb.radius||.6)+1.4,
+      range:hb.mothRange||7,want:hb.mothWant||0,dmg:hb.mothDamage==null?1:hb.mothDamage,
+      lure:()=>typeof hb.mothPrey==='function'?!!hb.mothPrey():!!hb.mothPrey}); }
   for(const n of negatives){ if(n.dead||n.dying&&n.fade<.3)continue; out.push({key:n,neg:n,center:n.center,alive:()=>!n.dead,r:1.9}); }
   return out;
 }
@@ -332,14 +372,15 @@ function updateHunting(dt){
   const live=new Set(preys.map(p=>p.key));
   for(const m of moths) if(m.tgt==='hunt'&&(!m.prey||!live.has(m.prey.key)||!m.prey.alive()))toLanternOrHome(m);
   for(const k of [...preyState.keys()]) if(!live.has(k))preyState.delete(k);
-  if(!isPlay()||cured)return;
+  if(!isPlay())return;
   const L=lantern(); if(!L||!L.found||L.inCradle)return;
   const lp=lanternPos();
   for(const p of preys){
-    const d=Math.hypot(p.center.x-lp.x,p.center.z-lp.z);
-    let have=0; for(const m of moths) if(m.tgt==='hunt'&&m.prey&&m.prey.key===p.key){have++; if(d>14)toLanternOrHome(m); else m.prey=p;}
-    if(d>7||lanternCount<=3)continue;
-    const want=12+(((p.key.name||'').length+have)%5);
+    if(cured&&!(p.lure&&p.lure())){ for(const m of moths) if(m.tgt==='hunt'&&m.prey&&m.prey.key===p.key)toLanternOrHome(m); continue; }
+    const d=Math.hypot(p.center.x-lp.x,p.center.z-lp.z), R=p.range||7;
+    let have=0; for(const m of moths) if(m.tgt==='hunt'&&m.prey&&m.prey.key===p.key){have++; if(d>Math.max(14,R*1.5))toLanternOrHome(m); else m.prey=p;}
+    if(d>R||lanternCount<=3)continue;
+    const want=p.want||12+(((p.key.name||'').length+have)%5);
     for(const m of moths){ if(have>=want)break; if(m.tgt==='lantern'){m.tgt='hunt';m.prey=p;m.rad=.15+rnd()*.6;m.hy=rnd()*1.4;have++;} }
   }
 }
@@ -357,13 +398,15 @@ function updateMoths(dt){
     const m=moths[i];
     if(m.delay>0){m.delay-=dt; if(m.delay<=0&&m.next){m.tgt=m.next;m.next=null;}}
     if(m.tgt==='gone'){ if(!m.hidden){m.hidden=true;_m4.makeScale(0,0,0);_m4.setPosition(0,-999,0);mothMesh.setMatrixAt(i,_m4);} continue; }
+    if((m.tgt==='roost'&&!m.rp)||(m.tgt==='jar'&&m.inJar)){ if(!m.hidden){m.hidden=true;_m4.makeScale(0,0,0);_m4.setPosition(0,-999,0);mothMesh.setMatrixAt(i,_m4);} continue; }
+    if(m.tgt!=='jar')m.inJar=false;
     m.hidden=false;
-    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander')&&lanternCount<90&&m.p.distanceToSquared(lp)<recR2&&rnd()<dt*.9){m.tgt='lantern';m.rad=.35+rnd()*1.4;}
+    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander'||m.tgt==='roost')&&lanternCount<90&&m.p.distanceToSquared(lp)<recR2&&rnd()<dt*.9){m.tgt='lantern';m.rad=.35+rnd()*1.4;}
     if(m.tgt==='lantern'||m.tgt==='hunt')lc++;
     mothTarget(m,t,tmp);
     route(m,g);
-    const hunting=m.tgt==='hunt', glass=m.tgt==='glass';
-    const k=hunting?13:glass?9:7, c=hunting?4.2:glass?3.2:3.6, nz=glass?3:6;
+    const hunting=m.tgt==='hunt', glass=m.tgt==='glass', clinging=m.tgt==='lantern'&&API.clingR!=null, perch=m.tgt==='roost', jar=m.tgt==='jar';
+    const k=hunting||clinging||jar?13:glass||perch?9:7, c=hunting||clinging||jar?4.2:glass||perch?3.2:3.6, nz=glass||perch?3:clinging?2:6;
     tmp2.subVectors(tmp,m.p).multiplyScalar(k).addScaledVector(m.v,-c);
     tmp2.x+=(rnd()-.5)*nz; tmp2.y+=(rnd()-.5)*nz; tmp2.z+=(rnd()-.5)*nz;
     m.v.addScaledVector(tmp2,dt);
@@ -372,14 +415,15 @@ function updateMoths(dt){
     m.p.addScaledVector(m.v,dt);
     wallClamp(m,px,pz,py,g);
     if(loopOn&&(m.tgt==='lantern'||m.tgt==='feed'||m.tgt==='satchel'))flowAround(m,g);
+    if(jar&&m.p.distanceToSquared(tmp)<.12){m.inJar=true; continue;}
     if(hunting&&m.prey&&m.p.distanceToSquared(m.prey.center)<m.prey.r*m.prey.r){
       const st=preyState.get(m.prey.key); if(st)st.count++;
       if(m.prey.neg){m.prey.neg.hits++; m.prey.neg.bite+=dt*.075;}
     }
     // orientation + matrix
     const s=m.scale;
-    if(glass&&m.gp&&m.p.distanceToSquared(tmp)<.8){
-      const out=dirOut(m.p,g); _Y.copy(out); _Z.set(0,1,0); _X.crossVectors(_Y,_Z);
+    if((glass&&m.gp||perch&&m.rp)&&m.p.distanceToSquared(tmp)<.8){
+      const out=perch?m.rn:dirOut(m.p,g); _Y.copy(out); _Z.set(0,1,0); if(perch&&Math.abs(out.y)>.9)_Z.set(1,0,0); _X.crossVectors(_Y,_Z).normalize(); _Z.crossVectors(_X,_Y);
       _m4.makeBasis(_X.multiplyScalar(s),_Y.multiplyScalar(s),_Z.multiplyScalar(s)); _m4.setPosition(m.p.x,m.p.y+Math.sin(t*9+m.ph)*.02,m.p.z);
     }else{
       const hs=Math.hypot(m.v.x,m.v.z);
@@ -395,7 +439,7 @@ function updateMoths(dt){
   if(play)for(const p of preys){ if(!p.hb)continue; const st=preyState.get(p.key); if(!st)continue;
     if(st.count>=3){ st.acc+=dt; if(st.acc>=1.2){ st.acc=0;
       const dir=V(p.hb.pos.x-lp.x,0,p.hb.pos.z-lp.z); if(dir.lengthSq()<1e-6)dir.set(0,0,1); dir.normalize();
-      try{p.hb.hit({damage:1,kind:'swarm',dir,knockback:.5,source:API});}catch(e){console.error(e);} } }
+      if(p.dmg>0)try{p.hb.hit({damage:p.dmg,kind:'swarm',dir,knockback:.5,source:API});}catch(e){console.error(e);} } }
     else st.acc=Math.max(0,st.acc-dt*.25); }
 }
 /* herding outdoors: keep the swarm above the ground and flowing around trunks / rocks / posts */
@@ -1395,7 +1439,8 @@ G.on('lamp:cured',()=>{
 
 /* ---------------------------------------------------------------- API + system */
 const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negatives,moths,patches,get halloran(){return hal;},
-  toPatch, lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
+  toPatch, toRoost, setRoost, inCaveRegion, get roost(){return roost;}, clingR:null, N_ROOST,
+  lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
   ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),
   get glassOpen(){return glassOpen;}, get cured(){return cured;}};
 
