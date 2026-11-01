@@ -13,7 +13,7 @@ const clamp=U.clamp, lerp=U.lerp, smooth=U.smooth;
 /* ---------- tuning (LOOP.md) ---------- */
 const CAP=130, START_ETHER=40, BASE_R=30, PER_ETHER=3;
 const DRAIN_PER_MIN=60/75;                 // 1 ether / 75 s of play
-const WALL_H=50;                           // main band height above the ground (m)
+const WALL_H=60;                           // main band height above the ground (m)
 const LAYERS=[{off:-5,h:.45,a:.5},{off:0,h:1,a:.75},{off:10,h:1.2,a:.7}];
 const SEG=G.isMobile?192:256, ROWS=16;
 const BUBBLE=7, BUBBLE_DEPTH=60;
@@ -119,25 +119,30 @@ uniform vec2 uBeam; uniform float uBeamOn; uniform vec3 uFogColor; uniform float
 varying vec3 vW; varying float vV; varying float vGround; varying float vLayer;
 ${G.SNOISE}
 void main(){
-  float n1=snoise(vec3(vW.x*.03, vW.y*.045-uTime*.07, vW.z*.03+uTime*.015+vLayer*1.7));
-  float n2=snoise(vec3(vW.x*.1+uTime*.04, vW.y*.12-uTime*.16, vW.z*.1-vLayer*2.3));
-  float n=n1*.68+n2*.32;
-  float la=vLayer<.5?.5:(vLayer<1.5?.75:.7);
+  vec3 q=vec3(vW.x*.028, vW.y*.04-uTime*.06, vW.z*.028+vLayer*1.7);
+  float n1=snoise(q);
+  float n1b=snoise(q+vec3(0.,-.14,0.));
+  float n2=snoise(vec3(vW.x*.09+uTime*.03, vW.y*.11-uTime*.14, vW.z*.09-vLayer*2.3));
+  float n=n1*.7+n2*.3;
+  float la=vLayer<.5?.7:(vLayer<1.5?.95:.9);
   float above=vW.y-vGround;
-  float base=smoothstep(-1.5,8.,above);
-  float top=1.-smoothstep(.42,.98,vV+n*.25);
-  float a=la*base*top*(.82+.18*n);
+  float base=smoothstep(-2.,6.,above);
+  float h=vV+n*.28;
+  float top=1.-smoothstep(.58,.86,h);
+  float a=la*base*top;
   // fade where the camera passes through a band
   float dc=length(vW-cameraPosition);
-  a*=smoothstep(3.,20.,dc);
+  a*=smoothstep(3.,22.,dc);
   if(a<.004)discard;
-  float shade=.78+.32*n+.12*n2;
-  vec3 inC=mix(uInLo,uInHi,smoothstep(0.,.85,vV))*shade;
-  vec3 outC=mix(uOutLo,uOutHi,smoothstep(0.,.7,vV))*(.85+.25*n);
+  float lit=clamp((n1-n1b)*3.5,-1.,1.);   // billow tops catch the light from above
+  float shade=.86+.2*lit+.1*n2;
+  vec3 inC=mix(uInLo,uInHi,smoothstep(.05,.8,vV))*shade;
+  inC+=uGlow*exp(-max(above,0.)/7.)*.3;    // the light presses on the foot of the wall
+  vec3 outC=mix(uOutLo,uOutHi,smoothstep(0.,.75,vV))*(.85+.2*lit);
   vec3 col=mix(outC,inC,uCamIn);
-  // a silver lining where the billowing top thins out: the light behind the fog
-  float rim=smoothstep(.18,.0,abs(top-.35))*smoothstep(.25,.7,vV);
-  col+=uGlow*rim*mix(.35,.18,uCamIn);
+  // a silver lining along the billowing crest: the light behind the fog
+  float rim=smoothstep(.55,.68,h)*(1.-smoothstep(.72,.86,h))*smoothstep(.2,.6,vV);
+  col+=uGlow*rim*mix(.4,.22,uCamIn);
   // the beam sweeps across the inner face and holds it back
   vec2 d=normalize(vW.xz-uC);
   float bk=pow(abs(dot(d,uBeam)),70.)*uBeamOn*(1.-smoothstep(.1,.9,vV)*.6);
@@ -150,26 +155,29 @@ void main(){
   col*=1.-uDark*.85;
   gl_FragColor=vec4(col,a);
 }`;
-let wall=null, wallU=null, groundAttr=null, groundDirty=true, groundR=-1;
+let wall=null, wallU=null, groundAttr=null, groundDirty=true, groundR=-1, idxIn=null, idxOut=null, idxSide=true;
 const _dirs=[];
 function buildWall(){
   const L=LAYERS.length, nv=(SEG+1)*(ROWS+1);
-  const pos=new Float32Array(L*nv*3), gr=new Float32Array(L*nv), lay=new Float32Array(L*nv), idx=[];
+  const pos=new Float32Array(L*nv*3), gr=new Float32Array(L*nv), lay=new Float32Array(L*nv), per=[];
   for(let i=0;i<=SEG;i++){ const a=i/SEG*Math.PI*2; _dirs.push([Math.cos(a),Math.sin(a)]); }
   for(let l=0;l<L;l++){ const o=l*nv;
     for(let j=0;j<=ROWS;j++){ const v=Math.pow(j/ROWS,1.35);
       for(let i=0;i<=SEG;i++){ const k=o+j*(SEG+1)+i;
         pos[k*3]=_dirs[i][0]; pos[k*3+1]=v; pos[k*3+2]=_dirs[i][1]; lay[k]=l; } }
-    for(let j=0;j<ROWS;j++)for(let i=0;i<SEG;i++){ const a=o+j*(SEG+1)+i, b=a+1, c=a+SEG+1, d=c+1; idx.push(a,c,b,b,c,d); }
+    const idx=[]; for(let j=0;j<ROWS;j++)for(let i=0;i<SEG;i++){ const a=o+j*(SEG+1)+i, b=a+1, c=a+SEG+1, d=c+1; idx.push(a,c,b,b,c,d); }
+    per.push(idx);
   }
   const g=new THREE.BufferGeometry();
   g.setAttribute('position',new THREE.BufferAttribute(pos,3));
   groundAttr=new THREE.BufferAttribute(gr,1); groundAttr.setUsage&&groundAttr.setUsage(THREE.DynamicDrawUsage);
   g.setAttribute('aGround',groundAttr); g.setAttribute('aLayer',new THREE.BufferAttribute(lay,1));
-  g.setIndex(idx);
+  // transparent layers draw far-to-near: outer first when seen from inside the light, inner first from out in the fog
+  idxIn=new THREE.Uint16BufferAttribute([].concat(...per.slice().reverse()),1); idxOut=new THREE.Uint16BufferAttribute([].concat(...per),1);
+  g.setIndex(idxIn); idxSide=true;
   wallU={uR:{value:fog.radius},uTime:{value:0},uH:{value:WALL_H},uC:{value:new THREE.Vector2(centre.x,centre.z)},
     uCamIn:{value:1},uFlash:{value:0},uDark:{value:0},
-    uInLo:{value:U.col('#b9b0d0')},uInHi:{value:U.col('#5e5680')},uOutLo:{value:U.col('#7d70a6')},uOutHi:{value:U.col('#2e2b42')},
+    uInLo:{value:U.col('#e4dcef')},uInHi:{value:U.col('#8f86b3')},uOutLo:{value:U.col('#8678b0')},uOutHi:{value:U.col('#2c2940')},
     uGlow:{value:U.col('#d4c4ff')},uEther:{value:U.col('#9150ff')},
     uBeam:{value:new THREE.Vector2(1,0)},uBeamOn:{value:0},uFogColor:{value:new THREE.Color()},uFogDensity:{value:.01}};
   const m=new THREE.ShaderMaterial({uniforms:wallU,vertexShader:WALL_VS,fragmentShader:WALL_FS,transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false});
@@ -340,6 +348,7 @@ G.system('fog',{order:12,modes:'always',
     flash=Math.max(0,flash-dt*.45);
     wallU.uR.value=fog.radius; wallU.uTime.value=G.time; wallU.uFlash.value=flash*flash;
     wallU.uCamIn.value=1-smooth(fog.radius-6,fog.radius+6,camD); wallU.uDark.value=dark;
+    if((camD<fog.radius)!==idxSide){ idxSide=camD<fog.radius; wall.geometry.setIndex(idxSide?idxIn:idxOut); }
     if(!beam&&beamSearch<=0){ beamSearch=2; findBeam(); } beamSearch-=dt;
     if(beam&&beam.visible){ beam.updateMatrixWorld(); _bv.setFromMatrixColumn(beam.matrixWorld,0); _bv.y=0;
       if(_bv.lengthSq()>1e-6){ _bv.normalize(); wallU.uBeam.value.set(_bv.x,_bv.z); wallU.uBeamOn.value=clamp(A.cured,0,1); } }

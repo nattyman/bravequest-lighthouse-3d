@@ -163,12 +163,12 @@ function buildPickupAssets(){
   GEO={}; MAT={};
   // glowkelp: three ribbon-strands lying on the sand, tips curling up
   const strands=[];
-  for(let s=0;s<3;s++){ const a=s*2.1+.3, L=.9+s*.18, pts=[];
+  for(let s=0;s<3;s++){ const a=s*2.1+.3, L=1.2+s*.25, pts=[];
     for(let k=0;k<=6;k++){ const t=k/6; pts.push(V(Math.cos(a)*L*t+Math.sin(t*5+s)*.08,.03+Math.pow(t,3)*(.28+s*.06),Math.sin(a)*L*t+Math.cos(t*4+s)*.08)); }
-    strands.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.035-s*.004,5,false));
+    strands.push(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.05-s*.006,5,false));
     for(const k of [.35,.6,.85]){ const b=new THREE.SphereGeometry(.05,6,4); const p=new THREE.CatmullRomCurve3(pts).getPoint(k); b.translate(p.x,p.y+.02,p.z); strands.push(b); } }
   GEO.kelp=merge(strands);
-  MAT.kelp=new THREE.MeshBasicMaterial({color:new THREE.Color(.25,1.35,1.15),fog:true});
+  MAT.kelp=new THREE.MeshBasicMaterial({color:new THREE.Color(.3,1.7,1.45),fog:true});
   // brine: a cluster of pale crystals
   const cr=[]; const cs=[[0,0,0,.16,.42,0,0],[.14,0,.06,.1,.28,.4,.3],[-.12,0,.05,.09,.24,-.5,.2],[.02,0,-.13,.08,.2,.2,-.5]];
   for(const [x,y,z,r,h,rz,rx] of cs){ const g=new THREE.OctahedronGeometry(r,0); g.scale(1,h/r,1); g.rotateZ(rz); g.rotateX(rx); g.translate(x,y+h*.45,z); cr.push(g); }
@@ -187,8 +187,8 @@ function buildPickupAssets(){
 }
 function makeDropMesh(id){
   const g=new THREE.Group();
-  if(id==='kelp'){ const m=new THREE.Mesh(GEO.kelp,MAT.kelp); m.rotation.y=Math.random()*TAU; g.add(m); const s=glow('#4fe0d0',1.5,.55); s.position.y=.2; g.add(s); }
-  else if(id==='brine'){ const m=new THREE.Mesh(GEO.brine,MAT.brine); m.rotation.y=Math.random()*TAU; m.castShadow=true; g.add(m); G.outline(m,{thickness:.012}); const s=glow('#cfe0ff',.9,.45); s.position.y=.25; g.add(s); }
+  if(id==='kelp'){ const m=new THREE.Mesh(GEO.kelp,MAT.kelp); m.rotation.y=Math.random()*TAU; g.add(m); const s=glow('#4fe0d0',2.6,.75); s.position.y=.25; g.add(s); }
+  else if(id==='brine'){ const m=new THREE.Mesh(GEO.brine,MAT.brine); m.rotation.y=Math.random()*TAU; m.castShadow=true; g.add(m); G.outline(m,{thickness:.012}); m.scale.setScalar(1.3); const s=glow('#cfe0ff',1.6,.6); s.position.y=.3; g.add(s); }
   else if(id==='pearl'){ const sh=new THREE.Mesh(GEO.shell,MAT.shell); sh.rotation.x=PI; sh.position.y=.08; g.add(sh); const sh2=new THREE.Mesh(GEO.shell,MAT.shell); sh2.position.set(0,.09,-.2); sh2.rotation.x=-1.1; g.add(sh2);
     const p=new THREE.Mesh(GEO.pearl,MAT.pearl); p.position.y=.16; g.add(p); const s=glow('#ffd8ee',1.1,.6); s.position.y=.2; g.add(s); }
   else if(id==='ichor'){ const m=new THREE.Mesh(GEO.ichor,MAT.ichor); g.add(m); G.outline(m,{thickness:.012,color:'#4a2a7a'}); const s=glow('#7a4ad8',.8,.35); s.position.y=.12; g.add(s); }
@@ -286,7 +286,11 @@ function updateTide(dt){
   const low=T.level<=LOWV;
   if(low!==T.low){ T.low=low; if(low)onLowTide(); else onHighTide(); }
 }
-function setTideTime(t){ T.t=t; T.low=levelAt(t)<=LOWV; updateTide(0); if(T.low&&!drops.some(d=>d.tidal))spawnHarvest(); }
+function setTideTime(t,quiet){
+  T.t=t;
+  if(quiet){ T.low=levelAt(t)<=LOWV; updateTide(0); if(T.low&&looping()&&!drops.some(d=>d.tidal&&d.state!=='out'))spawnHarvest(); }
+  else updateTide(0); // fires tide:low / tide:high transitions like real time would
+}
 let lowCount=0;
 function beachZ(x,hTarget){ for(let z=40;z<112;z+=.5){ if(H(x,z)<hTarget)return z; } return null; }
 function spawnHarvest(){
@@ -373,8 +377,8 @@ function takePage(p){
 function buildBoat(){
   // a small broken rowboat, heeled over in the sand above the waterline
   const x=-8, zDry=beachZ(x,.55)||74, z=zDry-1.2, y=H(x,z);
-  const grp=new THREE.Group(); grp.position.set(x,y-.12,z); grp.rotation.set(0,.6,.42); root.add(grp);
-  const wood=G.toon('#7a5638',{side:THREE.DoubleSide}), dark=G.toon('#4e3626'), paint=G.toon('#5a6f78');
+  const grp=new THREE.Group(); grp.position.set(x,y-.06,z); grp.rotation.set(0,.6,.3); root.add(grp);
+  const wood=G.toon('#9a7550',{side:THREE.DoubleSide}), dark=G.toon('#5e432e'), paint=G.toon('#5a6f78');
   const L=3.6, hull=new THREE.CylinderGeometry(.78,.78,L,14,12,true,PI,PI); hull.rotateZ(PI/2);
   const P=hull.attributes.position;
   for(let i=0;i<P.count;i++){ const hx=P.getX(i), t=hx/(L/2), w=Math.max(.04,1-Math.pow(Math.abs(t),2.4));
@@ -398,10 +402,12 @@ function buildBoat(){
   const pz=z-1.25, px=x+.5; makePage('tidewater',V(px,H(px,pz)+.02,pz),.4,.35);
 }
 function buildHamletPage(){
-  const x=-25.5, z=35.2;
-  const y=G.floorAt(x,z);
-  const p=makePage('ichor',V(x,y+.02,z),-.6,.1);
-  const stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.13,0),G.toon('#7f7a72')); stone.position.set(x+.08,y+.11,z-.06); stone.scale.set(1,.6,1); root.add(stone);
+  // on a fallen lintel block in front of the ruin, above the grass, weighted with a pebble
+  const x=-25.5, z=35.2, y=G.floorAt(x,z);
+  const blk=new THREE.Mesh(new THREE.BoxGeometry(1.5,.62,.8),G.toon('#8d8a84')); blk.position.set(x,y+.25,z); blk.rotation.set(.04,-.5,.03); blk.castShadow=blk.receiveShadow=true; root.add(blk); G.outline(blk,{thickness:.02});
+  G.addCollider({x,z,r:.7,y0:y-1,y1:y+.55});
+  const p=makePage('ichor',V(x,y+.57,z),-.6,.05);
+  const stone=new THREE.Mesh(new THREE.DodecahedronGeometry(.11,0),G.toon('#6f6a62')); stone.position.set(x+.12,y+.66,z-.08); stone.scale.set(1,.6,1); root.add(stone);
   return p;
 }
 
@@ -565,6 +571,7 @@ const CSS=`
 .alch-brewing .liq{animation:alchGlow .8s infinite alternate}
 @keyframes alchBub{0%{transform:translateY(0);opacity:0}20%{opacity:1}100%{transform:translateY(-16px);opacity:0}}
 @keyframes alchGlow{from{fill:#9a5cff}to{fill:#cfaaff}}
+@media (pointer:coarse){.alch-foot kbd{display:none}}
 @media (max-width:520px){#alchemy .sheet{padding:20px 18px 18px;gap:12px}.alch-rec{grid-template-columns:1fr;}.alch-rec .btn{justify-self:start}}
 @media (prefers-reduced-motion:reduce){.alch-brewing .bub,.alch-brewing .liq{animation:none;opacity:1}}
 /* satchel HUD row */
@@ -602,7 +609,7 @@ function buildDOM(){
 }
 function needsHTML(r){
   return Object.keys(r.needs).map(k=>{ const have=G.inv.count(k), need=r.needs[k], it=ITEMS[k];
-    return `<span class="alch-need${have<need?' short':''}">${ICON[k]}${esc(need>1?it.plural:it.name)} <small>${have}/${need}</small></span>`; }).join('');
+    return `<span class="alch-need${have<need?' short':''}">${ICON[k]}${need} ${esc(need>1?it.plural:it.name)} <small>(${have} held)</small></span>`; }).join('');
 }
 function tideNote(){
   if(!looping())return '';
@@ -700,15 +707,20 @@ function nearestShroom(){
 }
 function anyBrewable(){ return RORDER.some(id=>id!=='bait'&&A.canBrew(id)); }
 function chainNow(){ chainT=0; }
+let myStep='', foreignAt=-1;
 function setQ(step,obj,sub,target,name){
   const key=step+'|'+obj+'|'+sub+'|'+name+'|'+(target?Math.round(target.x)+','+Math.round(target.z):'');
-  if(key===lastChain)return; lastChain=key;
+  if(key===lastChain&&G.quest&&G.quest.step===myStep)return; lastChain=key; myStep=step;
   if(G.quest&&G.quest.set)G.quest.set(step,obj,sub,target,name); else G.ui.objective(obj,sub);
 }
 function lampTarget(){ const lh=G.world.lighthouse, P=G.player.pos; if(lh&&lh.inside&&lh.inside(P))return {t:lh.inRoom(P)?null:lampPos().clone(),n:'The lamp'}; return {t:doorPos(),n:'Lighthouse'}; }
 function updateChain(dt){
   if(!looping())return;
   chainT-=dt; if(chainT>0)return; chainT=.5;
+  // another module (e.g. moths.js at a blight) set its own objective: let it stand ~20 s, then take the chain back
+  const qs=G.quest&&G.quest.step;
+  if(myStep&&qs&&qs!==myStep&&qs!=='done'&&!/^loop-/.test(qs)){ if(foreignAt<0)foreignAt=G.time; if(G.time-foreignAt<20)return; }
+  foreignAt=-1;
   const vials=G.inv.count('vial'), caps=G.inv.count('glowcap');
   if(ov&&G.time>ov.until)ov=null;
   // blight sighting (moths.js owns blights; we only point at them once)
@@ -776,7 +788,7 @@ function onLoopStart(e){
   }
   chainNow();
 }
-G.persist&&G.persist.register('alchemy',{
+const PERSIST={
   save:()=>({v:1,inv:Object.assign({},counts),ether:A.etherUnits,poured:A.poured,known:[...A.known],tide:+T.t.toFixed(1),
     pages:pages.filter(p=>p.found).map(p=>p.id),regrow:spots.map(s=>Math.round(s.regrow)),
     S:{poured:S.poured,firsts:S.firsts,tidepool:S.tidepool,grove:S.grove,sighted:S.sighted}}),
@@ -791,11 +803,12 @@ G.persist&&G.persist.register('alchemy',{
     for(const p of pages){ p.found=(d.pages||[]).includes(p.id); p.mesh.visible=looping()&&!p.found&&!A.known.has(p.id); }
     (d.regrow||[]).forEach((r,i)=>{ const sp=spots[i]; if(!sp)return; sp.regrow=r>0?r:0; if(sp.mesh)sp.mesh.visible=!(r>0); });
     for(const dr of drops.slice())removeDrop(dr);
-    T.low=false; setTideTime(+d.tide||0);
+    setTideTime(+d.tide||0,true);
     G.emit('inv:change',{id:'*',n:0,total:0});
     lastChain=''; chainNow();
   }
-});
+};
+G.persist&&G.persist.register('alchemy',PERSIST);
 
 /* =====================================================================
    15. SYSTEM
@@ -830,6 +843,6 @@ G.system('alchemy',{order:55,modes:'always',
 function refreshTideOnly(){ const el=panel&&panel.querySelector('.alch-tide'); if(el){ const w=document.createElement('div'); w.innerHTML=tideNote(); if(w.firstChild)el.textContent=w.firstChild.textContent; } }
 
 /* debug helpers (tests) */
-A.debug={ setTide:t=>setTideTime(t), give:(id,n)=>G.inv.add(id,n,{silent:true}), state:S, sparkle,
+A.debug={ save:()=>PERSIST.save(), load:d=>PERSIST.load(d), setTide:t=>setTideTime(t), give:(id,n)=>G.inv.add(id,n,{silent:true}), state:S, sparkle,
   info:()=>({inv:G.inv.list(),ether:A.etherUnits,known:[...A.known],tide:{level:+T.level.toFixed(3),low:T.low,next:Math.round(T.nextLowIn),off:+T.offset.toFixed(3)},drops:drops.length,step:G.quest&&G.quest.step}) };
 })();
