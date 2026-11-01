@@ -24,7 +24,7 @@ const ichor=()=>{try{return G.inv&&G.inv.count?(G.inv.count('ichor')|0):0;}catch
 const lantern=()=>G.items&&G.items.lantern;
 
 /* ---------------------------------------------------------------- numbers */
-const FEED_TIME=10, STALL_BELOW=15, KILL_RATE=3, KILL_R=4, REGROW_EVERY=20, SATCHEL_N=5, SATCHEL_R=45,
+const FEED_TIME=10, STALL_BELOW=15, KILL_RATE=1.2, /* was 3: idle monsters alone wiped the swarm */ KILL_R=4, REGROW_EVERY=20, SATCHEL_N=5, SATCHEL_R=45,
       BAIT_MAX=600, NEEDS=40, SPRING_R=1.35, SPRING_EVERY=2;
 
 /* ---------------------------------------------------------------- state (persisted) */
@@ -272,7 +272,7 @@ function buildTidepool(b,p){
   for(let i=0;i<7;i++){ const a=rnd()*TAU, r=SR+.8+rnd()*2.4, x=c.x+Math.cos(a)*r, z=c.z+Math.sin(a)*r, s=.4+rnd()*.7;
     rocks.push(xf(rockGeo(1,i*5.1+9,.75),x,H(x,z)+s*.2,z,rnd(),rnd()*TAU,0,s*1.3,s,s)); }
   const rg=merge(rocks.map(g=>g.index?g:g));
-  paint(rg,(x,y,z,o)=>{ const n=U.vnoise(x*.9,z*.9+y); o.copy(COL('#5e5a5c')).lerp(COL('#3c3a40'),n*.8);
+  paint(rg,(x,y,z,o)=>{ const n=U.vnoise(x*.9,z*.9+y); o.copy(COL('#55555b')).lerp(COL('#34343b'),n*.8);
     if(y<top-.6)o.lerp(COL('#2c2a2e'),U.smooth(top-.6,top-2.5,y)*.8);           // wet, dark lower face
     if(y>top-.25&&y<top+.25)o.lerp(COL('#4f5b3e'),.35*U.vnoise(x*2,z*2));        // a little weed on the lip
   });
@@ -284,9 +284,9 @@ function buildTidepool(b,p){
   const out=[];
   const yRock=(x,z)=>{const d=Math.hypot(x-c.x,z-c.z); return d<SR?top+.05+Math.max(0,(d-2.9))*.5:H(x,z);};
   for(let i=0;i<7;i++){ const a=i/7*TAU+rnd()*.5; crawler(out,p.anchors,V(c.x+Math.cos(a)*.9,0,c.z+Math.sin(a)*.9),a,6+rnd()*2,.13,yRock,.12); }
-  for(let i=0;i<5;i++){ const a=i/5*TAU+rnd(), r=.5+rnd()*1.6; spire(out,p.anchors,V(c.x+Math.cos(a)*r,top,c.z+Math.sin(a)*r),1.4+rnd()*1.6,.14,3); }
+  for(let i=0;i<7;i++){ const a=i/7*TAU+rnd()*.6, r=i?.9+rnd()*1.5:0; spire(out,p.anchors,V(c.x+Math.cos(a)*r,top,c.z+Math.sin(a)*r),i?1.8+rnd()*1.8:4.2,i?.15:.24,3); }
   inkMesh(p,out);
-  heartMesh(p,c.x,top+.05,c.z,1.6,1.0,1.6);
+  heartMesh(p,c.x,top+.05,c.z,1.9,1.15,1.9);
   addEmitters(p,b,V(c.x,top,c.z),3.5);
   // cured: clear water and a pearl glint at the bottom
   const w=waterDisc(c.x,top+.08,c.z,3.15); p.root.add(w); p.water=w;
@@ -333,9 +333,10 @@ function buildWell(b,p){
   for(const d of [-1.18,1.18]){ const [x,z]=side(d), pts=[];
     for(let i=0;i<=8;i++){const t=i/8, a=t*9+d; pts.push(V(x+Math.cos(a)*.13,y+t*2.1,z+Math.sin(a)*.13));}
     const g=taper(pts,.07,.02,24,5); out.push(g); thorns(out,p.anchors,g.userData.curve,.07,.02,.3,.22); }
-  for(let i=0;i<3;i++){ const a=rnd()*TAU; spire(out,p.anchors,V(c.x+Math.cos(a)*2.4,H(c.x+Math.cos(a)*2.4,c.z+Math.sin(a)*2.4),c.z+Math.sin(a)*2.4),1.4+rnd(),.11,2.5); }
+  for(let i=0;i<5;i++){ const a=i/5*TAU+rnd()*.8, r=1.9+rnd()*1.6, x=c.x+Math.cos(a)*r, z=c.z+Math.sin(a)*r; spire(out,p.anchors,V(x,H(x,z),z),i%2?1.6+rnd():2.6+rnd()*1.2,i%2?.12:.17,2.5); }
+  for(let i=0;i<4;i++){ const a=i/4*TAU+.4; spire(out,p.anchors,V(c.x+Math.cos(a)*.45,y+.9,c.z+Math.sin(a)*.45),1.2+rnd()*.9,.11,3); }
   inkMesh(p,out);
-  heartMesh(p,c.x,y+.95,c.z,.98,.55,.98);
+  heartMesh(p,c.x,y+.95,c.z,1.0,.75,1.0);
   addEmitters(p,b,V(c.x,y+1,c.z),3);
   if(G.ink&&G.ink.emitter)p.ems.push(G.ink.emitter(V(c.x,y+1,c.z),{rate:0,radius:.9,drip:2.5,embers:0,intensity:0}));
   // cured parts
@@ -517,7 +518,9 @@ function updateThreats(dt){
     let best=null, bd=KILL_R*KILL_R;
     for(const m of sw){ if(m.tgt==='gone')continue; const dx=m.p.x-cx,dy=m.p.y-cy,dz=m.p.z-cz,d=dx*dx+dy*dy*.6+dz*dz; if(d<bd){bd=d;best=m;} }
     if(!best){killAcc.set(mo,0);continue;}
-    let a=(killAcc.get(mo)||0)+dt*KILL_RATE;
+    // a monster that's hunting the player bites at the full rate; one just drifting about nibbles
+    const calm=mo.state==='idle'||mo.state==='return'||mo.state==='wander';
+    let a=(killAcc.get(mo)||0)+dt*KILL_RATE*(calm?.35:1);
     while(a>=1){ a-=1;
       let tgt=best; if(tgt.tgt==='gone'){ tgt=null; let d2=KILL_R*KILL_R; for(const m of sw){ if(m.tgt==='gone')continue; const d=m.p.distanceToSquared(mo.pos); if(d<d2){d2=d;tgt=m;} } }
       if(!tgt)break; lostPos.copy(tgt.p); kill(tgt,true); S.lost++; lostBatch++; }
@@ -673,7 +676,7 @@ const API=G.moths={swarm:0,feeding:0,bait,
   get baited(){return S.baitLeft>0;}, get baitLeft(){return S.baitLeft;}, get lost(){return S.lost;},
   get noticed(){return S.noticed;}, get active(){return started;},
   blight:id=>blights.find(b=>b.id===id)||null};
-if(G.debug)API._debug={S,P_,cure:id=>{const b=API.blight(id); if(b)cure(b,false);},
+if(G.debug)API._debug={S,P_,save:()=>save(),load:d=>load(d),cure:id=>{const b=API.blight(id); if(b)cure(b,false);},
   tp:id=>{const b=API.blight(id); if(b&&G.player)G.player.teleport(b.pos.x-b.radius-3,null,b.pos.z,PI/2);}};
 
 /* ---------------------------------------------------------------- save / load */

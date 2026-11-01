@@ -69,7 +69,7 @@ const fog=G.fog={
 };
 
 /* ---------- persistence ---------- */
-G.persist&&G.persist.register('fog',{
+const persistH={
   save:()=>({ether:+lamp.ether.toFixed(3),milestones:[...reached],crossed:S.crossed,fed:S.fed}),
   load:(j)=>{
     if(!j)return;
@@ -81,7 +81,9 @@ G.persist&&G.persist.register('fog',{
     for(const m of MILESTONES) if(fog.radius>=m.radius)reached.add(m.name);
     groundDirty=true; gaugeUpdate(true);
   }
-});
+};
+fog._persist=persistH;
+G.persist&&G.persist.register('fog',persistH);
 
 G.on('loop:start',()=>{
   if(lamp.active)return;
@@ -150,8 +152,9 @@ void main(){
   // feeding: a violet flare races up the wall
   col+=uEther*uFlash*(.35+.65*(1.-vV))*.9;
   // our own gentle fog so the wall stays readable at distance
-  float f=1.-exp(-uFogDensity*uFogDensity*dc*dc*.3);
-  col=mix(col,uFogColor,clamp(f,0.,1.)*.75);
+  float fd=min(uFogDensity,.012);
+  float f=1.-exp(-fd*fd*dc*dc*.3);
+  col=mix(col,uFogColor,clamp(f,0.,1.)*.7);
   col*=1.-uDark*.85;
   gl_FragColor=vec4(col,a);
 }`;
@@ -177,7 +180,7 @@ function buildWall(){
   g.setIndex(idxIn); idxSide=true;
   wallU={uR:{value:fog.radius},uTime:{value:0},uH:{value:WALL_H},uC:{value:new THREE.Vector2(centre.x,centre.z)},
     uCamIn:{value:1},uFlash:{value:0},uDark:{value:0},
-    uInLo:{value:U.col('#cdc4df')},uInMid:{value:U.col('#7d7399')},uInHi:{value:U.col('#4c456b')},uOutLo:{value:U.col('#8678b0')},uOutHi:{value:U.col('#2c2940')},
+    uInLo:{value:U.col('#cdc4df')},uInMid:{value:U.col('#7d7399')},uInHi:{value:U.col('#4c456b')},uOutLo:{value:U.col('#a294cf')},uOutHi:{value:U.col('#3b3655')},
     uGlow:{value:U.col('#d4c4ff')},uEther:{value:U.col('#9150ff')},
     uBeam:{value:new THREE.Vector2(1,0)},uBeamOn:{value:0},uFogColor:{value:new THREE.Color()},uFogDensity:{value:.01}};
   const m=new THREE.ShaderMaterial({uniforms:wallU,vertexShader:WALL_VS,fragmentShader:WALL_FS,transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false});
@@ -387,6 +390,14 @@ G.system('fog',{order:12,modes:'always',
   }
 });
 
+/** seconds between chill half-hearts at a given depth (Infinity inside the free band) */
+const CHILL_FREE=10;
+function chillInterval(d){
+  if(d<=CHILL_FREE)return Infinity;
+  if(d<=40)return lerp(24,12,(d-CHILL_FREE)/(40-CHILL_FREE));
+  return Math.max(3,lerp(12,3,(d-40)/80));
+}
+fog.chillInterval=chillInterval;
 function lanternCarriedLit(){ const L=G.items&&G.items.lantern; return !!(L&&L.carried&&L.lit&&L.lit()); }
 function updateChill(dt,P,pp,depth){
   const playing=G.state.mode==='play'&&P&&P.alive!==false;
@@ -399,23 +410,26 @@ function updateChill(dt,P,pp,depth){
   }
   if(!out&&insideT>20)warnedThis=false;
   wasOutside=out;
-  // damage: one half-heart every max(2, 9 - depth/12) s; a lit carried lantern = 7 m bubble up to 60 m, then half rate
+  // damage (see chillInterval): none in the first 10 m, slow to 40 m, dangerous well beyond; a lit carried lantern = 7 m bubble up to 60 m deep, then half rate
   let rate=0;
-  if(out&&!safe&&playing){
-    rate=1/Math.max(2,9-depth/12);
+  const iv=chillInterval(depth);
+  if(out&&!safe&&playing&&iv<1e8){
+    rate=1/iv;
     if(lantern&&fog.depth(G.items.lantern.world.lengthSq()>0?G.items.lantern.world:pp)>BUBBLE_DEPTH){ rate*=.5;
       if(!S.deepLantern){ S.deepLantern=true; G.ui.say('Even the lantern’s light thins out this deep. The cold is finding its way past it.'); } }
   }
+  // soft warning just before the damaging band (or as the first tick nears)
+  if(playing&&out&&!safe&&!warnedThis&&(depth>CHILL_FREE-3||chillAcc>.55)){ warnedThis=true;
+      G.ui.toast('The cold is getting in',lantern?'Go back towards the light':'Return to the light, or carry a lit lantern'); }
   if(rate>0){
     chillAcc+=dt*rate;
-    if(chillAcc>.55&&!warnedThis){ warnedThis=true;
-      G.ui.toast('The cold is getting in',lantern?'Go back towards the light':'Return to the light, or carry a lit lantern'); }
-    if(chillAcc>=1){ chillAcc-=1; hurtPulse=1;
+    // exactly one tick at a time; the accumulator restarts so ticks are always a full interval apart
+    if(chillAcc>=1){ chillAcc=0; hurtPulse=1; fog.lastChillAt=G.time;
       P.hurt({damage:1,kind:'chill',ignoreIframes:true,dir:new THREE.Vector3(),knockback:0}); }
   }else chillAcc=Math.max(0,chillAcc-dt*(out?.15:.5));
   // the vignette: builds with depth (gentler inside a lantern bubble), frost flares as a hit nears and on each hit
   hurtPulse=Math.max(0,hurtPulse-dt*1.6);
-  const target=out?(safe?.18+.25*smooth(0,60,depth):.35+.65*smooth(0,55,depth)):0;
+  const target=out?(safe?.15+.25*smooth(0,60,depth):.22+.78*smooth(0,70,depth)):0;
   chillVis=U.damp(chillVis,target,out?1.6:2.6,dt);
   fog.chill=chillVis;
   if(chillVis<.005&&hurtPulse<=0){ if(chillEl.style.display!=='none')chillEl.style.display='none'; return; }

@@ -1447,7 +1447,7 @@ G.system('player',{order:20,modes:['play','dead'],
   },
   update
 });
-G.system('playerIdle',{order:21,modes:['title','ending','paused'],update(dt){ if(G.state.mode==='paused')return; idleOnly(dt); }});
+G.system('playerIdle',{order:21,modes:['title','ending','paused','menu'],update(dt){ if(G.state.mode==='paused')return; idleOnly(dt); }});
 G.system('playerFx',{order:46,modes:'always',update(dt){updateFx(dt);}});
 G.system('camera',{order:80,modes:['play','dead'],update:updateCamera});
 G.on('mode',({mode,prev})=>{ if(mode==='play'&&(prev==='title'||prev==='ending')){cam.snap=true; cam.yaw=P.heading; cam.pitch=.26;} });
