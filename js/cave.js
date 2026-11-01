@@ -228,14 +228,17 @@ G.floorProviders.push((x,z,y)=>{
 });
 
 /* the sandbar and the arch hug the foot of the cliff: keep the follow camera out over the sea (it would sit inside the
-   cliff or the arch's rock otherwise), i.e. heading roughly north, never with its back to the sea */
+   cliff or the arch's rock otherwise). player.js owns the camera, so this swings the boom's end (same length) into a seaward
+   cone about the player; at the arch itself it looks straight in. */
 const CAM_COS=-.3, CAM_YAW=Math.acos(CAM_COS);
-G.cameraYawRules.push((yaw,p)=>{
-  if(S.inside||!loopOn()||p.x<95||p.x>190||p.z<48.5||p.z>62||p.y>4.5)return null;
-  // at the arch itself look straight in, or the jambs' rock sits between the camera and you
-  if(Math.hypot(p.x-MX,p.z-52.4)<7.5)return Math.abs(U.angDiff(yaw,PI))<.12?null:PI;
-  if(Math.cos(yaw)<=CAM_COS)return null;
-  return Math.sin(yaw)>=0?CAM_YAW:-CAM_YAW;
+G.cameraConstrainers.push((cam,t)=>{
+  if(S.inside||!loopOn()||t.x<95||t.x>190||t.z<48.5||t.z>62||t.y>6)return;
+  let dx=cam.x-t.x, dz=cam.z-t.z; const L=Math.hypot(dx,dz); if(L<.05)return;
+  const k=smooth(8.5,5.5,Math.hypot(t.x-MX,t.z-52.4)); // 0 out on the sandbar .. 1 under the arch
+  if(dz/L<-CAM_COS){ const sn=Math.sign(dx)||1; dx=sn*L*Math.sqrt(1-CAM_COS*CAM_COS); dz=L*-CAM_COS; }
+  else if(k<=0)return;
+  if(k>0){ let a=Math.atan2(dx,dz); a*=1-k; dx=Math.sin(a)*L; dz=Math.cos(a)*L; }
+  cam.x=t.x+dx; cam.z=t.z+dz; const f=G.floorAt(cam.x,cam.z,cam.y); if(cam.y<f+.4)cam.y=f+.4;
 });
 
 /* ================================================================ 4. PHYSICS (interior) */
@@ -260,11 +263,11 @@ const _cp=new THREE.Vector3();
 G.cameraConstrainers.push((cam,target)=>{
   if(!S.inside)return;
   const tx=target.x-O.x, ty=target.y-O.y, tz=target.z-O.z, cx=cam.x-O.x, cy=cam.y-O.y, cz=cam.z-O.z;
-  const bad=(x,y,z)=>Sat(x,z)>-.24||y>Cat(x,z)-.28||y<Fat(x,z)+.22||(y<water()+.18&&Fat(x,z)<water());
+  const bad=(x,y,z)=>Sat(x,z)>-.24||y>Cat(x,z)-.34||y<Fat(x,z)+.4||(y<water()+.18&&Fat(x,z)<water()); // margins leave room for camera shake
   const L=Math.hypot(cx-tx,cy-ty,cz-tz), n=Math.max(1,Math.ceil(L/.12));
   let gx=tx,gy=ty,gz=tz;
   if(bad(tx,ty,tz)){ // target itself is tight: just keep the camera under the ceiling
-    cam.set(target.x,O.y+Math.min(Math.max(ty,Fat(tx,tz)+.3),Cat(tx,tz)-.2),target.z); return; }
+    cam.set(target.x,O.y+Math.min(Math.max(ty,Fat(tx,tz)+.45),Cat(tx,tz)-.2),target.z); return; }
   for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
   cam.set(gx+O.x,gy+O.y,gz+O.z);
 });

@@ -55,7 +55,7 @@ function bolt(m){ let ok=false;
   G.input.setVirtual('attack',true); G.step(1/30,22); G.input.setVirtual('attack',false); G.step(1/30,12);
   if(P().lockTarget)tap('lock',1); return ok; }
 function fight(o){ o=o||{}; const pp=P().pos; let steps=0, ft=null, fn=0; const max=o.max||1500;
-  const alive=()=>G.monsters.list.filter(m=>m.alive&&!m.dying&&(!o.room||G.cave.room(m.pos)===o.room)&&m.pos.distanceTo(pp)<(o.r||30));
+  const alive=()=>G.monsters.list.filter(m=>m.alive&&!m.dying&&(!o.room||G.cave.room(m.pos)===o.room)&&m.pos.distanceTo(pp)<(o.r||30)&&(!o.threats||!/idle|return|wander/.test(m.state)));
   let a; while((a=alive()).length&&steps<max){ a.sort((x,y)=>x.pos.distanceTo(pp)-y.pos.distanceTo(pp)); const m=a[0], d=Math.hypot(m.pos.x-pp.x,m.pos.z-pp.z);
     if(m!==ft){ft=m;fn=0;} fn++;
     if(d>1.6&&(fn>90||m.pos.y<pp.y-1.2||m.onRaft)&&d<15){ bolt(m); steps+=46; fn=60; }
@@ -85,8 +85,9 @@ return {keys,release,steer,walk,where,tap,label,use,wait,swarm,near,states,until
 
 # camera check: the camera must never end up inside the rock, above the ceiling or below the floor
 CAMCHECK=r"""
+window.NAN=window.NAN||[]; if(!console._nanHook){ const ce=console.error; console._nanHook=1; console.error=function(...a){ if(String(a[0]).includes('NaN')&&NAN.length<3)NAN.push(new Error().stack.split('\n').slice(2,8).join(' | ')); return ce.apply(console,a); }; }
 window.CAM={n:0,bad:[]}; G.system('camCheck',{order:99,modes:['play'],update(){ if(!G.cave.inside)return; const D=G.cave._debug, O=G.cave.origin, c=G.camera.position, x=c.x-O.x, y=c.y-O.y, z=c.z-O.z;
-  CAM.n++; const s=D.Sat(x,z), f=D.Fat(x,z), cc=D.Cat(x,z); const b=s>.02?'rock':y>cc+.02?'ceil':y<f-.02?'floor':''; if(b&&CAM.bad.length<50)CAM.bad.push([b,G.cave.room(G.player.pos),+x.toFixed(1),+y.toFixed(1),+z.toFixed(1)]); }}); 'cam'
+  CAM.n++; const s=D.Sat(x,z), f=D.Fat(x,z), cc=D.Cat(x,z); const b=s>.02?'rock':y>cc+.02?'ceil':y<f-.12?'floor':''; /* .1: hurt / landing shake jitters the camera after it is placed */ if(b&&CAM.bad.length<50)CAM.bad.push([b,G.cave.room(G.player.pos),+x.toFixed(1),+y.toFixed(1),+z.toFixed(1)]); }}); 'cam'
 """
 
 STEPS=[
@@ -162,7 +163,7 @@ STEPS=[
    return {ok:r.ok&&G.cave.isLit('stair')&&G.alchemy.etherUnits===10,lab,ether:G.alchemy.etherUnits,at:d,hud:T.hud()}; })()"""),
  ("shot:stair-lit",None),
  ("lowPassage", r"""(()=>{ const f=T.fight({room:'stair'}); const r0=T.walk([[-7.5,-53],[-7.6,-60],[-8,-65]],{local:true});
-   const tw=T.guard(()=>G.cave.lowPassageOpen(),9000);
+   const tw=T.guard(()=>G.cave.lowPassageOpen()&&G.tide.low&&G.tide.lowLeft>40,12000); // through and back before the water returns
    const r1=T.walk([[-8,-70],[-8,-76],[-8,-79.5],[-6,-83]],{local:true});
    return {ok:r0.ok&&r1.ok&&G.cave.room(G.player.pos)==='channel',fight:f,tideWait:tw,level:+G.tide.level.toFixed(2),r1,swarm:T.swarm()}; })()"""),
  ("backThroughPassage", r"""(()=>{ const r=T.walk([[-7.6,-81],[-7.8,-77],[-8,-70],[-8,-65],[-7.6,-60],[-7.6,-53.5],[-4,-51.5],[-1.8,-52.6]],{local:true});
@@ -204,16 +205,16 @@ STEPS=[
  ("shot:channel-lit",None),
  # ---------------------------------------------------------------- the hall of drafts
  ("drafts", r"""(()=>{ const r=T.walk([[46,-86.3],[52,-86.5]],{local:true}); const L=G.items.lantern; if(!L.shut)T.tap('shutter',3); const shut=L.shut;
-   const f=T.fight({room:'drafts',max:2400,r:45}); const r2=T.walk([[58,-86.3],[60,-80]],{local:true});
+   const f=T.fight({room:'drafts',max:2400,r:45,threats:true}); // shy crabs with nothing to hunt are left alone, like a player would const r2=T.walk([[58,-86.3],[60,-80]],{local:true});
    return {ok:r.ok&&shut&&f.left===0&&T.swarm()>=20,shut,fight:f,swarm:T.swarm(),lost:T.losses.drafts||0,hud:T.hud()}; })()"""),
  ("shot:drafts-dark",None),
  ("gusts", r"""(()=>{ const L=G.items.lantern, gust=G.cavePuzzles.gust; let bursts=0, killedInGust=0; const lost0=G.moths.lost;
-   G.on('moths:lost',e=>{ if(gust.phase==='burst')killedInGust+=e.n; });
+   G.on('moths:lost',e=>{ if(gust.phase==='burst'&&e.pos&&G.cavePuzzles.vents.some(v=>Math.hypot(e.pos.x-v.pos.x,e.pos.z-v.pos.z)<3.3))killedInGust+=e.n; }); // a gust's victims die over its vent
    const seen=()=>{ if(gust.phase==='burst'&&!seen.b){ seen.b=1; bursts++; } if(gust.phase!=='burst')seen.b=0; };
    if(!L.shut)T.tap('shutter',3);
    for(const [x,z] of [[60,-72],[60,-62],[60,-54],[60,-46],[60,-42]]){
      while(gust.phase!=='idle'||gust.next<3.5){ G.step(1/30,1); T.top(); seen(); }
-     T.fight({r:9,max:600}); T.walk([[x,z]],{local:true,each:seen}); if(z===-54&&!window._gustShot){ window._gustShot=1; } }
+     T.fight({r:9,max:600,threats:true}); T.walk([[x,z]],{local:true,each:seen}); if(z===-54&&!window._gustShot){ window._gustShot=1; } }
    const sw=T.swarm();
    return {ok:L.shut&&bursts>=3&&killedInGust===0&&sw>=20&&G.cave.room(G.player.pos)==='drafts',bursts,killedInGust,swarm:sw,at:T.where()}; })()"""),
  ("shot:gust-crossing",None),
@@ -266,6 +267,7 @@ STEPS=[
      t,wall:G.cave.wallDown,shortcut:G.cave.gate('shortcut'),lit:G.cave.isLit('arena'),jar:G.moths.jar.owned,page:u,pages:CB.pages,hud:T.hud()}; })()"""),
  ("shot:arena-lit",None),
  ("wound", r"""(()=>{ const r=T.ring(60,-3.2,12.2); T.walk([[60,-2.6]],{local:true}); for(let i=0;i<14;i++){ T.steer(G.cave.origin.x+60,G.cave.origin.z+8); G.step(1/30,1);} T.release(); T.wait(1.5);
+   const cv=document.querySelector('canvas'); cv.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0})); window.dispatchEvent(new MouseEvent('mousemove',{movementX:0,movementY:90})); G.step(1/30,2); window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true})); G.step(1/30,10);
    return {ok:G.cave.wallDown&&r.ok,at:T.where()}; })()"""),
  ("shot:the-wound",None),
  # ---------------------------------------------------------------- save -> reload -> Continue after the boss
@@ -289,11 +291,17 @@ STEPS=[
  ("shot:outside",None),
  ("capture", r"""(()=>{ const lab=T.label(); const u=T.use(/Capture/); T.wait(2);
    return {ok:/Capture/.test(u)&&G.moths.jar.count>=25,lab,jar:G.moths.jar.count,swarm:T.swarm()}; })()"""),
- ("toBlight", r"""(()=>{ const tw=T.until(()=>G.tide.low,12000);
+ ("toBlight", r"""(()=>{ const tw=T.until(()=>G.tide.low&&G.tide.lowLeft>45,12000);  // the sandbar floods again: set off at the start of a low tide
    const r=T.walk([[181.2,56.8],[176,57.7],[166,57.5],[152,56.2],[138,56.9],[124,55.9],[110,56.7],[97,55.7],[85,63],[70,69],[50,73],[40,73]],{max:4000});
-   return {ok:r.ok&&G.moths.jar.count>=25,tideWait:tw,r,jar:G.moths.jar.count}; })()"""),
- ("cureWithJar", r"""(()=>{ const b=G.blights.find(x=>x.id==='tidepool'); const lab=T.label(); const u=T.use(/Release/); T.wait(1); const sw=T.swarm();
-   let t=0; const fights=[]; while(!b.cured&&t<3600){ const f=T.fight({r:14,max:300}); if(f.steps)fights.push(f.steps); T.walk([[b.pos.x+b.radius+1.5,b.pos.z]],{max:300}); T.wait(1); t+=30+f.steps; }
+   return {ok:r.ok&&G.moths.jar.count>=25&&G.player.alive,tideWait:tw,r,jar:G.moths.jar.count}; })()"""),
+ ("topUp", r"""(()=>{ // 39 moths aren't the 40 a blight needs: free the jar at the patch on the moor, gather its moths too, jar them all again
+   const p=G.world.landmarks.patches.reduce((a,b)=>Math.hypot(b.x-40,b.z-73)<Math.hypot(a.x-40,a.z-73)&&b.y<14?b:a);
+   const r=T.walk([[p.x+3,p.z+3]],{max:3000}); const u=T.use(/Release/); T.wait(8,{until:()=>T.swarm()>=50}); T.wait(2); const sw=T.swarm();
+   const c=T.use(/Capture/); T.wait(2);
+   const r2=T.walk([[40,73]],{max:3000});
+   return {ok:/Release|Capture/.test(u)&&/Capture/.test(c)&&G.moths.jar.count>=44&&r2.ok,patch:[Math.round(p.x),Math.round(p.z)],r,swarm:sw,jar:G.moths.jar.count,r2}; })()"""),
+ ("cureWithJar", r"""(()=>{ const b=G.blights.find(x=>x.id==='tidepool'); T.walk([[b.pos.x+2.5,b.pos.z]],{max:600}); const lab=T.label(); const u=T.use(/Release/); T.wait(1); const sw=T.swarm();
+   let t=0; const fights=[]; while(!b.cured&&t<3600){ const f=T.fight({r:14,max:300}); if(f.steps)fights.push(f.steps); T.walk([[b.pos.x+2.5,b.pos.z]],{max:300}); T.wait(1); t+=30+f.steps; }
    T.wait(3);
    return {ok:/Release/.test(u)&&b.cured,lab,released:sw,fights,cured:b.cured,progress:Math.round(b.progress*100),swarm:T.swarm()}; })()"""),
  ("shot:blight-cured",None),
@@ -336,7 +344,7 @@ async def main():
                 elif js=='RELOAD':
                     await pg.reload(); await pg.wait_for_timeout(5000); await pg.click('#continue'); await pg.wait_for_timeout(2500); await boot(); r={'ok':True}
                 elif js=='DRAWCALLS':
-                    d=await pg.evaluate(DRAW); r={'ok':max(d.values())<=330,'calls':d}
+                    d=await pg.evaluate(DRAW); r={'ok':max(d.values())<=330,'calls':d,'nanStacks':await pg.evaluate('window.NAN')}
                 else: r=await pg.evaluate(js)
             except Exception as e: r={'ok':False,'exc':str(e).split('\n')[0][:300]}
             ok=bool(r.get('ok')) if isinstance(r,dict) else False

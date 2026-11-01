@@ -181,7 +181,7 @@ function buildPickupAssets(){
   GEO.shell=sh; MAT.shell=G.toon('#5a4a5c',{side:THREE.DoubleSide});
   // ichor: a glossy black teardrop
   const d=new THREE.SphereGeometry(.15,14,12); const P=d.attributes.position;
-  for(let i=0;i<P.count;i++){ const y=P.getY(i)/.15, k=y>0?Math.pow(1-y,.75)*.9+.1:1; P.setXYZ(i,P.getX(i)*k,P.getY(i)*(y>0?1.55:1),P.getZ(i)*k); }
+  for(let i=0;i<P.count;i++){ const y=P.getY(i)/.15, k=y>0?Math.pow(Math.max(0,1-y),.75)*.9+.1:1; /* y can round to 1.0000001 at the pole: NaN */ P.setXYZ(i,P.getX(i)*k,P.getY(i)*(y>0?1.55:1),P.getZ(i)*k); }
   d.computeVertexNormals(); d.translate(0,.15,0); GEO.ichor=d;
   MAT.ichor=new THREE.MeshPhongMaterial({color:col('#09070c'),specular:col('#cdb0ff'),shininess:110,emissive:col('#1a0d2a'),emissiveIntensity:.6});
 }

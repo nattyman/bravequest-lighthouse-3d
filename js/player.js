@@ -139,7 +139,6 @@ G.models.lantern=function(opts={}){
       for(const s of globules){const d=s.userData; const a=d.a+t*d.sp; s.position.set(Math.cos(a)*d.r,d.y+Math.sin(t*d.sp*1.3+d.ph)*.02,Math.sin(a)*d.r);}
     }});
   ud.setCured(false);
-  if(!/[?&]nomerge/.test(location.search))mergeStatic(L,ud);
   return L;
 };
 
@@ -184,7 +183,6 @@ G.models.staff=function(){
     crystal.rotation.y=t*(1+k);
   };
   ud.setGlow(1);
-  if(!/[?&]nomerge/.test(location.search))mergeStatic(S,ud);
   return S;
 };
 
@@ -454,49 +452,7 @@ function buildTraveler(){
   const lining=new THREE.Mesh(cg,M.lining); lining.frustumCulled=false; lining.castShadow=false; root.add(lining);
   R.cloak={mesh:cloak,lining,geo:cg,pos,base,ang};
   root.traverse(o=>{if(o.isMesh&&o.name!=='outline')o.castShadow=o.castShadow!==false;});
-  if(!/[?&]nomerge/.test(location.search))mergeStatic(root,R);
   return R;
-}
-/* Draw-call diet: the Traveler is ~100 small primitives (+ an outline hull each, + a shadow pass each). Meshes that hang
-   off the same bone with the same material and outline never move relative to each other, so they are baked into one
-   mesh (and one outline) per bone/material. Anything the rig or other code holds a reference to (R.*), meshes with
-   children, mirrored transforms and dynamic geometry are left alone, so the look and every animation are unchanged. */
-function mergeStatic(root,R){
-  const keep=new Set();
-  const scan=(v,d)=>{ if(!v||d>4)return; if(v.isObject3D){keep.add(v);return;} if(v.isMaterial||v.isTexture||v.isBufferGeometry||ArrayBuffer.isView(v))return;
-    if(Array.isArray(v)){v.forEach(x=>scan(x,d+1));return;} if(typeof v==='object')for(const k in v)scan(v[k],d+1); };
-  scan(R,0);
-  const parents=[]; root.traverse(o=>{ if(!o.isMesh)parents.push(o); });
-  let merged=0;
-  for(const par of parents){
-    const buckets=new Map();
-    for(const m of par.children){
-      if(!m.isMesh||m.name==='outline'||keep.has(m)||!m.visible||Array.isArray(m.material)||m.material.isShaderMaterial)continue;
-      if(m.children.some(c=>c.name!=='outline'))continue;
-      const ol=m.children.find(c=>c.name==='outline')||null;
-      m.updateMatrix(); if(m.matrix.determinant()<=0)continue;
-      // (a hull is pushed out in object space, so a scaled part's outline is now uniform rather than stretched: ~mm, invisible)
-      const g=m.geometry, sig=Object.keys(g.attributes).sort().join(',');
-      if(g.morphAttributes&&Object.keys(g.morphAttributes).length)continue;
-      const key=m.material.uuid+'|'+(ol?ol.material.uuid:'-')+'|'+m.castShadow+'|'+m.receiveShadow+'|'+m.renderOrder+'|'+m.frustumCulled+'|'+sig;
-      if(!buckets.has(key))buckets.set(key,[]); buckets.get(key).push({m,ol});
-    }
-    for(const list of buckets.values()){
-      if(list.length<2)continue;
-      const parts=list.map(({m})=>{ const g=m.geometry.index?m.geometry.toNonIndexed():m.geometry.clone(); g.applyMatrix4(m.matrix); return g; });
-      const names=Object.keys(parts[0].attributes); let n=0; for(const g of parts)n+=g.attributes.position.count;
-      const geo=new THREE.BufferGeometry();
-      for(const a of names){ const sz=parts[0].attributes[a].itemSize, arr=new Float32Array(n*sz); let o=0;
-        for(const g of parts){ arr.set(g.attributes[a].array,o); o+=g.attributes[a].array.length; } geo.setAttribute(a,new THREE.BufferAttribute(arr,sz)); }
-      geo.computeBoundingSphere(); geo.computeBoundingBox();
-      const f=list[0].m, mm=new THREE.Mesh(geo,f.material);
-      mm.castShadow=f.castShadow; mm.receiveShadow=f.receiveShadow; mm.renderOrder=f.renderOrder; mm.frustumCulled=f.frustumCulled; mm.name='merged';
-      if(list[0].ol){ const o=list[0].ol, s=new THREE.Mesh(geo,o.material); s.name='outline'; s.castShadow=false; s.receiveShadow=false; s.raycast=()=>{}; s.renderOrder=o.renderOrder; mm.add(s); }
-      for(const {m} of list)par.remove(m);
-      par.add(mm); merged+=list.length-1;
-    }
-  }
-  if(R&&typeof R==='object')R.mergedMeshes=merged;
 }
 
 /* ---------------------------------------------------------------------
@@ -1419,8 +1375,6 @@ function updateCamera(dt){
     }
     if(!inside)cam.pitch=damp(cam.pitch,P.gliding?.38:.22,.5,dt);
   }
-  // places can steer the camera's heading (e.g. the sea cave's mouth keeps the camera off the cliff): fn(yaw,pos)->wanted yaw|null
-  for(const f of G.cameraYawRules){ let y=null; try{ y=f(cam.yaw,P.pos); }catch(e){} if(y!=null)cam.yaw=cam.snap?y:U.dampAngle(cam.yaw,y,7,dt); }
   cam.pitch=clamp(cam.pitch,pMin,pMax);
   P.camYaw=cam.yaw;
   // follow target

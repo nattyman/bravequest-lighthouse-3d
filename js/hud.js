@@ -36,12 +36,13 @@ G.ui={
    on a narrower window, it drops just below whichever column it would overlap */
 const vitEl=document.querySelector('#hud .vitals'), questEl=document.querySelector('#hud .quest'); let bossTop=-1;
 function placeBoss(){
-  if(bossEl.hidden){ bossTop=-1; return; }
+  if(bossEl.hidden){ if(bossTop>=0)toastEl.style.top=''; bossTop=-1; return; }
   const b=bossEl.getBoundingClientRect(); let top=64;
   for(const el of [vitEl,questEl]){ if(!el)continue; const r=el.getBoundingClientRect(); if(!r.height)continue;
     if(r.right>b.left-8&&r.left<b.right+8)top=Math.max(top,r.bottom+10); }
   top=Math.round(top); if(Math.abs(top-bossTop)<2)return; bossTop=top;
   bossEl.style.top='calc('+top+'px + env(safe-area-inset-top,0px))';
+  toastEl.style.top='calc(max(18%, '+(top+58)+'px) + env(safe-area-inset-top,0px))'; // toasts ("The lens is free") go under the bar
 }
 function updateCaption(dt){
   if(!cur&&queue.length){const q=queue.shift();cur={t:q.t,who:q.who,i:reduceMotion?1e4:0,hold:0,shown:-1};capWho.textContent=q.who;capWho.hidden=!q.who;capEl.classList.add('show');}

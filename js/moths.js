@@ -763,6 +763,8 @@ const JAR={capacity:JAR_CAP, owned:false,
   }
 };
 let jarInteract=null;
+/* one button: capture a real swarm; a few stragglers a baited lantern picks up mustn't stop you uncorking a full jar */
+const wantCapture=()=>jarCount<JAR_CAP&&jarNear>=3&&(jarCount===0||jarNear>=8);
 function updateJar(dt){
   if(!JAR.owned)return;
   if(!jarObj)buildJar();
@@ -772,9 +774,9 @@ function updateJar(dt){
     jarGlow.material.opacity=k>0?.25+.6*k+.08*Math.sin(G.time*3.1):0; jarGlow.scale.setScalar(.22+.25*k); }
   if(!jarInteract&&G.interact){
     jarInteract=G.interact.add({pos:()=>G.player&&G.player.pos,radius:1,priority:-3,
-      label:()=>jarNear>=3&&jarCount<JAR_CAP?'Capture moths · '+Math.min(jarNear,JAR_CAP-jarCount)+' into the jar':'Release moths · '+jarCount,
-      enabled:()=>JAR.owned&&isPlay()&&G.player&&G.player.alive!==false&&((jarNear>=3&&jarCount<JAR_CAP)||jarCount>0),
-      use(){ if(jarNear>=3&&jarCount<JAR_CAP)JAR.capture(); else JAR.release(); }});
+      label:()=>wantCapture()?'Capture moths · '+Math.min(jarNear,JAR_CAP-jarCount)+' into the jar':'Release moths · '+jarCount,
+      enabled:()=>JAR.owned&&isPlay()&&G.player&&G.player.alive!==false&&(wantCapture()||jarCount>0),
+      use(){ if(wantCapture())JAR.capture(); else JAR.release(); }});
   }
 }
 let lostKill=0, lostKillPos=V();
