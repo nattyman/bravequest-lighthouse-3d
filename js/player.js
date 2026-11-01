@@ -515,6 +515,12 @@ let ph=0, prevStep=0, turnRate=0, prevHeading=0, lookT=3, lookYaw=0, blinkT=2;
 const atk={on:false,i:0,t:0,phase:'',queued:false,exclude:null,struck:false};
 const charge={on:false,t:0,ready:0};
 let spinT=-1, spinExclude=null, boltPoseT=0;
+/* techniques (combat.js holds the numbers in G.moves.T): the move in progress, cooldowns, input buffers, air flags */
+const MT=()=>(G.moves&&G.moves.T)||null;
+const mv={id:null,t:0,phase:'',exclude:null,top:0,spd0:0,power:0,ry:0,label:''};
+const cool={};
+let atkBuf=0, rollBuf=0, postRollT=0, djUsed=false, dived=false, djFlipT=-1, atkHoldLock=false;
+const aim={k:0,hit:null};
 const SW=[
   {wind:.11,act:.1,rec:.24,dmg:2,kb:5,lunge:4.5},
   {wind:.1,act:.1,rec:.26,dmg:2,kb:5,lunge:4.5},
@@ -571,6 +577,7 @@ Object.assign(P,{
     P.pos.set(x,y==null?G.floorAt(x,z):y,z);
     if(y!=null){const f=G.floorAt(x,z,P.pos.y+.5); if(Math.abs(f-P.pos.y)<1.2)P.pos.y=f;}
     hv.set(0,0,0); vy=0; P.vel.set(0,0,0); P.grounded=true; fallTop=P.pos.y; P.gliding=false; rollT=-1;
+    mv.id=null; djUsed=false; dived=false; djFlipT=-1; atkBuf=rollBuf=postRollT=0;
     if(yaw!=null)P.heading=yaw;
     if(R){R.root.position.copy(P.pos); R.root.rotation.y=P.heading; R.root.updateMatrixWorld(true);}
     cam.snap=true; cam.yaw=P.heading; pend.reset=true;
@@ -578,8 +585,12 @@ Object.assign(P,{
   },
   setControl(b){P.inputEnabled=!!b; if(!b){cancelCombat(); jumpBuf=0;}},
   facing(){return new V3(Math.sin(P.heading),0,Math.cos(P.heading));},
-  get drawn(){return staffDrawn;}
 });
+/* (getters via defineProperty: Object.assign would snapshot them) */
+Object.defineProperty(P,'drawn',{configurable:true,get(){return staffDrawn;}});
+/** techniques / air state for other modules and tests */
+Object.defineProperty(P,'move',{configurable:true,get(){return {id:mv.id,phase:mv.phase,t:mv.t,power:mv.power,doubleJumped:djUsed,dived,aiming:aim.k>.5,aimK:aim.k,
+  aimPoint:aim.hit?aim.hit.point.clone():null,lastAim:aim.last?aim.last.clone():null,cooldowns:Object.assign({},cool)};}});
 P.pos.set(START.x,START.y,START.z);
 
 /* ---------------------------------------------------------------------
@@ -628,7 +639,7 @@ function checkpointPos(){
   return {x:s.x,y:s.y,z:s.z,yaw:s.yaw==null?START.yaw:s.yaw};
 }
 function isRollInvuln(){return rollT>=0&&rollT>.02&&rollT<rollDur*.78;}
-function cancelCombat(){atk.on=false; atk.queued=false; charge.on=false; charge.t=0; spinT=-1; attackHeld=0;}
+function cancelCombat(){atk.on=false; atk.queued=false; charge.on=false; charge.t=0; spinT=-1; attackHeld=0; if(mv.id)endMove(); atkBuf=0;}
 function die(){
   if(!P.alive)return;
   P.alive=false; P.state='dead'; deadT=0; cancelCombat(); rollT=-1; P.gliding=false; P.lockTarget=null;
@@ -799,20 +810,51 @@ function swingStrike(sw){
   doStrike({x:tmp.x,y:tmp.y,z:tmp.z,radius:1.1,damage:sw.dmg,knockback:sw.kb,exclude:atk.exclude});
   doStrike({x:P.pos.x+f.x*1.0,y:P.pos.y+.85,z:P.pos.z+f.z*1.0,radius:1.1,damage:sw.dmg,knockback:sw.kb,exclude:atk.exclude});
 }
-function fireBolt(){
+/** o.point: fly to this aim point (from the reticle); o.great: the full-charge bolt */
+function fireBolt(o={}){
   staffTip(tmp);
-  const from=tmp.clone(); let dir;
+  const from=tmp.clone(); let dir, life=1.3;
+  const A=MT()?MT().aim:null, B=A?(o.great?A.great:A.bolt):{dmg:4,kb:6,speed:24,radius:.38};
+  const speed=B.speed;
   if(P.lockTarget){const t=P.lockTarget; tmp2.copy(t.pos); tmp2.y+=(t.height||1.4)*.55; dir=tmp2.sub(from).normalize();}
+  else if(o.point){ dir=tmp2.copy(o.point).sub(from); const d=dir.length(); dir.normalize(); life=clamp(d/speed+.06,.12,2.6);
+    P.heading=Math.atan2(dir.x,dir.z); }
   else{dir=P.facing(); const t=G.combat.nearestTarget(P.pos,16,dir); if(t&&Math.abs(U.angDiff(Math.atan2(t.pos.x-P.pos.x,t.pos.z-P.pos.z),P.heading))<.35){tmp2.copy(t.pos); tmp2.y+=(t.height||1.4)*.55; dir=tmp2.sub(from).normalize();}}
-  const m=new THREE.Group();
-  const core=new THREE.Mesh(new THREE.SphereGeometry(.11,12,10),new THREE.MeshBasicMaterial({color:glowCol('#c9a8ff',3)})); m.add(core);
-  m.add(sprite(G.tex.flame,'#a070ff',.9,1)); m.add(sprite(G.tex.soft,'#7a4cff',2.2,.5));
-  const proj=G.combat.spawnProjectile({pos:from,vel:dir.clone().multiplyScalar(24),radius:.38,team:'player',damage:4,life:1.3,kind:'bolt',mesh:m,knockback:6,
-    onHit(h){sparks(proj.pos,'#c9a6ff',10); camShake(.1);},
-    onEnd(p){spawnFx({pos:p.pos,size:.4,grow:1.8,life:.3,color:'#a070ff',tex:G.tex.flame});}});
+  const m=new THREE.Group(), gs=o.great?1.45:1;
+  const core=new THREE.Mesh(new THREE.SphereGeometry(.11*gs,12,10),new THREE.MeshBasicMaterial({color:glowCol(o.great?'#ffe6c0':'#c9a8ff',3)})); m.add(core);
+  m.add(sprite(G.tex.flame,o.great?'#d9b8ff':'#a070ff',.9*gs,1)); m.add(sprite(G.tex.soft,'#7a4cff',2.2*gs,.5));
+  const proj=G.combat.spawnProjectile({pos:from,vel:dir.clone().multiplyScalar(speed),radius:B.radius,team:'player',damage:B.dmg,life,kind:'bolt',mesh:m,knockback:B.kb,
+    onHit(h){sparks(proj.pos,'#c9a6ff',o.great?16:10); camShake(o.great?.2:.1); if(o.great)stopT=Math.max(stopT,.06);},
+    onEnd(p){spawnFx({pos:p.pos,size:.4*gs,grow:1.8*gs,life:.3,color:'#a070ff',tex:G.tex.flame});}});
+  proj.great=!!o.great;
   bolts.push(proj);
-  G.emit('player:attack',{combo:0,charged:true,bolt:true});
+  G.emit('player:attack',{combo:0,charged:true,bolt:true,great:!!o.great});
+  if(o.great&&G.moves)G.moves.sfx('great');
   boltPoseT=.3;
+  return proj;
+}
+/** the aim ray: from the camera through the reticle, starting just past the Traveler */
+function aimRay(){
+  const c=G.camera, M=MT(); c.updateMatrixWorld();
+  const from=c.position.clone(), dir=new V3(); c.getWorldDirection(dir);
+  tmp3.set(P.pos.x,P.pos.y+1.1,P.pos.z).sub(from);
+  const start=Math.max(.3,tmp3.dot(dir)+.35);
+  return G.moves.raycast(from,dir,(M?M.aim.rayMax:60),{start});
+}
+function releaseCharge(ready){
+  const A=MT()?MT().aim:{spinNear:4.5};
+  if(P.lockTarget){
+    if(ready>=2&&P.grounded&&U.dist2(P.lockTarget.pos,P.pos)<A.spinNear-(P.lockTarget.radius||.5))startSpin();
+    else fireBolt({great:ready>=2});
+    return;
+  }
+  if(aim.k>.5&&G.moves){
+    const r=aimRay(); aim.hit=r; aim.last=r.point.clone();
+    const near=Math.hypot(r.point.x-P.pos.x,r.point.z-P.pos.z)<A.spinNear&&r.point.y<P.pos.y+2.2;
+    if(ready>=2&&near&&P.grounded)startSpin(); else fireBolt({point:r.point,great:ready>=2});
+    return;
+  }
+  if(ready>=2&&P.grounded)startSpin(); else fireBolt({});
 }
 const bolts=[];
 function updateBolts(){
@@ -856,15 +898,17 @@ function update(dt){
   // timers
   iframes=Math.max(0,iframes-dt); hurtT=Math.max(0,hurtT-dt); landT=Math.max(0,landT-dt); stunT=Math.max(0,stunT-dt);
   interactT=Math.max(0,interactT-dt); shoveT=Math.max(0,shoveT-dt); boltPoseT=Math.max(0,boltPoseT-dt);
-  if(staffDrawn&&!atk.on&&!charge.on&&spinT<0&&!P.lockTarget){staffDrawnT-=dt; if(staffDrawnT<=0)sheathe();}
+  postRollT=Math.max(0,postRollT-dt); for(const k in cool)cool[k]=Math.max(0,cool[k]-dt);
+  if(djFlipT>=0){djFlipT+=dt; if(djFlipT>.5)djFlipT=-1;}
+  if(staffDrawn&&!atk.on&&!charge.on&&spinT<0&&!mv.id&&!P.lockTarget){staffDrawnT-=dt; if(staffDrawnT<=0)sheathe();}
   if(ST.owned&&!staffObj)equipStaff();
   updateCloakEquip(dt);
   // input -> camera-relative wish direction
-  const mv=ctl?I.move():{x:0,y:0,mag:0};
+  const mvIn=ctl?I.move():{x:0,y:0,mag:0};
   const fx_=Math.sin(cam.yaw), fz_=Math.cos(cam.yaw);
-  const wish=new V3(fx_*mv.y-fz_*mv.x,0,fz_*mv.y+fx_*mv.x);
+  const wish=new V3(fx_*mvIn.y-fz_*mvIn.x,0,fz_*mvIn.y+fx_*mvIn.x);
   const wl=wish.length(); if(wl>1e-3)wish.multiplyScalar(1/wl);
-  const mag=ctl?mv.mag:0;
+  const mag=ctl?mvIn.mag:0;
   // lock-on
   if(ctl&&I.pressed('lock'))toggleLock();
   validateLock();
@@ -872,12 +916,17 @@ function update(dt){
   if(ctl&&I.pressed('jump'))jumpBuf=.15; else jumpBuf=Math.max(0,jumpBuf-dt);
   jumpHeld=ctl&&I.down('jump');
   const busy=hurtT>0||stunT>0||interactT>0||spinT>=0;
-  // roll / dodge
-  if(ctl&&I.pressed('roll')&&!busy&&P.grounded&&rollT<0&&!charge.on&&(!atk.on||atk.phase==='rec'))startRoll(wish,mag);
+  // roll / dodge (buffered); in the air it is the dive (once per jump)
+  const M=MT();
+  if(ctl&&I.pressed('roll'))rollBuf=M?M.buffer.roll:.1; else rollBuf=Math.max(0,rollBuf-dt);
+  if(ctl&&rollBuf>0&&!busy&&rollT<0&&!charge.on&&(!atk.on||atk.phase==='rec')&&(!mv.id||moveCancellable())){
+    if(P.grounded){rollBuf=0; if(mv.id)endMove(); startRoll(wish,mag);}
+    else if(M&&!dived&&!mv.id&&airT>.04){rollBuf=0; startDive(wish,mag);}
+  }
   // attacks
   if(ctl)handleAttack(rdt,wish,mag,busy); else if(charge.on){charge.on=false;}
   // interact + lantern
-  const canInteract=ctl&&!busy&&rollT<0&&!atk.on&&!charge.on&&P.grounded;
+  const canInteract=ctl&&!busy&&rollT<0&&!atk.on&&!charge.on&&!mv.id&&P.grounded;
   const cur=ctl?G.interact.pick(P.pos):(G.interact.current=null);
   if(canInteract&&I.pressed('interact')){
     if(cur){try{cur.use();}catch(e){console.error(e);} interactT=Math.max(interactT,.3);}
@@ -899,7 +948,7 @@ function update(dt){
   if(P.stamina<=0&&!P.exhausted){P.exhausted=true; P.stamina=0;}
   P.sprinting=sprinting;
   // state label
-  P.state=hurtT>0?'hurt':rollT>=0?'roll':spinT>=0?'spin':atk.on?'attack':charge.on?'charge':P.gliding?'glide':!P.grounded?(vy>0?'jump':'fall'):
+  P.state=hurtT>0?'hurt':rollT>=0?'roll':spinT>=0?'spin':mv.id?mv.id:atk.on?'attack':charge.on?'charge':P.gliding?'glide':!P.grounded?(vy>0?'jump':'fall'):
     interactT>0?'interact':P.exhausted?'exhausted':hv.length()>.3?(sprinting?'sprint':'move'):'idle';
   P.vel.set(hv.x,vy,hv.z);
   animate(rdt);
@@ -925,17 +974,188 @@ function startRoll(wish,mag){
   }
   fallTop=P.pos.y;
 }
+/* the air roll: a forward dive out of a jump (or a glide). Strike during or after it for the Starfall Plunge. */
+function startDive(wish,mag){
+  const D=MT().dive; if(P.exhausted)return;
+  P.stamina=Math.max(0,P.stamina-D.stamina); staminaDelay=.5;
+  if(atk.on){atk.on=false; atk.queued=false;}
+  P.gliding=false; rollT=0; rollKind='dive'; rollDur=D.dur; dived=true;
+  rollDir.copy(mag>.1?wish:P.facing()); rollDir.y=0; rollDir.normalize();
+  P.heading=Math.atan2(rollDir.x,rollDir.z);
+  vy=Math.max(vy,D.vy);
+  G.emit('player:dive',{pos:P.pos.clone()}); G.moves&&G.moves.sfx('dive');
+  for(let i=0;i<6;i++){const a=i/6*TAU; spawnFx({pos:tmp3.set(P.pos.x+Math.cos(a)*.3,P.pos.y+.7,P.pos.z+Math.sin(a)*.3),vel:new V3(Math.cos(a)*.8-rollDir.x*1.5,.2,Math.sin(a)*.8-rollDir.z*1.5),drag:3,size:.12,grow:.02,life:.4,color:'#b58aff',tex:G.tex.flame});}
+}
+/* the double jump: a moth-wing flutter of the cloak, once per jump */
+function canDoubleJump(ctl,busy){
+  const M=MT(); if(!M||!ctl||busy||djUsed||mv.id||rollT>=0||dived||charge.on||P.exhausted||P.stamina<.02||coyote>0)return false;
+  const D=M.doubleJump; if(D.needsCloak&&!hasCloak())return false;
+  if(airT<D.minAir)return false;
+  if(G.moves.noDoubleJump.some(f=>{try{return f(P.pos);}catch(e){return false;}}))return false;
+  return P.pos.y-G.floorAt(P.pos.x,P.pos.z,P.pos.y)>D.minHeight;
+}
+function doDoubleJump(){
+  const D=MT().doubleJump;
+  vy=D.vy; djUsed=true; jumpBuf=0; P.gliding=false; djFlipT=0; airT=Math.min(airT,.2);
+  P.stamina=Math.max(0,P.stamina-D.stamina); staminaDelay=.5;
+  if(atk.on){atk.on=false; atk.queued=false;}
+  // two pale moth wings open behind the shoulders and scatter into motes
+  const f=P.facing(), rx=-f.z, rz=f.x;
+  spawnFx({pos:tmp3.set(P.pos.x-f.x*.3,P.pos.y+1.0,P.pos.z-f.z*.3),vel:new V3(0,-.8,0),drag:3,size:1.1,grow:2.3,life:.45,color:'#9a62ff',tex:G.tex.moth,opacity:.85});
+  for(const s of [-1,1])spawnFx({pos:tmp3.set(P.pos.x+rx*s*.5-f.x*.2,P.pos.y+1.1,P.pos.z+rz*s*.5-f.z*.2),vel:new V3(rx*s*1.4,.2,rz*s*1.4),drag:4,size:.45,grow:.9,life:.35,color:'#c9a6ff',tex:G.tex.moth,opacity:.6});
+  for(let i=0;i<12;i++){const a=i/12*TAU; spawnFx({pos:tmp3.set(P.pos.x+Math.cos(a)*.35,P.pos.y+.15,P.pos.z+Math.sin(a)*.35),vel:new V3(Math.cos(a)*2.2,-1.2-Math.random(),Math.sin(a)*2.2),drag:3,size:.13,grow:.02,life:.5+Math.random()*.25,color:i%3?'#b58aff':'#f0e4ff',tex:G.tex.flame});}
+  if(G.moves)G.moves.burst(tmp3.set(P.pos.x,P.pos.y-.05,P.pos.z),{radius:.9,life:.38,light:false,bright:1.4});
+  G.emit('player:doublejump',{pos:P.pos.clone()}); G.moves&&G.moves.sfx('djump');
+}
+
+/* ---------------------------------------------------------------------
+   techniques: lunge, sweep, slam, aerial spin, plunge (numbers in combat.js)
+   --------------------------------------------------------------------- */
+const coolReady=id=>!(cool[id]>0);
+function pickCombo(){
+  const M=MT(); if(!M)return null;
+  const I=G.input;
+  if(!P.grounded){
+    if(dived)return coolReady('plunge')&&P.stamina>0?'plunge':coolReady('slam')?'slam':null;
+    if(djUsed&&coolReady('spin')&&!P.gliding)return 'spin';
+    if(coolReady('slam')&&airT>=M.slam.minAir&&(vy>0||P.pos.y-G.floorAt(P.pos.x,P.pos.z,P.pos.y)>M.slam.minHeight))return 'slam';
+    return null;
+  }
+  const rolling=rollT>=0&&rollKind!=='dive';
+  if((rolling&&rollT>=M.lunge.minRoll)||postRollT>0)return coolReady('lunge')?'lunge':null;
+  if(rolling)return null;
+  if(Math.hypot(hv.x,hv.z)>=M.sweep.minSpeed&&(sprinting||I.down('sprint'))&&coolReady('sweep')&&!P.exhausted)return 'sweep';
+  return null;
+}
+function moveCancellable(){
+  const m=MT()&&MT()[mv.id]; if(!m)return true;
+  if(mv.id==='lunge'||mv.id==='sweep')return mv.t>m.act[1]+.06;
+  return false;
+}
+function startMove(id,wish){
+  const M=MT(), m=M[id];
+  if(m.stamina){P.stamina=Math.max(0,P.stamina-m.stamina); staminaDelay=.5;}
+  Object.assign(mv,{id,t:0,phase:'',exclude:new Set(),top:Math.max(fallTop,P.pos.y),spd0:Math.hypot(hv.x,hv.z),power:0,ry:0,label:''});
+  atk.on=false; atk.queued=false; attackHeld=0; atkHoldLock=true; postRollT=0;
+  drawStaff();
+  if(id==='lunge'){ rollT=-1; aimForSwing(wish); }
+  else if(id==='sweep'){ if(P.lockTarget)aimForSwing(wish); }
+  else if(id==='slam'){ P.gliding=false; mv.phase='hang'; aimForSwing(wish); }
+  else if(id==='spin'){ P.gliding=false; }
+  else if(id==='plunge'){ rollT=-1; P.gliding=false; mv.phase='wind'; mv.label=djUsed?'high':''; aimForSwing(wish); }
+  G.emit('player:attack',{combo:id,charged:false,move:id});
+  if(G.moves){ G.moves.performed(id,{label:id==='plunge'&&djUsed&&m.fromDoubleJump?m.fromDoubleJump:''}); G.moves.sfx(id==='slam'?'slamUp':id==='plunge'?'plungeUp':id); }
+}
+function endMove(){
+  const m=MT()&&MT()[mv.id];
+  if(m&&m.cooldown)cool[mv.id]=m.cooldown;
+  mv.id=null; mv.phase=''; mv.t=0;
+}
+function moveStrike(x,y,z,radius,dmg,kb,kind){
+  return doStrike({x,y,z,radius,damage:dmg,knockback:kb,kind:kind||'melee',exclude:mv.exclude});
+}
+function updateMove(dt){
+  if(!mv.id)return;
+  const M=MT(), m=M[mv.id], f=P.facing();
+  mv.t+=dt;
+  switch(mv.id){
+    case 'lunge':{
+      if(mv.t>=m.act[0]&&mv.t<=m.act[1]){ staffTip(tmp);
+        moveStrike(tmp.x,tmp.y,tmp.z,m.radius,m.dmg,m.kb);
+        moveStrike(P.pos.x+f.x*m.reach,P.pos.y+.9,P.pos.z+f.z*m.reach,m.radius,m.dmg,m.kb); }
+      if(mv.t>=m.dur)endMove();
+      break;}
+    case 'sweep':{
+      if(mv.t>=m.act[0]&&mv.t<=m.act[1]){ moveStrike(P.pos.x+f.x*.35,P.pos.y+.7,P.pos.z+f.z*.35,m.radius,m.dmg,m.kb);
+        if(Math.random()<.5)dust(P.pos,1,.4); }
+      if(mv.t>=m.dur)endMove();
+      break;}
+    case 'slam':{
+      if(mv.phase==='hang'&&mv.t>=m.hang)mv.phase='fall';
+      if(mv.phase==='impact'&&mv.t>=m.recover)endMove();
+      break;}
+    case 'spin':{
+      if(mv.t<m.dur*.92)moveStrike(P.pos.x,P.pos.y+.7,P.pos.z,m.radius,m.dmg,m.kb);
+      if(Math.random()<dt*30){staffTip(tmp); spawnFx({pos:tmp,size:.18,grow:.05,life:.3,color:'#c9a6ff',tex:G.tex.flame});}
+      if(mv.t>=m.dur)endMove();
+      break;}
+    case 'plunge':{
+      if(mv.phase==='wind'&&mv.t>=m.wind){mv.phase='drop';}
+      if(mv.phase==='drop'&&Math.random()<dt*40){spawnFx({pos:tmp3.set(P.pos.x+(Math.random()-.5)*.5,P.pos.y+.4+Math.random()*1.2,P.pos.z+(Math.random()-.5)*.5),vel:new V3(0,4,0),drag:2,size:.16,grow:.03,life:.35,color:'#b58aff',tex:G.tex.flame});}
+      if(mv.phase==='impact'&&mv.t>=m.recover)endMove();
+      break;}
+  }
+}
+/** slam / plunge touch down (called from land) */
+function moveLand(floor){
+  const M=MT(), m=M[mv.id];
+  const drop=Math.max(0,mv.top-floor);
+  if(mv.id==='slam'){
+    mv.phase='impact'; mv.t=0;
+    const hits=moveStrike(P.pos.x,P.pos.y+.5,P.pos.z,m.radius,m.dmg,m.kb,'shockwave');
+    camShake(.22); stopT=Math.max(stopT,hits.length?.07:.03); dust(P.pos,7,.5);
+    if(G.moves){G.moves.burst(P.pos,{radius:m.radius,life:.4,lightI:1.6,bright:1.3}); G.moves.sfx('slam');}
+    try{G.ui.shake(.18);}catch(e){}
+  }else if(mv.id==='plunge'){
+    mv.phase='impact'; mv.t=0;
+    const high=mv.label==='high';
+    const dmg=Math.min(m.dmgMax,m.dmg+(high?m.djBonus:0)+Math.floor(m.dmgPerM*drop)), rad=Math.min(m.radiusMax,m.radius+(high?m.djRadius:0)+m.radiusPerM*drop);
+    mv.power=dmg;
+    const hits=moveStrike(P.pos.x,P.pos.y+.6,P.pos.z,rad,dmg,m.kb,'shockwave');
+    camShake(m.shake); stopT=Math.max(stopT,hits.length?m.hitstop:.05); dust(P.pos,10,.7);
+    try{G.ui.shake(m.shake*.6);}catch(e){}
+    if(G.moves){G.moves.burst(P.pos,{radius:rad,life:.65,lightI:2.6,bright:1.5}); G.moves.burst(P.pos,{radius:rad*.5,life:.32,light:false,color:'#c9a6ff',bright:1.1}); G.moves.sfx('plunge');}
+    for(let i=0;i<22;i++){const a=i/22*TAU, s=3+Math.random()*4;
+      spawnFx({pos:tmp3.set(P.pos.x+Math.cos(a)*.6,P.pos.y+.2,P.pos.z+Math.sin(a)*.6),vel:new V3(Math.cos(a)*s,1.5+Math.random()*3,Math.sin(a)*s),drag:3,size:.2,grow:.04,life:.55+Math.random()*.3,color:i%4?'#a070ff':'#ffe6b8',tex:G.tex.flame});}
+    spawnFx({pos:tmp3.set(P.pos.x,P.pos.y+.7,P.pos.z),size:.8,grow:rad*1.3,life:.3,color:'#9f6cff',tex:G.tex.flame,opacity:.42});
+    G.emit('player:plunge',{pos:P.pos.clone(),damage:dmg,radius:rad,hits:hits.length,drop,high});
+    if(G.input.rumble&&G.input.device==='gamepad')G.input.rumble(.9,320);
+  }
+}
+/** horizontal motion while a technique runs */
+function moveHorizontal(dt,wish,mag){
+  const M=MT(), m=M[mv.id], f=P.facing();
+  if(P.lockTarget&&(mv.id==='lunge'||mv.phase==='wind'))P.heading=U.dampAngle(P.heading,Math.atan2(P.lockTarget.pos.x-P.pos.x,P.lockTarget.pos.z-P.pos.z),18,dt);
+  if(mv.phase==='impact'){hv.x=damp(hv.x,0,16,dt); hv.z=damp(hv.z,0,16,dt); return;}
+  switch(mv.id){
+    case 'lunge':{
+      let s=lerp(m.speed0,m.speed1,smooth(0,m.dur*.75,mv.t));
+      if(P.lockTarget&&U.dist2(P.lockTarget.pos,P.pos)<(P.lockTarget.radius||.5)+.9)s=Math.min(s,1);
+      hv.set(f.x*s,0,f.z*s); break;}
+    case 'sweep':{
+      if(mag>.1)P.heading=U.dampAngle(P.heading,Math.atan2(wish.x,wish.z),2,dt);
+      const ff=P.facing(), s=lerp(Math.max(m.minSpeed,mv.spd0)*m.carry,m.speedEnd,smooth(0,m.dur,mv.t));
+      hv.set(ff.x*s,0,ff.z*s); break;}
+    case 'slam': case 'plunge':{
+      const k=mv.phase==='hang'||mv.phase==='wind'?10:4, s=mv.phase==='drop'||mv.phase==='fall'?1.8:0;
+      hv.x=damp(hv.x,wish.x*s*mag,k,dt); hv.z=damp(hv.z,wish.z*s*mag,k,dt); break;}
+    case 'spin':{
+      hv.x=damp(hv.x,wish.x*3.2*mag,3,dt); hv.z=damp(hv.z,wish.z*3.2*mag,3,dt); break;}
+  }
+}
+/** vertical override while a technique runs: returns the new vy, or null for normal gravity */
+function moveVy(dt){
+  if(!mv.id)return null;
+  const m=MT()[mv.id];
+  if(mv.id==='slam'){ if(mv.phase==='hang')return damp(vy,m.hangVy,18,dt); if(mv.phase==='fall')return m.fallVy; }
+  if(mv.id==='plunge'){ if(mv.phase==='wind')return damp(vy,m.windVy,14,dt); if(mv.phase==='drop')return m.fallVy; }
+  if(mv.id==='spin'&&mv.t<m.dur*.8)return damp(vy,m.hoverVy,9,dt);
+  return null;
+}
 
 function handleAttack(dt,wish,mag,busy){
-  const I=G.input;
+  const I=G.input, M=MT();
   if(!ST.owned){
     if(I.pressed('attack')&&!busy&&rollT<0&&shoveT<=0){shoveT=.32; G.emit('player:attack',{combo:1,charged:false,shove:true});}
     return;
   }
-  if(I.down('attack'))attackHeld+=dt; else attackHeld=0;
-  if(I.pressed('attack')&&!busy&&rollT<0&&!charge.on){
-    if(atk.on)atk.queued=true;
-    else startSwing(0,wish);
+  if(atkHoldLock&&!I.down('attack'))atkHoldLock=false;
+  if(I.down('attack')&&!atkHoldLock)attackHeld+=dt; else attackHeld=0;
+  if(I.pressed('attack'))atkBuf=M?M.buffer.attack:.12; else atkBuf=Math.max(0,atkBuf-dt);
+  if(atkBuf>0&&!busy&&!charge.on&&!mv.id){
+    const c=pickCombo();
+    if(c){atkBuf=0; startMove(c,wish);}
+    else if(P.grounded&&rollT<0){atkBuf=0; if(atk.on)atk.queued=true; else startSwing(0,wish);}
   }
   // swing progress
   if(atk.on){
@@ -947,19 +1167,20 @@ function handleAttack(dt,wish,mag,busy){
     else {atk.on=false;}
   }
   // charge: hold attack
-  if(!charge.on&&attackHeld>.24&&(!atk.on||atk.phase==='rec')&&rollT<0&&!busy&&P.grounded){
+  if(!charge.on&&attackHeld>.24&&(!atk.on||atk.phase==='rec')&&rollT<0&&!busy&&!mv.id&&P.grounded){
     atk.on=false; atk.queued=false; charge.on=true; charge.t=0; charge.ready=0; drawStaff();
   }
   if(charge.on){
     charge.t+=dt; staffDrawnT=3;
     if(charge.ready<1&&charge.t>=.38){charge.ready=1; staffTip(tmp); spawnFx({pos:tmp,size:.3,grow:1.4,life:.3,color:'#d8c0ff',tex:G.tex.flame});}
-    if(charge.ready<2&&charge.t>=1.3&&!P.lockTarget){charge.ready=2; staffTip(tmp); spawnFx({pos:tmp,size:.5,grow:2.2,life:.4,color:'#ffe9b0',tex:G.tex.flame});}
+    if(charge.ready<2&&charge.t>=1.3){charge.ready=2; staffTip(tmp); spawnFx({pos:tmp,size:.5,grow:2.2,life:.4,color:'#ffe9b0',tex:G.tex.flame});}
     if(Math.random()<dt*14){staffTip(tmp); spawnFx({pos:tmp.add(new V3(Math.random()-.5,Math.random()-.5,Math.random()-.5).multiplyScalar(.5)),vel:new V3(0,.4,0),size:.08,grow:.02,life:.4,color:'#b58aff',tex:G.tex.flame});}
     if(!I.down('attack')){
       const ready=charge.ready; charge.on=false; attackHeld=0;
-      if(ready>=2&&P.grounded)startSpin(); else if(ready>=1)fireBolt();
+      if(ready>=1)releaseCharge(ready);
     }
   }
+  updateMove(dt);
   // spin attack
   if(spinT>=0){
     spinT+=dt;
@@ -975,11 +1196,15 @@ function locomotion(dt,wish,mag,ctl,busy){
   const f=P.facing();
   if(rollT>=0){
     rollT+=dt; const k=rollT/rollDur;
-    const rs=rollKind==='roll'?lerp(9.2,3.2,k):rollKind==='back'?lerp(6.2,2,k):lerp(7.4,2.4,k);
+    const D=rollKind==='dive'&&MT()?MT().dive:null;
+    const rs=D?lerp(D.speed0,D.speed1,k):rollKind==='roll'?lerp(9.2,3.2,k):rollKind==='back'?lerp(6.2,2,k):lerp(7.4,2.4,k);
     hv.copy(rollDir).multiplyScalar(rs);
-    if(rollKind==='roll'&&ctl&&mag>.1){const a=Math.atan2(wish.x,wish.z); const h=U.dampAngle(Math.atan2(rollDir.x,rollDir.z),a,4,dt); rollDir.set(Math.sin(h),0,Math.cos(h)); P.heading=h;}
-    if(P.lockTarget&&rollKind!=='roll')P.heading=Math.atan2(P.lockTarget.pos.x-P.pos.x,P.lockTarget.pos.z-P.pos.z);
-    if(rollT>=rollDur){rollT=-1; if(rollKind==='roll'&&spd>2)dust(P.pos,2,.3);}
+    if((rollKind==='roll'||D)&&ctl&&mag>.1){const a=Math.atan2(wish.x,wish.z); const h=U.dampAngle(Math.atan2(rollDir.x,rollDir.z),a,D?2.5:4,dt); rollDir.set(Math.sin(h),0,Math.cos(h)); P.heading=h;}
+    if(P.lockTarget&&rollKind!=='roll'&&!D)P.heading=Math.atan2(P.lockTarget.pos.x-P.pos.x,P.lockTarget.pos.z-P.pos.z);
+    if(rollT>=rollDur){ if(P.grounded&&rollKind!=='dive'&&MT())postRollT=MT().lunge.window;
+      rollT=-1; if(rollKind==='roll'&&spd>2)dust(P.pos,2,.3);}
+  }else if(mv.id){
+    moveHorizontal(dt,wish,mag);
   }else if(!P.grounded){
     airControl(dt,wish,mag,ctl);
   }else if(hurtT>0||stunT>0){
@@ -1002,7 +1227,8 @@ function locomotion(dt,wish,mag,ctl,busy){
       P.heading=U.dampAngle(P.heading,Math.atan2(P.lockTarget.pos.x-P.pos.x,P.lockTarget.pos.z-P.pos.z),14,dt);
       hv.x=damp(hv.x,wish.x*target,10,dt); hv.z=damp(hv.z,wish.z*target,10,dt);
     }else if(charge.on){
-      if(mag>.08){const a=Math.atan2(wish.x,wish.z); P.heading=U.dampAngle(P.heading,a,8,dt);}
+      if(aim.k>.3)P.heading=U.dampAngle(P.heading,cam.yaw,16,dt); // over-the-shoulder aim: face where the reticle looks, strafe
+      else if(mag>.08){const a=Math.atan2(wish.x,wish.z); P.heading=U.dampAngle(P.heading,a,8,dt);}
       hv.x=damp(hv.x,wish.x*target,10,dt); hv.z=damp(hv.z,wish.z*target,10,dt);
     }else if(mag>.08){
       const a=Math.atan2(wish.x,wish.z), diff=U.angDiff(a,P.heading);
@@ -1021,7 +1247,8 @@ function locomotion(dt,wish,mag,ctl,busy){
     }
   }
   // jumping
-  if(P.grounded&&jumpBuf>0&&ctl&&!busy&&rollT<0&&!atk.on&&!charge.on&&spinT<0){doJump();}
+  if(P.grounded&&jumpBuf>0&&ctl&&!busy&&rollT<0&&!atk.on&&!charge.on&&spinT<0&&!mv.id){doJump();}
+  else if(!P.grounded&&jumpBuf>0&&canDoubleJump(ctl,busy)){doDoubleJump();}
   // horizontal collision move
   const dx=hv.x*dt, dz=hv.z*dt, d=Math.hypot(dx,dz);
   if(d>1e-5){
@@ -1044,7 +1271,7 @@ function airControl(dt,wish,mag,ctl){
   airT+=dt;
   const h=P.pos.y-G.floorAt(P.pos.x,P.pos.z,P.pos.y);
   // glide: hold jump while falling
-  const wantGlide=hasCloak()&&ctl&&I.down('jump')&&!P.exhausted&&P.stamina>0&&h>1.1&&(vy<-1||airT>.32||P.gliding)&&rollT<0;
+  const wantGlide=hasCloak()&&ctl&&I.down('jump')&&!P.exhausted&&P.stamina>0&&h>1.1&&(vy<-1||airT>.32||P.gliding)&&rollT<0&&!mv.id&&!(djUsed&&vy>0);
   if(wantGlide&&!P.gliding){P.gliding=true; glideT=0; cancelCombat();}
   if(P.gliding&&(!wantGlide)){P.gliding=false; fallTop=P.pos.y;}
   if(P.gliding){
@@ -1071,7 +1298,8 @@ function verticalStep(dt,ctl){
     coyote=Math.max(0,coyote-dt);
     let g=vy>0?(jumpHeld?21:36):30;
     if(rollT>=0&&rollKind!=='roll')g=22;
-    vy-=g*dt;
+    const ov=moveVy(dt);
+    if(ov!=null)vy=ov; else vy-=g*dt;
     if(P.gliding)vy=damp(vy,-1.9,5,dt);
     vy=Math.max(vy,-42);
     P.pos.y+=vy*dt;
@@ -1086,8 +1314,13 @@ function verticalStep(dt,ctl){
 function land(floor){
   const drop=fallTop-floor, impact=-vy;
   P.pos.y=floor; vy=0; P.grounded=true; P.gliding=false; coyote=0;
-  if(rollT>=0&&rollKind!=='roll'){rollT=-1;}
+  djUsed=false; dived=false;
+  if(rollT>=0&&rollKind==='dive'){rollKind='roll'; rollDur=.48; rollT=Math.max(rollT,.22); rollDir.set(hv.x,0,hv.z); if(rollDir.lengthSq()<.01)rollDir.copy(P.facing()); rollDir.normalize();}
+  else if(rollT>=0&&rollKind!=='roll'){rollT=-1;}
+  const tech=mv.id==='slam'||mv.id==='plunge';
+  if(tech)moveLand(floor); else if(mv.id==='spin')endMove();
   if(drop>14){P.hurt({damage:2,kind:'fall',dir:new V3(),knockback:0}); landHeavy=1; landT=.55; stunT=.45; dust(P.pos,6,.5); camShake(.4);}
+  else if(tech){landT=0; fallTop=floor; return;}
   else if(drop>3.2){landHeavy=1; landT=.38; stunT=drop>7?.22:0; dust(P.pos,5,.45); camShake(.12);}
   else if(impact>3){landHeavy=0; landT=.2; dust(P.pos,2,.3);}
   fallTop=floor;
@@ -1175,6 +1408,13 @@ function animate(dt){
       setT({spX:.08,thLX:-.45,knL:.8,thRX:.1,knR:.45,ftL:.2,ftR:.25,shLZ:.75+fl,shRZ:-.75+fl,shLX:-.3,shRX:-.3,elL:-.4,elR:-.4,hdX:-.05});
       rate=8;
     }
+    // double jump: arms sweep up like opening wings, knees tuck, one quick forward flip
+    if(djFlipT>=0&&!P.gliding){
+      const k=clamp(djFlipT/.38,0,1), op=Math.sin(Math.min(1,djFlipT/.22)*PI*.5);
+      rigMode=1; rigX=TAU*smooth(.05,1,k);
+      setT({spX:.55,hdX:.3,thLX:-1.45,knL:2.1,thRX:-1.3,knR:2.0,ftL:.4,ftR:.4,shLZ:.5+1.0*op,shRZ:-.5-1.0*op,shLX:-.5,shRX:-.5,elL:-.5,elR:-.5,pivot:.62});
+      rate=26;
+    }
   }
   // ---- landing ----
   if(landT>0&&P.grounded&&rollT<0){
@@ -1190,6 +1430,9 @@ function animate(dt){
       rigMode=1; rigX=TAU*smooth(.05,.9,k);
       setT({spX:.7,hdX:.4,thLX:-1.6,thRX:-1.5,knL:2.3,knR:2.2,shLX:-1.1,shRX:-1.1,elL:-1.4,elR:-1.4,shLZ:.3,shRZ:-.3,pivot:.42});
       T.drop=.22*Math.sin(k*PI);
+    }else if(rollKind==='dive'){ // air roll: a tucked forward somersault, arms wrapped, cloak streaming
+      rigMode=1; rigX=TAU*smooth(0,.92,k);
+      setT({spX:.75,hdX:.45,thLX:-1.7,thRX:-1.6,knL:2.35,knR:2.3,ftL:.4,ftR:.4,shLX:-1.2,shRX:-1.2,elL:-1.5,elR:-1.5,shLZ:.25,shRZ:-.25,pivot:.62});
     }else if(rollKind==='back'){
       rigMode=1; rigX=-TAU*smooth(.05,.9,k);
       setT({spX:-.4,hdX:-.4,thLX:-1.2,thRX:-1.1,knL:1.8,knR:1.8,shLX:-2.4,shRX:-2.4,shLZ:.4,shRZ:-.4,pivot:.75});
@@ -1233,6 +1476,45 @@ function animate(dt){
     rigMode=2; rigY=-TAU*smooth(0,.45,spinT);
     setT({shRZ:-1.42,shRY:.2,elR:0,wrRX:1.5,spX:.25,thLX:-.6,knL:.9,thRX:.5,knR:.7,shLZ:1.0});
     rate=30;
+  }
+  // ---- techniques ----
+  if(mv.id){
+    const m=MT()[mv.id], tt=mv.t;
+    if(mv.id==='lunge'){ // coil the staff back at the hip, then drive it straight out two-handed in a deep fencer's lunge
+      if(tt<m.act[0])setT({spX:.12,spY:.55,hipY:.3,shRX:-.45,shRZ:-.3,elR:-1.55,wrRX:1.2,shLX:-.7,shLZ:.35,elL:-1.3,thLX:-.7,knL:1.0,thRX:.45,knR:.55,hdX:-.1});
+      else setT({spX:.48,spY:-.3,hipY:-.25,shRX:-1.55,shRZ:-.06,shRY:.15,elR:-.02,wrRX:1.22,shLX:-1.38,shLZ:-.18,shLY:-.45,elL:-.3,
+        thLX:-1.2,knL:1.1,ftL:.15,thRX:.85,knR:.2,ftR:-.35,hdX:-.28});
+      rate=tt<m.act[0]?30:34;
+    }else if(mv.id==='sweep'){ // a low crouched whirl, staff held out flat at knee height, sliding on momentum
+      rigMode=2; rigY=-TAU*smooth(m.act[0],m.act[1],tt);
+      if(tt<m.act[0])setT({spX:.3,spY:.9,hipY:.4,shRZ:-1.05,shRY:-.6,elR:-.3,wrRX:1.3,shLZ:.9,elL:-.6,thLX:-.9,knL:1.4,thRX:-.1,knR:1.2,ftL:.3});
+      else setT({spX:.42,spY:-.2,shRZ:-1.18,shRY:.35,elR:-.02,wrRX:1.62,shLZ:1.3,shLX:.2,elL:-.25,thLX:-1.05,knL:1.6,thRX:-.15,knR:1.45,ftL:.35,ftR:.2,hdX:.05});
+      T.rigZ=.18; rate=30;
+    }else if(mv.id==='slam'){
+      ik=mv.phase==='impact';
+      if(mv.phase==='hang')setT({spX:-.38,hdX:-.35,shRX:-2.9,shRZ:-.08,elR:-.35,wrRX:-.25,shLX:-2.75,shLZ:.08,elL:-.35,thLX:-1.3,knL:1.9,thRX:-1.05,knR:1.8,ftL:.4,ftR:.4});
+      else if(mv.phase==='fall')setT({spX:.62,hdX:.25,shRX:-.8,elR:-.05,wrRX:1.62,shLX:-.75,shLZ:-.1,elL:-.1,thLX:-.5,knL:.75,thRX:.15,knR:.4,ftL:.2});
+      else{ const r=smooth(.08,m.recover,tt); setT({spX:.78-.5*r,hdX:.2,shRX:-.55+.3*r,elR:-.05,wrRX:1.75,shLX:-.5,shLZ:-.1,elL:-.12,thLX:-1.35+.8*r,knL:1.95-1.2*r,thRX:.4,knR:1.6-.9*r,ftR:-.6}); }
+      rate=mv.phase==='impact'?24:28;
+    }else if(mv.id==='spin'){ // whirling in the air, staff and arm flung out, cloak flared
+      rigMode=2; rigY=-TAU*m.turns*smooth(0,m.dur*.88,tt); ik=false;
+      setT({spX:.15,shRZ:-1.48,shRY:.2,elR:0,wrRX:1.52,shLZ:1.3,shLX:-.2,elL:-.25,thLX:-1.05,knL:1.65,thRX:-.55,knR:1.25,ftL:.3,ftR:.3,hdX:-.1});
+      T.rigZ=.22; rate=26;
+    }else if(mv.id==='plunge'){
+      if(mv.phase==='wind'){ ik=false; // gather: tuck high with the staff raised over the head, crystal pointed at the sky, beginning to turn
+        mv.ry-=dt*TAU*1.6*smooth(0,m.wind,tt); rigMode=2; rigY=mv.ry;
+        setT({spX:-.5,hdX:-.45,shRX:-3.05,shLX:-2.95,shRZ:-.05,shLZ:.05,elR:-.25,elL:-.25,wrRX:-.35,thLX:-1.45,knL:2.1,thRX:-1.35,knR:2.05,ftL:.45,ftR:.45});
+        rate=24; }
+      else if(mv.phase==='drop'){ ik=false; // a drill of light: upright, staff straight down beneath, spinning fast
+        mv.ry-=dt*TAU*3.4; rigMode=2; rigY=mv.ry;
+        setT({spX:.05,hdX:.35,shRX:-.25,shRZ:-.12,elR:-.35,wrRX:1.5,shLX:-.35,shLZ:-.32,shLY:-.5,elL:-.7,thLX:-.2,knL:.35,thRX:.05,knR:.25,ftL:.5,ftR:.5});
+        rate=28; }
+      else{ // impact: one knee down, the staff planted, then rise
+        mv.ry=damp(mv.ry,Math.floor(mv.ry/TAU)*TAU,16,dt); rigMode=2; rigY=mv.ry;
+        const r=smooth(.15,m.recover,tt);
+        setT({spX:.7-.45*r,hdX:.25-.2*r,shRX:-.35,shRZ:-.1,elR:-.25,wrRX:1.55,shLX:-.3,shLZ:-.3,elL:-.6,thLX:-1.4+.85*r,knL:1.4-.8*r,thRX:.5-.3*r,knR:2.3-1.6*r,ftR:-.85+.6*r});
+        rate=22; }
+    }
   }
   // ---- interact / inspect crouch ----
   if(interactT>0&&P.grounded&&rollT<0){
@@ -1322,14 +1604,15 @@ function updateCloak(dt){
   if(tgt.length()>.62)tgt.setLength(.62);
   if(glide){tgt.set(0,.15,-.85);}
   if(!P.grounded&&!glide)tgt.y+=clamp(-vy*.03,-.25,.5);
-  if(atk.on||spinT>=0)tgt.add(tmp3.set(Math.sin(pose.spY)*-.15,0,0));
+  if(atk.on||spinT>=0||mv.id)tgt.add(tmp3.set(Math.sin(pose.spY)*-.15,0,0));
   const k=55, c=8;
   if(dt>0){
     const ax=k*(tgt.x-cl.lag.x)-c*cl.lagV.x, ay=k*(tgt.y-cl.lag.y)-c*cl.lagV.y, az=k*(tgt.z-cl.lag.z)-c*cl.lagV.z;
     cl.lagV.x+=ax*dt; cl.lagV.y+=ay*dt; cl.lagV.z+=az*dt; cl.lag.addScaledVector(cl.lagV,dt);
     const fT=.03+run*.07+glide*.32+(rollT>=0?.12:0)+(!P.grounded?.06:0);
     cl.flareV+=(70*(fT-cl.flare)-9*cl.flareV)*dt; cl.flare+=cl.flareV*dt;
-    cl.rigid=damp(cl.rigid,(rollT>=0&&rollKind!=='sideL'&&rollKind!=='sideR')||!P.alive||spinT>=0?.95:.3,14,dt);
+    const whirl=mv.id==='sweep'||mv.id==='spin'||mv.id==='plunge'&&mv.phase!=='wind'||djFlipT>=0&&djFlipT<.4;
+    cl.rigid=damp(cl.rigid,(rollT>=0&&rollKind!=='sideL'&&rollKind!=='sideR')||!P.alive||spinT>=0||whirl?.95:.3,14,dt);
   }
   const t=G.time;
   const wAmp=.012+run*.04+glide*.06+(!P.grounded?.03:0), wF=4+run*7+glide*6;
@@ -1374,7 +1657,9 @@ function placeModel(){
   R.root.updateMatrixWorld(true);
   updateCloak(G.dt||1/60);
   if(staffObj)staffObj.userData.setGlow(charge.on?1+Math.min(2.4,charge.t*2.4)+(charge.ready>=2?.6:0):staffDrawn?1:.7,G.time);
-  const swingEmit=atk.on&&atk.phase!=='wind'&&atk.t<SW[atk.i].wind+SW[atk.i].act+.06||spinT>.04&&spinT<.45;
+  const mm=mv.id&&MT()?MT()[mv.id]:null;
+  const moveEmit=!!mm&&(mm.act?mv.t>=mm.act[0]-.02&&mv.t<=mm.act[1]+.06:mv.id==='spin'?mv.t<mm.dur*.9:mv.phase==='fall'||mv.phase==='drop'||mv.phase==='impact'&&mv.t<.08);
+  const swingEmit=atk.on&&atk.phase!=='wind'&&atk.t<SW[atk.i].wind+SW[atk.i].act+.06||spinT>.04&&spinT<.45||moveEmit;
   if(trail.mesh){ if(swingEmit&&staffObj){staffTip(tmp); staffObj.localToWorld(tmp2.set(0,1.12,0)); updateTrail(G.dt||1/60,true,tmp2.clone(),tmp.clone());} else updateTrail(G.dt||1/60,false); }
   updateBolts();
 }
@@ -1394,8 +1679,14 @@ function updateCamera(dt){
   if(!R)return;
   const I=G.input, camera=G.camera;
   const lk=I.look();
+  if(G.moves&&G.moves.takeLook){ const e=G.moves.takeLook(); if(charge.on){lk.x+=e.x; lk.y+=e.y;} }
   const ctl=G.state.mode==='play'&&P.inputEnabled;
-  if(ctl&&(lk.x||lk.y)){cam.yaw-=lk.x*.0042; cam.pitch+=lk.y*.0036; cam.idle=0;} else cam.idle+=dt;
+  // over-the-shoulder aim while charging the staff (not while locked on: then the bolt seeks the target)
+  const AM=MT()?MT().aim:null;
+  const aimOn=!!AM&&charge.on&&!P.lockTarget&&charge.t>AM.after&&P.alive&&ctl;
+  aim.k=damp(aim.k,aimOn?1:0,aimOn?9:7,dt); if(aim.k<.002)aim.k=0;
+  const ak=aim.k, sens=AM?lerp(1,AM.sens,ak):1;
+  if(ctl&&(lk.x||lk.y)){cam.yaw-=lk.x*.0042*sens; cam.pitch+=lk.y*.0036*sens; cam.idle=0;} else cam.idle+=dt;
   if(ctl&&I.wheel)cam.zoom=clamp(cam.zoom+I.wheel*.6,3,9);
   const LH=G.world.lighthouse;
   const inside=!!(LH&&LH.inside&&LH.inside(P.pos));
@@ -1411,7 +1702,7 @@ function updateCamera(dt){
     cam.yaw=U.dampAngle(cam.yaw,a,5,dt); cam.pitch=damp(cam.pitch,.3,3,dt);
   }else if(cam.recenter>0){
     cam.recenter-=dt; cam.yaw=U.dampAngle(cam.yaw,P.heading,12,dt); cam.pitch=damp(cam.pitch,.26,8,dt);
-  }else if(cam.idle>.7&&spd>1.2){
+  }else if(cam.idle>.7&&spd>1.2&&ak<.05){
     const d=U.angDiff(P.heading,cam.yaw);
     if(Math.abs(d)<2.3){
       const k=(P.gliding?1.6:inside?1.4:.75)*Math.min(1,spd/5);
@@ -1421,10 +1712,12 @@ function updateCamera(dt){
   }
   // places can steer the camera's heading (e.g. the sea cave's mouth keeps the camera off the cliff): fn(yaw,pos)->wanted yaw|null
   for(const f of G.cameraYawRules){ let y=null; try{ y=f(cam.yaw,P.pos); }catch(e){} if(y!=null)cam.yaw=cam.snap?y:U.dampAngle(cam.yaw,y,7,dt); }
+  if(ak>0){ pMin=lerp(pMin,Math.max(pMin-.4,AM.pitchMin),ak); pMax=lerp(pMax,Math.min(pMax,AM.pitchMax),ak); dist=lerp(dist,Math.min(dist,AM.dist),ak); }
   cam.pitch=clamp(cam.pitch,pMin,pMax);
   P.camYaw=cam.yaw;
-  // follow target
+  // follow target (shifted over the right shoulder while aiming)
   const head=tmp.set(P.pos.x,P.pos.y+(inside?1.45:1.35),P.pos.z);
+  if(ak>0){ const fx=Math.sin(cam.yaw), fz=Math.cos(cam.yaw); head.x+=-fz*AM.right*ak; head.z+=fx*AM.right*ak; head.y+=AM.up*ak; }
   if(cam.snap){cam.target.copy(head); cam.cur=dist;}
   else{cam.target.x=damp(cam.target.x,head.x,16,dt); cam.target.z=damp(cam.target.z,head.z,16,dt); cam.target.y=damp(cam.target.y,head.y,P.grounded?9:6,dt);}
   // look point (lock frames both)
@@ -1452,9 +1745,21 @@ function updateCamera(dt){
   if(cam.shake>.002){const s=cam.shake*.35; p.x+=(Math.random()-.5)*s; p.y+=(Math.random()-.5)*s; p.z+=(Math.random()-.5)*s;}
   camera.position.copy(p);
   camera.lookAt(cam.look);
-  const fov=58+(P.sprinting?5:0)+(P.gliding?7:0)+(inside?4:0);
-  cam.fov=damp(cam.fov,fov,3,dt); if(Math.abs(camera.fov-cam.fov)>.01){camera.fov=cam.fov; camera.updateProjectionMatrix();}
+  let fov=58+(P.sprinting?5:0)+(P.gliding?7:0)+(inside?4:0);
+  if(ak>0)fov=lerp(fov,AM.fov,ak);
+  cam.fov=damp(cam.fov,fov,ak>0?6:3,dt); if(Math.abs(camera.fov-cam.fov)>.01){camera.fov=cam.fov; camera.updateProjectionMatrix();}
   cam.snap=false;
+  // aim reticle (screen centre while aiming; on the target while locked)
+  if(G.moves){
+    let o={on:false};
+    if(charge.on&&P.alive&&ctl&&AM){
+      const c=clamp(charge.t/1.3,0,1);
+      if(P.lockTarget&&charge.t>AM.after){ const t=P.lockTarget; tmp3.set(t.pos.x,t.pos.y+(t.height||1.4)*.55,t.pos.z); camera.updateMatrixWorld(); tmp3.project(camera);
+        if(tmp3.z<1)o={on:true,charge:c,ready:charge.ready,onTarget:true,x:(tmp3.x*.5+.5)*innerWidth,y:(-tmp3.y*.5+.5)*innerHeight}; }
+      else if(ak>.15){ aim.hit=aimRay(); o={on:true,charge:c,ready:charge.ready,onTarget:!!aim.hit.hb}; }
+    }else if(!charge.on)aim.hit=null;
+    G.moves.reticle(o,dt);
+  }
   // reticle
   if(reticle){
     const t=P.lockTarget; reticle.visible=!!t;
@@ -1498,6 +1803,6 @@ G.system('playerFx',{order:46,modes:'always',update(dt){updateFx(dt);}});
 G.system('camera',{order:80,modes:['play','dead'],update:updateCamera});
 G.on('mode',({mode,prev})=>{ if(mode==='play'&&(prev==='title'||prev==='ending')){cam.snap=true; cam.yaw=P.heading; cam.pitch=.26;} });
 G.on('flag',({key,value})=>{});
-if(G.debug)G._playerDbg={trail,atk,charge,cam,pose,get staff(){return staffObj;},get R(){return R;}};
+if(G.debug)G._playerDbg={trail,atk,charge,cam,pose,mv,aim,cool,get staff(){return staffObj;},get R(){return R;}};
 
 })();
