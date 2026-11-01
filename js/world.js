@@ -96,9 +96,12 @@ function height(x,z){
 }
 function seaCliff(x,z){const dp=plateauSD(x,z); if(dp>=-.8||dp<-15)return false; return lowland(x,z)<5;}
 W.height=height;
+/* TIDE HOOK (alchemy.js): W.tide is the sea-level offset in metres, 0 at high tide (the Act 1 sea)
+   down to about -1.2 at low tide. It lowers the sea mesh and lets characters walk the exposed sand. */
+W.tide=0;
 W.walkable=(x,z)=>{
   if(x<-238||x>238||z<-114||z>114)return false;
-  if(height(x,z)<-1.2)return false;
+  if(height(x,z)<-1.2+W.tide)return false; // tide hook
   if(x>100&&seaCliff(x,z))return false;
   return true;
 };
@@ -1348,7 +1351,7 @@ function buildHeadland(){
   // workbench + bottles outside
   kit.box('timber',1.8,.12,.7,2.9,.95,-.6,0,0,0,col('#a07a58')); for(const s of [-1,1])kit.box('timber',.1,.95,.6,2.9+s*.8,.47,-.6);
   const bottle=new THREE.CylinderGeometry(.06,.09,.28,6);
-  for(let k=0;k<5;k++)kit.add(k%2?'ether':'glass',bottle,mat4(2.3+k*.3,1.15,-.6+(r()-.5)*.3));
+  for(let k=0;k<5;k++){const rv=r(); if(k===0||k===4)kit.add(k%2?'ether':'glass',bottle,mat4(2.3+k*.3,1.15,-.6+(rv-.5)*.3));} // alchemy.js dresses the middle of this bench (keep r() sequence)
   kit.frame=new THREE.Matrix4();
   G.addBoxCollider({x:S0.x,z:S0.z,hw:2.3,hd:1.8,yaw:.15,y0:TOP-2,y1:TOP+4}); G.addCollider({x:S0.x+2.9*Math.cos(.15)-(-.6)*Math.sin(.15),z:S0.z-2.9*Math.sin(.15)-.6*Math.cos(.15),r:.8});
 
@@ -1559,7 +1562,7 @@ G.system('world',{order:0,modes:'always',
     SH.time.value=t;
     // sky & sea follow the camera
     sky.position.copy(cam.position); stars.position.copy(cam.position);
-    sea.position.set(Math.round(cam.position.x/13)*13,0,Math.round(cam.position.z/13)*13);
+    sea.position.set(Math.round(cam.position.x/13)*13,W.tide||0,Math.round(cam.position.z/13)*13); // tide hook
     // atmosphere
     const dark=clamp(A.dark,0,1), cured=clamp(A.cured,0,1), ff=smooth(-55,-90,f.x)*(1-smooth(30,40,f.y));
     const fog=G.scene.fog;
