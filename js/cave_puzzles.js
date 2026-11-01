@@ -107,7 +107,8 @@ function buildVeins(){
     list.forEach((pos,i)=>{
       const v={room,i,pos,free:room==='mouth'&&pos.distanceTo(free)<.5};
       API.veins.push(v);
-      v.inter=G.interact.add({pos:()=>v.pos,radius:2.6,priority:2,
+      v.ipos=v.pos.clone().add(V(0,-1.3,0));   // veins sit up the wall; interact from the floor below
+      v.inter=G.interact.add({pos:()=>v.ipos,radius:2.8,priority:2,
         enabled:()=>inside()&&isPlay()&&!S.lit[room]&&!(G.cave&&G.cave.isLit&&G.cave.isLit(room)),
         label:()=>veinLabel(v), use:()=>useVein(v)});
     });
@@ -173,9 +174,17 @@ function buildSeal(id){
   for(let i=0;i<16;i++){ const a=rnd()*TAU, el=(rnd()-.2)*1.3; anchors.push(V(pos.x+Math.cos(a)*Math.cos(el)*R*.95,pos.y+R*.55+Math.sin(el)*R*.8,pos.z+Math.sin(a)*Math.cos(el)*R*.55)); }
   const em=G.ink&&G.ink.emitter?G.ink.emitter(V(pos.x,pos.y+R*.6,pos.z),{rate:6,radius:R*.6,height:R*.6,size:[.8,2.4],life:[2.5,4.5],rise:.5,drift:.25,trail:0,alpha:.4,embers:1.6,color:'#0b0710',intensity:0}):null;
   const glow=glowSprite('#7b45ff',R*3.2,.22); glow.position.set(pos.x,pos.y+R*.6,pos.z); root.add(glow);
-  const col=G.addCollider?G.addCollider({x:pos.x,z:pos.z,r:R*.9,y0:pos.y-1.5,y1:pos.y+R*1.6}):null;
+  // the plug blocks its passage: a wall-to-wall box through G.cave.block (cave-local), else a plain collider
+  let col=null, blockId=null;
+  if(id!=='channel'){
+    if(G.cave&&G.cave.block&&G.cave.sdf){ const l=toLocal(pos), sdf=G.cave.sdf, reach=(dx,dz)=>{ let d=0; while(d<7&&sdf(l.x+dx*d,l.z+dz*d)<0)d+=.1; return d; };
+      const xp=reach(1,0),xn=reach(-1,0),zp=reach(0,1),zn=reach(0,-1);
+      const b=(xp+xn)<(zp+zn)?{x:l.x+(xp-xn)/2,z:l.z,hw:(xp+xn)/2+.6,hd:.75}:{x:l.x,z:l.z+(zp-zn)/2,hw:.75,hd:(zp+zn)/2+.6};
+      blockId='seal_'+id; G.cave.block(blockId,Object.assign(b,{y0:l.y-3,y1:l.y+8})); }
+    else if(G.addCollider)col=G.addCollider({x:pos.x,z:pos.z,r:R*.9,y0:pos.y-1.5,y1:pos.y+R*1.6});
+  }
   const s={id,name:d.name,pos:V(pos.x,pos.y+.6,pos.z),radius:d.r+1.2,needs:d.needs,feedTime:d.time,stallBelow:Math.round(d.needs*.4),yRange:6.5,anchors,
-    root,mat,blob,em,glow,col,gate:d.gate,boil:-1,flash:0,seen:false,
+    root,mat,blob,em,glow,col,blockId,gate:d.gate,boil:-1,flash:0,seen:false,
     enabled:()=>inside()&&isPlay()&&(id!=='channel'||API.raft.lantern||API.raft.state==='arrived'),
     onFeed(x){ x.flash=1; G.emit('cave:seal',{id,state:'feed'});
       say('sealFeed','The moths settle on the plug and begin to eat. It shudders, and the whole thing draws in a long breath.'); },
@@ -184,7 +193,7 @@ function buildSeal(id){
     onDone(){ openSeal(id,false); }};
   API.seals[id]=s;
   if(G.moths&&G.moths.addSite)G.moths.addSite(s);
-  if(G.cave&&G.cave.setGate){ try{G.cave.setGate(d.gate,false);}catch(e){} }
+  if(id==='channel'&&G.cave&&G.cave.setGate&&!S.open.channel){ try{G.cave.setGate('channel',false);}catch(e){} }
   return s;
 }
 function mergeGeos(list){
@@ -200,7 +209,8 @@ function openSeal(id,restored){
   if(S.open[id]&&!restored)return;
   S.open[id]=true; s.cured=true; s.feeding=false; s.progress=1;
   if(s.col&&G.removeCollider){G.removeCollider(s.col); s.col=null;}
-  if(G.cave&&G.cave.setGate){ try{G.cave.setGate(s.gate,true);}catch(e){console.error('setGate',e);} }
+  if(s.blockId&&G.cave&&G.cave.block)G.cave.block(s.blockId,null);
+  if(id==='channel'&&G.cave&&G.cave.setGate){ try{G.cave.setGate('channel',true);}catch(e){console.error('setGate',e);} }
   if(restored){ s.root.visible=false; if(s.em)s.em.intensity=0; }
   else{
     s.boil=0;
@@ -271,7 +281,7 @@ function updateRoost(dt){
 /* ================================================================ 4. FLOATING CRATES */
 const CRATE_HW=.6, CRATE_H=1.0;
 function buildCrates(){
-  let homes=anchor('stair','crates',[-2,0,-60]);
+  let homes=anchor('stair','crateSpots',null)||anchor('stair','crates',[-2,0,-60]);
   const ledge=anchor('stair','ledge',[3,2.6,-65]);
   if(!Array.isArray(homes)){ const c=homes, d=V(ledge.x-c.x,0,ledge.z-c.z); if(d.lengthSq()<.01)d.set(1,0,0); d.normalize(); const pr=V(-d.z,0,d.x);
     homes=[-1,0,1].map(k=>c.clone().addScaledVector(d,k*1.5).addScaledVector(pr,(k===0?.25:-.15)));

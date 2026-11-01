@@ -716,7 +716,7 @@ function buildJar(){
   const strap=new THREE.Mesh(new THREE.TorusGeometry(.078,.009,5,16),G.toon('#5c4532')); strap.rotation.x=PI/2; strap.position.y=.06;
   jarGlow=glowSprite('#fff0c8',.32,0); jarGlow.position.y=-.01;
   g.add(glass,base,neck,cork,strap,jarGlow);
-  g.position.set(.26,.92,.04); g.rotation.z=-.18;          // left hip (model faces +z)
+  g.position.set(-.22,.9,-.14); g.rotation.z=.18;          // right hip, toward the back (model faces +z; the lantern hangs on the left)
   P.model.add(g); jarObj=g; g.visible=JAR.owned;
 }
 function jarMoths(){ const o=[]; for(const m of mothList()) if(m.tgt==='jar')o.push(m); return o; }
@@ -782,7 +782,7 @@ function killOne(m,dust){ if(!m||m.tgt==='gone')return false; lostKillPos.copy(m
 const API=G.moths={swarm:0,feeding:0,bait,
   get baited(){return S.baitLeft>0||S.jarLeft>0;},
   addSite(s){ s.progress=s.progress||0; s.feeding=false; s.stalled=false; s.cured=!!s.cured; s.near=0; if(sites.indexOf(s)<0)sites.push(s); return s; },
-  sites, kill:(m,dust=true)=>killOne(m,dust), toLantern:m=>toLantern(m), release:m=>release(m),
+  sites, kill:(m,dust=true)=>killOne(m,dust), eat:(m)=>killOne(m,true), toLantern:m=>toLantern(m), release:m=>release(m),
   jar:JAR, jarPos:()=>jarWorld(), get baitLeft(){return S.baitLeft;}, get lost(){return S.lost;},
   get noticed(){return S.noticed;}, get active(){return started;},
   blight:id=>blights.find(b=>b.id===id)||null};
