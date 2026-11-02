@@ -4,12 +4,14 @@ vein, page 1, seal) -> death + rise -> save/reload/Continue inside -> stair (low
 -> channel (raft run with boarders, walkway, page 2, sluice) -> drafts (lantern shut between gusts) -> door seal -> the Undertow
 (shut lantern, moths reveal it, lashes/surges/drag, lens) -> defeat (jar, page 3, wall, Wound, arena lit, shortcut) ->
 save/reload/Continue after the boss -> shortcut -> mouth -> out (swarm transfer) -> jar -> cure the Black Tide Pool.
-Plus: a camera random walk through every room (camera never inside the rock), draw calls, screenshots in /tmp/claude-0/cave-int/.
+Then, in a fresh session, the soft-lock guards (SOFTLOCK: rising never behind a seal/grate, the draught out, the keeper's bench,
+Continue from a broken save). Plus: a camera random walk through every room (camera never inside the rock), draw calls, screenshots in /tmp/claude-0/cave-int/.
 Only the start teleports (to the beach); it tops up hp like loop_e2e. Every step asserts.
-usage: python3 test/cave_e2e.py [url]   (default http://localhost:8800/dev.html?debug)"""
+usage: python3 test/cave_e2e.py [url] [--softlock]   (default http://localhost:8800/dev.html?debug; --softlock: only the soft-lock scenario)"""
 import asyncio, sys, os, json
 from playwright.async_api import async_playwright
 URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&headless'
+SOFT_ONLY='--softlock' in sys.argv[2:]   # run only the soft-lock scenario
 SHOTS='/tmp/claude-0/cave-int'; os.makedirs(SHOTS,exist_ok=True)
 
 LIB=r"""
@@ -319,6 +321,76 @@ STEPS=[
  ("drawCalls", "DRAWCALLS"),
 ]
 
+# ---------------------------------------------------------------- soft-lock guards: a second, fresh session (the playthrough above
+# is timed against the tide; these run separately so they can't shift it). Heath died in the gallery before opening its seal and
+# rose behind the Undertow's door: wandering the shortcut tunnel from the mouth counted as reaching the arena.
+SOFTLOCK=[
+ ("s:setup", r"""(()=>{ document.getElementById('begin').click(); G.debugStartLoop(); G.step(1/30,10);
+   const L=G.items.lantern; L.carried=true; L.inCradle=false; L.shut=false; G.alchemy.debug.give('glowcap',2);
+   const room=G.debugEnterCave('mouth'); G.step(1/30,30); G.alchemy.debug.setTide(150); G.step(1/30,2);   // low water
+   return {ok:G.cave.inside&&room==='mouth'&&/mouth/.test(G.state.checkpointName),room,cp:G.state.checkpointName,water:+G.cave.water().toFixed(2)}; })()"""),
+ ("s:tunnelDetour", r"""(()=>{ // the shortcut tunnel is open from the mouth up to its grate: wandering it must not count as reaching the arena
+   const r=T.walk([[2,-9],[7,-10.4],[20,-5.2],[31,-8.2],[40.5,-13.6]],{local:true}); T.wait(1.5); const reg=G.cave.region(G.player.pos), cp=G.state.checkpointName, reached=G.cave.reached();
+   const r2=T.walk([[31,-8.2],[20,-5.2],[7,-10.4],[0,-10]],{local:true});
+   return {ok:r.ok&&r2.ok&&reg==='tunnel'&&G.cave.room(G.player.pos)!=null&&/mouth/.test(cp)&&!reached.includes('arena')&&!G.cave.stranded(),reg,cp,reached,r}; })()"""),
+ ("s:keeperBench", r"""(()=>{ // the alchemy table in the mouth: the shed's panel and recipes; glowcaps grow beside it; one caption
+   const c0=G.inv.count('glowcap'), e0=G.alchemy.etherUnits; const r=T.walk([[0,-16],[-5,-19.3],[3.7,-19.4]],{local:true}); const u=T.use(/bench/); G.step(1/30,3);
+   const open=!document.getElementById('alchemy').hidden, mode=G.state.mode, where=document.getElementById('alchWhere').textContent;
+   const brewed=G.alchemy.brew('tincture',{instant:true}); G.alchemy.closeTable(); G.step(1/30,3);
+   return {ok:r.ok&&u==='Work the keeper’s bench'&&open&&mode==='menu'&&/cave/.test(where)&&brewed&&G.alchemy.etherUnits===e0+5&&G.state.mode==='play'&&G.flag('caveBench'),
+     where,picked:G.inv.count('glowcap')-c0+3,ether:G.alchemy.etherUnits}; })()"""),
+ ("shot:s-keeper-bench",None),
+ ("s:tunnelDie", r"""(()=>{ if(G.state.mode==='paused')document.getElementById('resume').click(); // headless: re-locking the pointer after the panel drops and pauses
+   T.walk([[0,-12],[7,-10.4],[20,-5.2]],{local:true}); const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(1,0,0),knockback:4,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:G.state.mode==='dead'&&/mouth/.test(G.state.checkpointName),cp:G.state.checkpointName,at:T.where()}; })()"""),
+ ("s:rise1", "WAIT_RISE"),
+ ("s:afterRise1", r"""(()=>{ G.step(1/30,30); return {ok:G.state.mode==='play'&&G.player.alive&&G.cave.region(G.player.pos)==='mouth',at:T.where(),cp:G.state.checkpointName}; })()"""),
+ ("s:highTideMouth", r"""(()=>{ // the flood tide in the mouth: wash, drown-push, die there — rise on dry sand, still the mouth
+   G.alchemy.debug.setTide(0); G.step(1/30,2); T.walk([[0,6]],{local:true,max:240,patience:240}); T.wait(3);
+   const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(0,0,1),knockback:4,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:G.state.mode==='dead'&&/mouth/.test(G.state.checkpointName),water:+G.cave.water().toFixed(2),cp:G.state.checkpointName,at:T.where()}; })()"""),
+ ("s:rise4", "WAIT_RISE"),
+ ("s:afterRise4", r"""(()=>{ G.step(1/30,30); const l=G.cave.toLocal(G.player.pos), f=G.cave.floorVis(l.x,l.z), w=G.cave.water();
+   G.alchemy.debug.setTide(150); G.step(1/30,2);
+   return {ok:G.state.mode==='play'&&G.cave.region(G.player.pos)==='mouth'&&w-f<1.1&&w>1.3,at:T.where(),water:+G.cave.water().toFixed(2)}; })()"""),
+ ("s:sealPushDie", r"""(()=>{ // lean on the closed gallery seal (the stair is on its far side), then die against it, knocked into it
+   const r=T.walk([[0,-16],[0,-24],[0,-30],[0,-40.5]],{local:true}); T.fight({room:'gallery',max:900});
+   T.walk([[0,-40.5]],{local:true}); for(const x of [0,-1.5,1.5,0]) T.walk([[x,-52]],{local:true,max:60,patience:60});
+   const reg=G.cave.region(G.player.pos), reached=G.cave.reached(), cp=G.state.checkpointName;
+   const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(0,0,-1),knockback:8,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:r.ok&&reg==='gallery'&&!reached.includes('stair')&&/Gallery/.test(cp)&&G.state.mode==='dead'&&!G.cavePuzzles.open('gallery'),reg,reached,cp,at:T.where()}; })()"""),
+ ("s:rise2", "WAIT_RISE"),
+ ("s:afterRise2", r"""(()=>{ G.step(1/30,30); const reg=G.cave.region(G.player.pos);
+   return {ok:G.state.mode==='play'&&G.player.alive&&reg==='gallery'&&G.cave.connected().includes(reg)&&!G.cave.stranded(),reg,at:T.where(),cp:G.state.checkpointName}; })()"""),
+ ("s:monsterDeath", r"""(()=>{ // killed by the cave's own monsters (no top-ups): a brineling pack and a hollow set on the player in the gallery
+   const O=G.cave.origin, p=G.player.pos; const ms=['brineling','brineling','hollow'].map((k,i)=>G.monsters.spawn(k,{x:p.x+1.5*Math.cos(i*2),y:p.y,z:p.z+1.5*Math.sin(i*2)},{zone:{name:'cave-gallery',x:O.x,z:O.z-35,r:12},cave:'gallery'}));
+   G.player.hp=1; const t=T.wait(30,{top:false,until:()=>!G.player.alive}); G.step(1/30,30);
+   const cp=G.state.checkpointName; for(const m of ms)if(m&&m.alive)G.monsters.despawn(m);
+   return {ok:G.state.mode==='dead'&&/Gallery/.test(cp),t,cp,at:T.where()}; })()"""),
+ ("s:rise3", "WAIT_RISE"),
+ ("s:afterRise3", r"""(()=>{ G.step(1/30,30); return {ok:G.state.mode==='play'&&G.cave.region(G.player.pos)==='gallery',at:T.where()}; })()"""),
+ ("s:strandedDraught", r"""(()=>{ // defence in depth: put the player behind the closed seal; the draught always offers the way back to the mouth
+   G.alchemy.debug.setTide(150); G.debugEnterCave('stair'); T.wait(1.5); const lab=T.label(), str=G.cave.stranded(), cp=G.state.checkpointName;
+   const u=T.use(/draught/); T.wait(2.5); const reg=G.cave.region(G.player.pos);
+   return {ok:str&&lab==='Follow the draught back to the mouth'&&!/Stair/.test(cp)&&reg==='mouth'&&!G.cave.stranded()&&!G.cave.reached().includes('stair'),lab,cp,reg}; })()"""),
+ ("s:brokenSave", r"""(()=>{ // Heath's save: checkpoint behind the Undertow's door, standing in the gallery, seal closed, no 'reached' list
+   G.setMode('paused'); document.getElementById('saveBtn').click(); const d=JSON.parse(localStorage.getItem('bq-save-v1'));
+   const O=G.cave.origin; d.cp=[O.x+60,O.y+3,O.z-41]; d.cpName='the Undertow’s door'; d.pos=[O.x,O.y+3,O.z-33]; delete d.mods.cave.reached;
+   localStorage.setItem('bq-save-v1',JSON.stringify(d)); return {ok:true}; })()"""),
+ ("s:reload", "RELOAD"),
+ ("s:continueBroken", r"""(()=>{ G.step(1/30,40); const cp=G.state.checkpointName, reg=G.cave.region(G.player.pos);
+   const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(0,0,1),knockback:0,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:G.cave.inside&&reg==='gallery'&&!/Undertow/.test(G.state.checkpointName)&&G.state.mode==='dead',cpAfterLoad:cp,cp:G.state.checkpointName,reg}; })()"""),
+ ("s:rise5", "WAIT_RISE"),
+ ("s:afterRise5", r"""(()=>{ G.step(1/30,30); const reg=G.cave.region(G.player.pos); return {ok:G.state.mode==='play'&&G.cave.connected().includes(reg),reg,at:T.where(),cp:G.state.checkpointName}; })()"""),
+ ("s:strandedSave", r"""(()=>{ // a save made trapped in the drafts (Heath's other possible state): Continue, then the draught leads out
+   G.setMode('paused'); document.getElementById('saveBtn').click(); const d=JSON.parse(localStorage.getItem('bq-save-v1'));
+   const O=G.cave.origin; d.pos=[O.x+60,O.y+3,O.z-41]; localStorage.setItem('bq-save-v1',JSON.stringify(d)); return {ok:true}; })()"""),
+ ("s:reload2", "RELOAD"),
+ ("s:continueStranded", r"""(()=>{ G.step(1/30,40); const reg=G.cave.region(G.player.pos), str=G.cave.stranded(), lab=T.label(); const u=T.use(/draught/); T.wait(2.5);
+   return {ok:reg==='drafts'&&str&&u==='Follow the draught back to the mouth'&&G.cave.region(G.player.pos)==='mouth',reg,lab,at:T.where()}; })()"""),
+]
+
 DRAW=r"""new Promise(res=>{ const r=G.renderer, out={}; const rooms=['mouth','gallery','stair','channel','drafts','arena']; let i=0;
   function next(){ if(i>=rooms.length){ res(out); return; } const room=rooms[i++]; G.debugEnterCave(room); G.step(1/30,10); let n=0;
     requestAnimationFrame(function f(){ if(n===0){ r.info.autoReset=false; r.info.reset(); } if(++n<=8)return requestAnimationFrame(f);
@@ -336,7 +408,8 @@ async def main():
         await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         await boot()
-        for name,js in STEPS:
+        async def run(steps):
+          for name,js in steps:
             if name.startswith('shot:'):
                 await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png',timeout=120000); print('  shot',name[5:]); continue
             try:
@@ -351,6 +424,10 @@ async def main():
             ok=bool(r.get('ok')) if isinstance(r,dict) else False
             if not ok: fails.append(name)
             print(('PASS ' if ok else 'FAIL ')+name,':',json.dumps(r)[:900])
+        if not SOFT_ONLY: await run(STEPS)
+        # the soft-lock guards, in a fresh session (see SOFTLOCK)
+        await pg.goto(URL); await pg.wait_for_timeout(5000); await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await boot()
+        await run(SOFTLOCK)
         errs=[e for e in errs if '404' not in e and 'favicon' not in e]
         if errs: print('console errors:\n  '+'\n  '.join(errs[:12]))
         await b.close()

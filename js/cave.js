@@ -267,14 +267,19 @@ G.cameraConstrainers.push((cam,target)=>{
   const L=Math.hypot(cx-tx,cy-ty,cz-tz), n=Math.max(1,Math.ceil(L/.12));
   let gx=tx,gy=ty,gz=tz;
   if(bad(tx,ty,tz)){ // target itself is tight: just keep the camera under the ceiling
-    cam.set(target.x,O.y+Math.min(Math.max(ty,Fat(tx,tz)+.45),Cat(tx,tz)-.2),target.z); return; }
+    // the follow target is damped, so hugging a curved wall it can lag into the rock: then use the player's own column
+    // (always open floor), moved toward the target only as far as stays clear of the wall
+    let bx=tx, bz=tz; const P=G.player&&G.player.pos;
+    if(P&&Sat(tx,tz)>-.3){ const px=P.x-O.x, pz=P.z-O.z; bx=px; bz=pz; const m=Math.max(1,Math.ceil(Math.hypot(tx-px,tz-pz)/.08));
+      for(let i=1;i<=m;i++){ const x=px+(tx-px)*i/m, z=pz+(tz-pz)*i/m; if(Sat(x,z)>-.3)break; bx=x; bz=z; } }
+    cam.set(bx+O.x,O.y+Math.min(Math.max(ty,Fat(bx,bz)+.45),Cat(bx,bz)-.2),bz+O.z); return; }
   for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
   cam.set(gx+O.x,gy+O.y,gz+O.z);
 });
 
 /* ================================================================ 5. STATE + API */
 const S={inside:false,room:null,lit:new Set(),gates:{channel:false,shortcut:false},wallDown:false,woundShown:false,
-  trans:null,lastDry:new THREE.Vector3(),dryT:0,pushT:0,prevCp:null,built:false,hidden:[],farPrev:1200};
+  trans:null,lastDry:new THREE.Vector3(),dryT:0,pushT:0,prevCp:null,reached:new Set(),footReg:null,footT:0,stranded:false,built:false,hidden:[],farPrev:1200};
 const transferHooks=[];
 const VIS={gates:{channel:false,shortcut:false}};
 const SWARM=new Set(['lantern','satchel','feed','hunt','jar','jarRelease','released']);
@@ -294,6 +299,9 @@ const cave=G.cave={
   /** cave-local helpers for other modules: wall distance (<0 open), visible floor/ceiling heights */
   sdf:(x,z)=>Sat(x,z), floorVis:(x,z)=>Fat(x,z), ceilVis:(x,z)=>Cat(x,z),
   lowPassageOpen:()=>water()<-1+.2,
+  /** soft-lock guards: the region at a world pos (rooms split at their seals/grates), whether it has an open way to the mouth, the way out */
+  region:pos=>pos&&inBoxW(pos.x,pos.z)?regionAt(pos.x-O.x,pos.z-O.z):null, connected:()=>[...connected()], stranded:()=>!!S.stranded,
+  reached:()=>[...S.reached], followDraught:()=>followDraught(),
   enter:(roomId,o)=>startTrans('in',roomId||'mouth',o), exit:o=>startTrans('out',null,o),
   lightRoom, isLit:id=>S.lit.has(id), setGate, gate:id=>!!S.gates[id], collapseWall,
   /** register fn(delta:Vector3, info{to:'cave'|'island'}) — called when the player is teleported in/out, to carry your things */
@@ -882,14 +890,58 @@ function doTeleport(dir,roomId){
   S.lastDry.copy(P.pos);
 }
 
-/* ---------- checkpoints: dying deep in the cave puts you back at the deepest room reached, not at the mouth ---------- */
-const CP_ORDER=['mouth','gallery','stair','channel','drafts','arena'];
-const CP_AT={gallery:[0,3,-28,PI,'the Gallery of Keepers'],stair:[-3,1,-50.5,PI,'the Flooding Stair'],channel:[-6,.8,-82,PI/2,'the head of the Channel'],
-  drafts:[52,4,-86.5,PI/2,'the sluice'],arena:[60,3,-41,0,'the Undertow’s door']};
-function advanceCheckpoint(r){
-  if(!S.inside||!CP_AT[r]||!G.state||!G.state.checkpoint)return;
-  const cur=room(G.state.checkpoint)||'mouth'; if(CP_ORDER.indexOf(r)<=CP_ORDER.indexOf(cur))return;
-  const c=CP_AT[r], f=zoneFloor(c[0],c[2],c[1]+1); G.state.checkpoint.copy(toWorld(c[0],f==null?c[1]:f,c[2])); G.state.checkpointYaw=c[3]; G.state.checkpointName=c[4];
+/* ---------- checkpoints: dying deep in the cave puts you back at the deepest room you reached, not the mouth ----------
+   A rise spot must be one you have genuinely stood near (a dry floor of that region for a moment) AND one with an open way back
+   to the mouth under the current seals/gates. Rooms are bounding boxes, so a few of them reach past a seal or grate: regionAt()
+   splits those off (the shortcut tunnel is the mouth's side passage until its grate opens; it used to count as the arena, so
+   walking into it from the mouth set the checkpoint behind the Undertow's door: Heath's soft-lock). */
+const CP_SPOTS=[ // [region it stands for, local x,y,z, yaw, name] in depth order
+  ['gallery',0,3,-28,PI,'the Gallery of Keepers'],['stair',-3,1,-50.5,PI,'the Flooding Stair'],['channel',-6,.8,-82,PI/2,'the head of the Channel'],
+  ['drafts',52,4,-86.5,PI/2,'the sluice'],['arena',60,3,-41,0,'the Undertow’s door']];
+function regionAt(x,z){ const r=roomAtL(x,z);
+  if(r==='arena'&&x>4&&x<42.2&&z>-18&&z<0)return 'tunnel';     // the shortcut tunnel, mouth side of its grate (x 42.4)
+  if(r==='arena'&&z<-34)return 'drafts';                         // north of the Undertow door seal (z -34)
+  if(r==='channel'&&x>47&&z<-84)return 'drafts';                 // past the walkway gate (x 47): the sluice walk
+  if(r==='gallery'&&z<-46)return 'stair';                        // south of the gallery seal
+  return r; }
+const sealOpen=id=>{ const P=G.cavePuzzles; return !(P&&P.open)||!!P.open(id); };
+/** regions with an open way back to the mouth (the stair <-> channel link is tidal: it always opens again) */
+function connected(){
+  const L=[['mouth','gallery',true],['mouth','tunnel',true],['tunnel','arena',S.gates.shortcut],['gallery','stair',sealOpen('gallery')],
+    ['stair','channel',true],['channel','drafts',S.gates.channel],['drafts','arena',sealOpen('arena')]];
+  const out=new Set(['mouth']); let grew=true;
+  while(grew){ grew=false; for(const [a,b,o] of L){ if(!o)continue; if(out.has(a)&&!out.has(b)){out.add(b);grew=true;} else if(out.has(b)&&!out.has(a)){out.add(a);grew=true;} } }
+  return out; }
+function setCheckpointL(x,y,z,yaw,name){ const c=G.state.checkpoint, w=toWorld(x,y,z);
+  if(c.distanceToSquared(w)>1e-4)c.copy(w); G.state.checkpointYaw=yaw; G.state.checkpointName=name; }
+/** best valid rise spot right now: the deepest reached spot whose region is connected, else the mouth */
+function bestCheckpoint(conn){ conn=conn||connected();
+  for(let i=CP_SPOTS.length-1;i>=0;i--){ const c=CP_SPOTS[i]; if(!S.reached.has(c[0])||!conn.has(regionAt(c[1],c[3])))continue;
+    const f=zoneFloor(c[1],c[3],c[2]+1); return [c[1],f==null?c[2]:f,c[3],c[4],c[5]]; }
+  const a=arrivalFor('mouth'); return [a[0],a[1],a[2],a[3],'the mouth of the sea cave']; }
+/** standing on a dry, open floor of a connected region for a moment unlocks that region's rise spot */
+function trackFooting(dt,conn){
+  const P=G.player; if(!P.alive||P.grounded===false||G.state.mode!=='play'){ S.footT=0; return; }
+  const lx=P.pos.x-O.x, ly=P.pos.y-O.y, lz=P.pos.z-O.z, f=zoneFloor(lx,lz,ly+.3), w=water();
+  if(f==null||Math.abs(ly-f)>.3||Sphys(lx,lz,ly)>-.45||w-f>.7||(inSump(lx,lz)&&w-f>-.1)){ S.footT=0; return; }
+  const reg=regionAt(lx,lz); if(!reg||!conn.has(reg)){ S.footT=0; return; }
+  if(reg!==S.footReg){ S.footReg=reg; S.footT=0; } S.footT+=dt;
+  if(S.footT>.6&&!S.reached.has(reg)&&CP_SPOTS.some(c=>c[0]===reg)){ S.reached.add(reg); G.emit('cave:reached',{region:reg}); }
+}
+let cpT=0;
+function updateCheckpoint(dt){
+  cpT-=dt; if(cpT>0)return; const step=.2-cpT; cpT=.2;
+  const conn=connected(); trackFooting(step,conn);
+  const b=bestCheckpoint(conn); setCheckpointL(b[0],b[1],b[2],b[3],b[4]);
+  // defence in depth: wherever you are, if there's no open way back to the mouth, the draught offers one
+  const P=G.player, reg=regionAt(P.pos.x-O.x,P.pos.z-O.z);
+  S.stranded=!!reg&&!conn.has(reg);
+  if(S.stranded&&!G.flag('caveDraught')){ G.flag('caveDraught',true); G.ui.say('A cold draught slips past you toward the sea, through cracks too narrow for the light. You could follow it back to the mouth.'); }
+}
+function followDraught(){
+  if(!S.inside||S.trans)return false;
+  G.emit('cave:draught',{from:regionAt(G.player.pos.x-O.x,G.player.pos.z-O.z)});
+  return startTrans('in','mouth');
 }
 
 /* ================================================================ 9. INSIDE / OUTSIDE */
@@ -910,19 +962,45 @@ function setInside(v){
   caveRoot.visible=v; hideIsland(v);
   // the sun is off underground: stop re-rendering its shadow map (~150 draw calls a frame); the stale map is multiplied by a 0-intensity light
   if(G.renderer&&G.renderer.shadowMap){ G.renderer.shadowMap.autoUpdate=!v; if(!v)G.renderer.shadowMap.needsUpdate=true; }
-  if(v){ S.room=room(G.player.pos)||'mouth'; G.emit('cave:enter',{room:S.room}); }
+  if(v){ S.room=room(G.player.pos)||'mouth'; buildKeeperBench(); G.emit('cave:enter',{room:S.room}); }
   else{ S.room=null; G.emit('cave:exit',{}); }
+}
+
+/* ---------- the keeper's bench: an alchemy table at the dry inner end of the mouth (above the high-water line), and glowcaps
+   that grow in the mouth and the gallery (slow regrow, G.alchemy's spots) so ether can be brewed without climbing back out ---------- */
+const BENCH={x:5.35,z:-19.6,yaw:-PI/2};  // along the east wall, facing into the mouth; floor ≈ 1.85 > high water 1.5
+const CAVE_CAPS=[[-5,-19.5],[2.5,-20.6],[-9,-38],[9,-42]];
+blockers.bench={x:BENCH.x+.1,z:BENCH.z,hw:.5,hd:1.15,y0:-2,y1:4};
+let benchBuilt=false;
+function buildKeeperBench(){
+  if(benchBuilt||!G.alchemy||!G.alchemy.addTable)return; benchBuilt=true;
+  try{
+    const f=zoneFloor(BENCH.x,BENCH.z,50);
+    S.bench=G.alchemy.addTable(toWorld(BENCH.x,f,BENCH.z),{yaw:BENCH.yaw,parent:caveRoot,eyebrow:'The keeper’s bench, in the sea cave',
+      label:'Work the keeper’s bench',enabled:()=>S.inside&&loopOn(),radius:2.4});
+    S.caps=[];
+    for(const [x,z] of CAVE_CAPS){ const fy=zoneFloor(x,z,50); if(fy==null)continue;
+      const sp=G.alchemy.addMushroomSpot(toWorld(x,fy,z),{y:O.y+fy,parent:caveRoot,tag:'cave'});
+      const g=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#a46cff'),transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending,fog:false}));
+      g.scale.set(1.1,1.1,1); g.position.copy(toLocal(sp.pos)).setY(fy+.3); caveRoot.add(g); S.caps.push({sp,g}); }
+  }catch(e){ console.error('cave bench',e); }
+}
+function updateBench(){
+  for(const c of S.caps||[]){ c.g.visible=!(c.sp.regrow>0); c.g.material.opacity=.28+.08*Math.sin(G.time*2+c.sp.pos.x); }
+  if(S.bench&&!G.flag('caveBench')&&G.state.mode==='play'&&S.room==='mouth'){ G.flag('caveBench',true);
+    G.ui.say('Against the dry back wall of the mouth, above the tide line, stands an old keeper’s workbench — a burner, a retort, a rack of vials. Glowcaps grow down here too: you could brew ether without climbing back out.');
+    if(G.ui.toast)G.ui.toast('The keeper’s bench','Brew ether here · at the back of the mouth'); }
 }
 
 /* ================================================================ 10. DEEP WATER, TIDE WASH, CEILING */
 /** is cave-local (x,z) open, dry footing at water level w? */
 function dryAt(x,z,w){ const f=zoneFloor(x,z,50); return f!=null&&Sphys(x,z,f)<-.5&&w-f<.7&&!(inSump(x,z)&&w-f>-.1); }
 function findDry(x,z,w){
-  const r0=room(toWorld(x,0,z));
+  const r0=regionAt(x,z);
   for(let r=1;r<=16;r+=.75) for(let k=0;k<16;k++){ const a=k/16*TAU, px=x+Math.cos(a)*r, pz=z+Math.sin(a)*r;
-    if(dryAt(px,pz,w)&&room(toWorld(px,0,pz))===r0){ const f=zoneFloor(px,pz,50); return toWorld(px,f,pz); } }
-  const s=ROOMDEF[r0]&&ROOMDEF[r0].spawn; if(s){ const f=zoneFloor(s[0],s[2],50); return toWorld(s[0],f==null?(s[1]||0):f,s[2]); }
-  return null;
+    if(dryAt(px,pz,w)&&regionAt(px,pz)===r0){ const f=zoneFloor(px,pz,50); return toWorld(px,f,pz); } }
+  const s=ROOMDEF[r0]&&ROOMDEF[r0].spawn; if(s&&regionAt(s[0],s[2])===r0){ const f=zoneFloor(s[0],s[2],50); return toWorld(s[0],f==null?(s[1]||0):f,s[2]); }
+  const c=bestCheckpoint(); return toWorld(c[0],c[1],c[2]);   // never a spot across a seal or grate: the way you came in
 }
 function updatePlayerWater(dt){
   const P=G.player; if(!P||!P.pos||!P.alive||S.trans)return;
@@ -976,8 +1054,9 @@ function updateGatesVis(dt){
 /* ================================================================ 12. PERSISTENCE */
 function save(){ /* flow.js snapshots G.persist on its own schedule */ }
 if(G.persist&&G.persist.register) G.persist.register('cave',{
-  save:()=>({lit:[...S.lit],gates:Object.assign({},S.gates),wall:S.wallDown}),
-  load:(d)=>{ if(!d)return; (d.lit||[]).forEach(id=>lightRoom(id,{restored:true})); if(d.gates)for(const k in d.gates)setGate(k,d.gates[k]); if(d.wall)collapseWall({instant:true}); }
+  save:()=>({lit:[...S.lit],gates:Object.assign({},S.gates),wall:S.wallDown,reached:[...S.reached]}),
+  load:(d)=>{ if(!d)return; (d.lit||[]).forEach(id=>lightRoom(id,{restored:true})); if(d.gates)for(const k in d.gates)setGate(k,d.gates[k]); if(d.wall)collapseWall({instant:true});
+    S.reached=new Set((d.reached||[]).filter(r=>CP_SPOTS.some(c=>c[0]===r))); }
 });
 G.on('cave:bossDead',()=>{ setGate('shortcut',true); });
 
@@ -996,6 +1075,9 @@ G.system('cave',{order:13,modes:'always',
       enabled:()=>loopOn()&&!S.inside&&!S.trans&&G.player.alive!==false, use:()=>startTrans('in','mouth')});
     exitIa=G.interact.add({pos:()=>toWorld(0,mouthF(0,2.2),2.2),radius:2.6,priority:4,label:'Leave the cave',
       enabled:()=>S.inside&&!S.trans, use:()=>startTrans('out')});
+    // the guaranteed way out: offered wherever you stand when no open route leads back to the mouth
+    G.interact.add({pos:()=>G.player.pos,radius:4,priority:0,label:'Follow the draught back to the mouth',
+      enabled:()=>S.inside&&!S.trans&&S.stranded&&G.player.alive!==false&&G.state.mode==='play', use:()=>followDraught()});
     cave.stats.buildMs=Math.round(performance.now()-tb);
     if(G.debug)console.log('[cave] built',JSON.stringify(cave.stats));
   },
@@ -1009,7 +1091,8 @@ G.system('cave',{order:13,modes:'always',
     if(mouthRoot.visible) updateIslandMouth(dt);
     if(!S.inside)return;
     // darkness: lit rooms keep a little ambient
-    const r=room(P.pos)||S.room; if(r&&r!==S.room){ S.room=r; G.emit('cave:room',{id:r}); advanceCheckpoint(r); }
+    const r=room(P.pos)||S.room; if(r&&r!==S.room){ S.room=r; G.emit('cave:room',{id:r}); }
+    if(!S.trans)updateCheckpoint(dt);
     const lit=S.room&&S.lit.has(S.room);
     if(mode!=='title') G.atmo.darkTarget=lit?.55:1;
     G.lights.sun.intensity=0;
@@ -1023,7 +1106,7 @@ G.system('cave',{order:13,modes:'always',
       const L=G.items.lantern, lp=L.carried?(L.world.lengthSq()>0?L.world:P.pos):L.pos; u.uLamp.value.copy(lp); u.uLampI.value=(L.found&&L.lit())?2.2:0;
       u.uAmb.value=U.damp(u.uAmb.value,lit?1:0,2,dt); }
     if(VIS.bio)VIS.bio.uniforms.uK.value=lit?.5:1;
-    updateLighting(dt); updateGatesVis(dt); updateDrips(dt);
+    updateLighting(dt); updateGatesVis(dt); updateDrips(dt); updateBench();
     for(const s of VIS.mist||[]){ const ph=(t*.05+s.userData.ph)%1; s.position.set(Math.sin(ph*9+s.userData.ph*7)*1.5,mouthF(0,10-ph*14)+.9+ph*.8,10-ph*14); s.material.opacity=Math.sin(ph*PI)*.13; }
     if(mode==='play') updatePlayerWater(dt);
   }
@@ -1044,6 +1127,6 @@ if(G.debug){
     if(G.state.mode==='title'){ const t=document.getElementById('title'); if(t)t.hidden=true; G.setMode('play'); }
     S.trans=null; doTeleport('in',roomId||'mouth'); return room(G.player.pos);
   };
-  cave._debug={S,ZONES,Sat,Fat,Cat,zoneFloor,inSump,blockers,arrivalFor,VIS,apronF,cwF,cwDist,mouthF};
+  cave._debug={S,regionAt,connected,bestCheckpoint,followDraught,ZONES,Sat,Fat,Cat,zoneFloor,inSump,blockers,arrivalFor,VIS,apronF,cwF,cwDist,mouthF};
 }
 })();
