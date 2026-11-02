@@ -338,7 +338,7 @@ async def main():
         await boot()
         for name,js in STEPS:
             if name.startswith('shot:'):
-                await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png'); print('  shot',name[5:]); continue
+                await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png',timeout=120000); print('  shot',name[5:]); continue
             try:
                 if js=='WAIT_RISE':
                     await pg.wait_for_timeout(2600); await pg.click('#rise'); await pg.wait_for_timeout(600); r={'ok':True}

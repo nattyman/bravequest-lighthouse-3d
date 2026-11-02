@@ -50,7 +50,7 @@ async def main():
         await pg.click('#continue'); await pg.wait_for_timeout(2500)
         after=await pg.evaluate("[Math.round(G.lamp.ether), G.inv.count('glowcap'), G.inv.count('ichor'), G.blights.filter(b=>b.cured).map(b=>b.id).join(','), [...G.alchemy.known].join(','), G.loop.active]")
         print('save before:',before); print('after load :',after)
-        await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path='/tmp/claude-0/loop_end.png')
+        await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path='/tmp/claude-0/loop_end.png',timeout=120000)
         print('\n'.join(e for e in errs if '404' not in e)[:1500])
         await b.close()
 asyncio.run(main())

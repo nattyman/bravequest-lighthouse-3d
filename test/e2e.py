@@ -24,7 +24,7 @@ async def main():
             except Exception as e: r='EXC '+str(e)[:300]
             print(name,':',r)
             await pg.wait_for_timeout(1200)
-            if name in('cure','finale','boss'): await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'/tmp/claude-0/int/e2e-{name}.png')
+            if name in('cure','finale','boss'): await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'/tmp/claude-0/int/e2e-{name}.png',timeout=120000)
         print('\n'.join(errs[:15]))
         await b.close()
 asyncio.run(main())
