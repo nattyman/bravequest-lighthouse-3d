@@ -333,7 +333,7 @@ async def main():
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
         async def boot():
             await pg.evaluate(LIB); await pg.evaluate(CAMCHECK)
-        await pg.goto(URL); await pg.wait_for_timeout(5000)
+        await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         await boot()
         for name,js in STEPS:

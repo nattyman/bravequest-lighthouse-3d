@@ -36,7 +36,7 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         pg=await (await b.new_context(viewport={'width':1000,'height':600})).new_page(); pg.set_default_timeout(180000)
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
-        await pg.goto(URL); await pg.wait_for_timeout(5000)
+        await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         for name,js in STEPS:
             try: r=await pg.evaluate(js)
