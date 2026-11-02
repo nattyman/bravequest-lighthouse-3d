@@ -119,12 +119,13 @@ function updateWorldUI(dt){
 const promptEl=$('prompt'); let lastPrompt='';
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 /* controller glyphs: Xbox face buttons as coloured badges, bumpers/triggers/menu as dark pills */
-const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X'};
+const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X',H:'Up',Drink:'Up'};
 function glyph(n){
   const face={A:'a',B:'b',X:'x',Y:'y'}[n];
   if(face)return `<span class="pad pad-${face}" role="img" aria-label="${n} button">${n}</span>`;
   if(n==='LS'||n==='RS')return `<span class="pad pad-stick" role="img" aria-label="${n==='LS'?'Left':'Right'} stick">${n[0]}</span>`;
   if(n==='Menu')return `<span class="pad pad-pill" role="img" aria-label="Menu button">&#9776;</span>`;
+  if(n==='Up')return `<span class="pad pad-pill" role="img" aria-label="D-pad up">&#9650;</span>`;
   return `<span class="pad pad-pill" role="img" aria-label="${n}">${esc(n)}</span>`;
 }
 G.ui.glyph=glyph;
@@ -144,9 +145,61 @@ function updatePrompt(){
   if(html!==lastPrompt){promptEl.innerHTML=html;lastPrompt=html;}
 }
 
+/* ---------- Mender's Draught (potions.js): legend rows, the bottle chip by the hearts, the touch button ---------- */
+(function addDrinkLegend(){
+  const row=short=>{ const s=document.createElement('span'); s.innerHTML='<kbd>H</kbd> '+(short?'drink':'drink a draught'); return s; };
+  const k=$('keys'); if(k){ const esc_=[...k.children].find(c=>/pause/.test(c.textContent)); k.insertBefore(row(true),esc_||null); }
+  document.querySelectorAll('[data-kb-legend]').forEach(el=>el.appendChild(row(false)));
+})();
+const POT_CSS=`
+.hp-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.hearts.mending .heart svg{filter:drop-shadow(0 0 5px rgba(255,170,110,.95)) drop-shadow(0 1px 1px rgba(0,0,0,.6))}
+.potions{position:relative;display:inline-flex;align-items:center;gap:3px;font:700 14px var(--body);color:var(--bone);text-shadow:0 1px 3px #000;font-variant-numeric:tabular-nums;transition:transform .25s,opacity .3s}
+.potions[hidden]{display:none}
+.potions svg{width:17px;height:22px;filter:drop-shadow(0 1px 2px rgba(0,0,0,.8))}
+.potions.empty{opacity:.45}
+.potions.pulse{transform:scale(1.25)}
+.potions .pnote{position:absolute;left:calc(100% + 8px);top:50%;transform:translateY(-50%);white-space:nowrap;font:italic 400 15px var(--serif);color:#ffd9b8;opacity:0;transition:opacity .25s;pointer-events:none}
+.potions .pnote.show{opacity:1}
+.touch [data-act=potion]{--s:50px;--x:-140px;--y:-52px;border-color:rgba(255,190,140,.6);display:grid;place-items:center}
+.touch [data-act=potion][hidden]{display:none}
+.touch [data-act=potion] svg{width:20px;height:26px;pointer-events:none}
+.touch [data-act=potion] b{position:absolute;right:-2px;bottom:-2px;min-width:19px;height:19px;border-radius:10px;background:#6c3f5f;color:var(--bone);font:700 12px/19px var(--body);text-align:center;pointer-events:none}
+.touch [data-act=potion].empty{opacity:.45}
+@media (orientation:landscape){ .touch [data-act=potion]{--x:-62px;--y:-150px} }
+/* narrow phones: the pause button sits top-centre, so the bottle goes under the hearts instead of beside them */
+@media (max-width:480px){ .hp-row{flex-direction:column;align-items:flex-start;gap:4px} }
+`;
+const BOTTLE_SVG='<svg viewBox="0 0 17 22" aria-hidden="true"><path d="M6.3 1.5h4.4v2.2h-.5v2.8a6.4 6.4 0 1 1-3.4 0V3.7h-.5z" fill="rgba(255,236,214,.22)" stroke="#f1e3cf" stroke-width="1.1" stroke-linejoin="round"/><path d="M2.6 12.6h11.8a5.9 5.9 0 0 1-11.8 0z" fill="#f08a5c"/><path d="M4.4 11.4c.5-1.6 1.6-2.6 2.6-3" stroke="#ffe9d6" stroke-width="1" fill="none" stroke-linecap="round" opacity=".8"/><rect x="6.5" y=".6" width="4" height="2.2" rx=".6" fill="#b5835a"/></svg>';
+const potEl=document.createElement('div'); potEl.className='potions'; potEl.id='potions'; potEl.hidden=true; potEl.setAttribute('role','status');
+potEl.innerHTML=BOTTLE_SVG+'<span class="pn">0</span><span class="pnote" aria-live="polite"></span>';
+const potN=potEl.querySelector('.pn'), potNote=potEl.querySelector('.pnote');
+let potBtn=null, potNoteT=0, mendT=0;
+(function mountPotions(){
+  const st=document.createElement('style'); st.textContent=POT_CSS; document.head.appendChild(st);
+  const h=$('hearts'); if(h&&h.parentNode){ const r=document.createElement('div'); r.className='hp-row'; h.parentNode.insertBefore(r,h); r.appendChild(h); r.appendChild(potEl); }
+  const t=$('touch'); if(t){ potBtn=document.createElement('button'); potBtn.type='button'; potBtn.dataset.act='potion'; potBtn.hidden=true;
+    potBtn.setAttribute('aria-label','Drink a Mender’s Draught'); potBtn.innerHTML=BOTTLE_SVG+'<b>0</b>'; t.insertBefore(potBtn,t.firstChild); }
+})();
+function refreshPotions(e){
+  const Pn=G.potions; if(!Pn)return;
+  const n=Pn.count, show=n>0||(Pn.state&&Pn.state.ever);
+  potEl.hidden=!show; potEl.classList.toggle('empty',n===0); potN.textContent=n;
+  potEl.setAttribute('aria-label','Mender’s Draughts: '+n+' of '+Pn.max);
+  if(potBtn){ potBtn.hidden=!show; potBtn.classList.toggle('empty',n===0); potBtn.lastChild.textContent=n; }
+  if(e&&e.n>0){ potEl.classList.add('pulse'); setTimeout(()=>potEl.classList.remove('pulse'),300); }
+}
+G.on('potions:change',refreshPotions);
+G.on('potion:refuse',e=>{ potNote.textContent=e&&e.reason==='whole'?'You’re already whole':'No draughts left'; potNote.classList.add('show'); potNoteT=1.6; });
+G.on('potion:drink',()=>{ mendT=1.5; });
+function updatePotionsUI(dt){
+  if(potNoteT>0){ potNoteT-=dt; if(potNoteT<=0)potNote.classList.remove('show'); }
+  if(mendT>0){ mendT-=dt; heartsEl.classList.toggle('mending',mendT>0); }
+}
+
 /* ---------- controller legend + notices ---------- */
 const keysEl=$('keys'), keysHTML=keysEl?keysEl.innerHTML:'';
-const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Menu','pause']];
+const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Menu','pause']];
 const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(t)}</span>`).join('');
 const BLOCKED_MSG='Your browser blocked controller access in this view. Open the game on its own page, or run the local copy.';
 let keysFade=0, padHint=false;
@@ -209,7 +262,7 @@ G.system('hud',{order:90,modes:'always',
     if(toastT>0){toastT-=(dt||G.dt||0); if(toastT<=0)toastEl.classList.remove('show');}
     if(G.state.mode!=='play'&&stickId!==null){stickId=null;stick.classList.remove('on');}
     if(G.state.mode==='title')return;
-    updateHearts(); updateWorldUI(dt); updatePrompt(); placeBoss();
+    updateHearts(); updateWorldUI(dt); updatePrompt(); placeBoss(); updatePotionsUI(dt||0);
     if(G.state.mode==='play'){ keysFade+=dt; const k=$('keys'); if(k){k.style.opacity=keysFade>50?'0':'1'; k.hidden=keysFade>52;} } // once faded, free its row so captions sit low, clear of the prompts
     // camera shake (applied after the camera system has placed the camera)
     if(shakeAmt>.001&&dt>0){

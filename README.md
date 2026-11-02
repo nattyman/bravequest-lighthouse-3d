@@ -30,9 +30,14 @@ python3 -m http.server 8800
 | Interact | E | Use | Y |
 | Lock on | Q | Lock | LT |
 | Lantern shutter | F | Shut | RB |
+| Drink a Mender’s Draught | H | bottle button | D-pad up |
 | Pause | Esc | pause button | Menu |
 
 Jump again in the air for a **double jump** (a moth-wing flutter of the Traveler's Cloak; once per jump, needs the cloak). Holding jump still glides afterwards. Roll in the air to **dive**. While you hold strike to charge the staff, the camera moves over your shoulder and a violet reticle appears: aim with the camera (mouse, right stick, right-thumb drag) and release to send an ether bolt to the reticle (a full charge sends a stronger bolt; aim at the ground close by for the spin attack instead). While locked on, the bolt seeks the target.
+
+### Mender’s Draught
+
+A healing potion you carry (up to 3). Two are tucked into the cottage chest with the cloak; in the core loop you brew more at the alchemy table (2 glowcaps + 1 ichor). Drinking takes 0.8 s (you keep walking slowly, but can't swing, roll or jump), then mends 3 hearts over about a second. You can't drink at full health. Numbers live at the top of `js/potions.js`.
 
 ### Techniques
 
@@ -64,6 +69,7 @@ Every file in `js/` is one plain-script module talking to the others through `wi
 | `hud.js` | hearts, prompts, captions, objective marker, touch buttons |
 | `audio.js` | adaptive score from the Bravequest Theme stems, ambience, sound effects |
 | `fog.js`, `alchemy.js`, `moths.js` | the core loop (see `LOOP.md`) |
+| `potions.js` | Mender’s Draught: the carried healing potion, drinking, starter bottles |
 
 Assets: `audio/` holds the processed theme stems, `sfx/` the processed sound effects (originals live outside the repo). `design/` holds the design doc and style guides.
 

@@ -70,9 +70,14 @@ const RECIPES={
   pearl:{id:'pearl',name:'Pearl Ether',needs:{pearl:1,kelp:2,brine:1},units:30,
     note:'One pearl, dissolved slowly. The strongest light the keeper ever made.',from:'the tide pool'},
   bait:{id:'bait',name:'Moth Bait',needs:{ichor:1},bait:120,
-    note:'A smear of ichor on the lantern glass. The moths will come to it.',from:'watching the moths'}
+    note:'A smear of ichor on the lantern glass. The moths will come to it.',from:'watching the moths'},
+  // a healing draught the Traveler carries (potions.js drinks it: H / D-pad up / the touch bottle). Costs a kill's ichor on
+  // top of two caps, so it competes with tincture (3 caps → 5 ether), bait and the distillate for the same satchel.
+  mender:{id:'mender',name:'Mender’s Draught',needs:{glowcap:2,ichor:1},potion:1,
+    note:'Two caps to bind it, one bead of ichor to give back what was stolen. Warm going down. Mends three hearts.',from:'the keeper’s logbook'}
 };
-const RORDER=['tincture','tidewater','ichor','pearl','bait'];
+const RORDER=['tincture','mender','tidewater','ichor','pearl','bait'];
+const potionsFull=()=>!!(G.potions&&G.potions.count>=G.potions.max);
 const A=G.alchemy={
   ownsMushrooms:true,         // flow.js defers mushroom healing to us
   recipes:RECIPES,
@@ -90,7 +95,7 @@ const A=G.alchemy={
     refreshPanel();
     return true;
   },
-  canBrew(id){ const r=RECIPES[id]; if(!r||!A.known.has(id))return false; for(const k in r.needs)if(!G.inv.has(k,r.needs[k]))return false; return true; },
+  canBrew(id){ const r=RECIPES[id]; if(!r||!A.known.has(id))return false; if(r.potion&&(!G.potions||potionsFull()))return false; for(const k in r.needs)if(!G.inv.has(k,r.needs[k]))return false; return true; },
   brew(id,o={}){ return brew(id,o); },
   pour(){ return pour(); },
   openTable(){ openPanel(); },
@@ -507,6 +512,7 @@ function brew(id,o={}){
     brewing=null; brewT=0;
     if(r.bait){ try{ G.moths.bait(r.bait); }catch(e){ console.error('moths.bait',e); }
       bigToast('Moth Bait','The lantern glass is smeared · '+r.bait+' s'); }
+    else if(r.potion){ G.potions.add(r.potion,{silent:true}); bigToast(r.name,G.potions.count+' of '+G.potions.max+' carried · drink to mend three hearts'); }
     else{ A.etherUnits+=r.units; G.inv.add('vial',1,{silent:true});
       const n=G.inv.count('vial'); bigToast(r.name,'+'+r.units+' ether · '+n+(n>1?' vials':' vial')+' held'); }
     if(table)sparkle(table.world.clone().setY(table.world.y+1.4),'#c4a0ff',26,{radius:.25,up:1.8});
@@ -625,10 +631,11 @@ function refreshPanel(isBrewing){
   let html='';
   for(const id of RORDER){ if(!A.known.has(id))continue; const r=RECIPES[id], ok=A.canBrew(id);
     const noMoths=r.bait&&!(G.moths&&G.moths.bait);
-    const yieldTxt=r.bait?'lures moths · '+r.bait+' s':r.units+' ether';
+    const yieldTxt=r.bait?'lures moths · '+r.bait+' s':r.potion?'mends 3 hearts':r.units+' ether';
+    const full=r.potion&&potionsFull();
     const tidal=r.needs.kelp||r.needs.brine;
     html+=`<div class="alch-rec${ok&&!noMoths?' ready':''}"><div><span class="nm">${esc(r.name)}</span><span class="yield">${yieldTxt}</span>
-      <div class="note">${esc(r.note)}</div><div class="alch-needs">${needsHTML(r)}</div>${tidal&&!ok?tideNote():''}</div>
+      <div class="note">${esc(r.note)}</div><div class="alch-needs">${needsHTML(r)}</div>${tidal&&!ok?tideNote():''}${r.potion&&G.potions?`<div class="alch-tide">${full?'Your satchel holds no more draughts':G.potions.count+' of '+G.potions.max+' carried'}</div>`:''}</div>
       <button class="btn" type="button" data-brew="${id}" ${ok&&!busy&&!noMoths?'':'disabled'} aria-label="Brew ${esc(r.name)}">${busy&&brewing===id?'Brewing':'Brew'}</button></div>`; }
   list.innerHTML=html;
   const lost=RORDER.filter(id=>!A.known.has(id)).length;
@@ -706,7 +713,7 @@ function nearestShroom(){
   for(const s of spots){ if(s.regrow>0)continue; const d=Math.hypot(s.pos.x-P.x,s.pos.z-P.z); if(d<bd){bd=d;best=s;} }
   return best?best.pos.clone():null;
 }
-function anyBrewable(){ return RORDER.some(id=>id!=='bait'&&A.canBrew(id)); }
+function anyBrewable(){ return RORDER.some(id=>id!=='bait'&&!RECIPES[id].potion&&A.canBrew(id)); } // ether recipes only
 function chainNow(){ chainT=0; }
 let myStep='', foreignAt=-1;
 function setQ(step,obj,sub,target,name){
@@ -760,7 +767,8 @@ function setupLogbook(){
   G.interact.add({pos,radius:lb.radius||1.25,priority:(lb.priority||1)+1,label:'Read the logbook',enabled:()=>looping(),
     use(){ const L=['A newer page, in the keeper’s tidy hand: “Glowcap Tincture. Three caps, crushed and steeped over the burner in the shed. A weak dose, but it keeps the lamp fed through a bad night. Pour it in at the top.”',
       '“The fog only eats what the light can’t reach. Feed the light and it gives the ground back. Kelp and brine at low water make a stronger draught. I wrote the recipe on a loose page — I think it went with the old boat.”',
-      'Tide times in a column, then: “Low water every five minutes or so, if you count the way the fog counts. Don’t get caught out on the sand.”'];
+      'Tide times in a column, then: “Low water every five minutes or so, if you count the way the fog counts. Don’t get caught out on the sand.”',
+      'In the margin, underlined twice: “Mender’s Draught. Two caps, and one bead of the black stuff the hollows leave behind. It sounds wrong. It mends you all the same. Keep a few bottles on you.”'];
       G.ui.say(L[n%L.length]); n++; if(!A.known.has('tincture'))A.learn('tincture'); }});
 }
 function groveRing(){
@@ -787,7 +795,7 @@ function onKilled(e){
    14. LOOP START + SAVES
    ===================================================================== */
 function onLoopStart(e){
-  A.learn('tincture',{silent:true});
+  A.learn('tincture',{silent:true}); A.learn('mender',{silent:true});
   for(const p of pages)p.mesh.visible=!p.found&&!A.known.has(p.id);
   if(!(e&&e.restored)&&!(G.cave&&G.cave.inside)){
     setTimeout(()=>G.ui.say('The beam holds the fog back, but only so far. Already the light is dimming, and the lamp will need feeding. The keeper’s glowcaps, and the alchemy table in the shed…'),900);
@@ -803,7 +811,7 @@ const PERSIST={
     for(const k in counts)delete counts[k];
     Object.assign(counts,d.inv||{});
     A.etherUnits=d.ether|0; A.poured=d.poured|0;
-    A.known.clear(); (d.known||[]).forEach(id=>RECIPES[id]&&A.known.add(id)); A.known.add('tincture');
+    A.known.clear(); (d.known||[]).forEach(id=>RECIPES[id]&&A.known.add(id)); A.known.add('tincture'); A.known.add('mender');
     const s=d.S||{}; S.poured=!!s.poured; S.firsts=Object.assign({},s.firsts||{}); S.tidepool=!!s.tidepool; S.sighted=Object.assign({},s.sighted||{});
     if(s.grove){ S.grove=true; groveRing(); }
     for(const p of pages){ p.found=(d.pages||[]).includes(p.id); p.mesh.visible=looping()&&!p.found&&!A.known.has(p.id); }
