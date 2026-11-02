@@ -962,7 +962,7 @@ function buildMoorStructures(){
   // lone wind-bent trees on the moor and headland
   const lone=[[-40,-60],[-8,-22],[22,58],[55,8],[75,-48],[90,40],[-50,-8],[10,-58],[64,-20],[-2,64],[198,-32],[204,30],[142,-36],[132,-22]];
   for(const [x,z] of lone){const h=gh(x,z); if(h<2.5||pathDist(x,z)<3.5)continue;
-    W._addTree('oak',x,z,.95+r()*.35,.18+r()*.12,PI*.9+(r()-.5)*.6,col('#7a8a6c').multiplyScalar(1.45));}
+    W._addTree('oak',x,z,.95+r()*.35,.18+r()*.12,PI*.9+(r()-.5)*.6,new THREE.Color(.7,.8,.58).multiplyScalar(.85+r()*.2));} // linear tint (was a hex -> linear colour, ~4x darker than the forest's)
 }
 
 /* =====================================================================
