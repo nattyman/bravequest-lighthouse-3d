@@ -4,6 +4,10 @@
    interior spiral stair (floor provider + wall constrainer), the darkness
    veil in the doorway, the Keeper's Staff on the stairwell wall, and the
    lamp-room cure sequence (blob, lens, beam, G.atmo.cured).
+   Act 1 (v12): Halloran's storm lantern (G.items.storm, hangs on the oil shed)
+   gets you up the stair; set in the cradle it fails (the ink drinks the flame),
+   the ink then pulses at you; dead moth husks + Maren's logbook on the sill.
+   Before the cure the lamp turns an anti-light beam; G.lighthouse.beam = {yaw(), lit}.
    Ported from the-moth-climb.html (getFloor / constrain / cure).
    ===================================================================== */
 (function(){
@@ -62,15 +66,29 @@ G.world.lighthouse={x:CX,z:CZ,baseY:BASE,topY:TOP,outerR:OUT_R,innerR:IN_R,colR:
   stairHeight:(a,t)=>stairAt(a,t==null?.5:t)};
 G.items.staff.pos.copy(staffPos);
 
+/* Halloran's storm lantern: plain oil, plain amber flame. Moths ignore it (creatures.js only follows G.items.lantern).
+   found/carried/inCradle/failed (the ink drank it once)/spent (left in the forest roots, cold). pos = resting position. */
+const SHED=(G.world.landmarks&&G.world.landmarks.shed)||{x:150,y:42,z:33};
+const SHED_YAW=.15, shedL=(lx,lz)=>({x:SHED.x+lx*Math.cos(SHED_YAW)+lz*Math.sin(SHED_YAW),z:SHED.z-lx*Math.sin(SHED_YAW)+lz*Math.cos(SHED_YAW)});
+const hookP=shedL(-2.75,-.9), hookWall=shedL(-2.05,-.9);
+const STORM_HOME=V(hookP.x,(SHED.y!=null?SHED.y:BASE)+1.08,hookP.z);
+G.items.storm=G.items.storm||{found:false,carried:false,inCradle:false,failed:false,spent:false,
+  pos:STORM_HOME.clone(),home:STORM_HOME.clone(),world:new THREE.Vector3(),
+  lit(){return !this.spent&&!this.dark;}, dark:false};
+G.world.lighthouse.stormHome=STORM_HOME.clone();
+
 /* ---------------------------------------------------------------- state */
 const S=G.lighthouse={curedDark:.5,cure:null,cured:false,said:{},blockT:-9,lastBlockSay:-99,wasInside:false,
-  staffTaken:false,canEnter:null,startCure:null,veilOpacity:1};
+  staffTaken:false,canEnter:null,startCure:null,veilOpacity:1,
+  fail:null,swell:1,pulseK:0,pulseT:.6,pulseA:9,pulseDir:new THREE.Vector3(-1,0,0),stormNear:0,darkK:1};
 const say=(k,t,who)=>{ if(S.said[k])return; S.said[k]=true; G.ui.say(t,who); };
 const playing=()=>G.state.mode==='play'||G.state.mode==='dead';
 const lantern=()=>G.items.lantern;
 function lanternWorld(){const L=lantern(); return L.carried?(L.world.lengthSq()>0?L.world:G.player.pos):L.pos;}
+const storm=()=>G.items.storm;
 function canEnter(){
   if(S.cure||S.cured)return true;
+  const T=storm(); if(T.carried&&T.lit())return true;
   const L=lantern(); if(!L.lit())return false;
   if(L.carried)return true;
   return L.inCradle||inside(L.pos);
@@ -262,7 +280,7 @@ const veilMat=new THREE.ShaderMaterial({uniforms:veilU,transparent:true,depthWri
 
 /* ---------------------------------------------------------------- build */
 const root=new THREE.Group(); root.name='lighthouse';
-let blobInk=null, veilInk=null, veilOuter,veilInner,blob,blobBase,globs=[],lensMat,glassMat,lampLight,beam,beamMat,lampGlow,cradle,staffObj,staffLight,staffGlow,
+let darkBeam=null, darkBeamMat=null, darkMotes=[], darkMotePts=null, blobInk=null, veilInk=null, veilOuter,veilInner,blob,blobBase,globs=[],lensMat,glassMat,lampLight,beam,beamMat,lampGlow,cradle,staffObj,staffLight,staffGlow,
     sconceFlames=[],sconceLights=[],sconcePos=[],windowOutMat,slitMat,vane,doorLeaf,interiorGroup,beamCones=[];
 function add(geo,mat,x,y,z,parent){const m=new THREE.Mesh(geo,mat);m.position.set(x||0,y||0,z||0);(parent||root).add(m);return m;}
 function archShape(hw,spring,hole){
@@ -484,7 +502,7 @@ function buildLamp(){
   lampGlow=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:new THREE.Color('#d6c2ff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
   lampGlow.position.copy(lampCenter); lampGlow.scale.setScalar(7); root.add(lampGlow);
   const beamTex=G.canvasTex(64,(g,s)=>{const gr=g.createLinearGradient(0,0,0,s);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(.7,'rgba(255,255,255,.45)');gr.addColorStop(1,'rgba(255,255,255,1)');g.fillStyle=gr;g.fillRect(0,0,s,s);});
-  beamMat=new THREE.MeshBasicMaterial({map:beamTex,color:U.col('#d9ccff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false});
+  beamMat=new THREE.MeshBasicMaterial({map:beamTex,color:U.col('#ffe2bc'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false});
   beam=new THREE.Group(); beam.position.copy(lampCenter); root.add(beam);
   for(const s of [1,-1]){
     for(const [rad,len] of [[7,90],[3.2,70]]){
@@ -493,6 +511,151 @@ function buildLamp(){
     }
   }
   beam.visible=false;
+  // the anti-light: before the cure the dead lamp turns a beam of darkness (same cones, same rotation), ragged ink at the
+  // edges, motes drifting in toward the tower. Normal blending, dark colour: it reads as a bite out of the dusk.
+  const darkTex=G.canvasTex(128,(g,s)=>{ const rr=U.rng(61);
+    for(let x=0;x<s;x++){ const n=.35+.65*Math.pow(rr(),.6)*(.6+.4*Math.sin(x*.21)*Math.sin(x*.057+1));
+      const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(20,12,30,0)'); gr.addColorStop(.35,`rgba(20,12,30,${(.25*n).toFixed(3)})`);
+      gr.addColorStop(.85,`rgba(16,9,24,${(.8*n).toFixed(3)})`); gr.addColorStop(1,`rgba(10,6,16,${n.toFixed(3)})`); g.fillStyle=gr; g.fillRect(x,0,1,s); }
+    g.globalCompositeOperation='destination-out';
+    for(let i=0;i<40;i++){ const x=rr()*s, y=rr()*s*.8, rad=3+rr()*10; const gr=g.createRadialGradient(x,y,0,x,y,rad); gr.addColorStop(0,'rgba(0,0,0,.7)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.fillRect(x-rad,y-rad,rad*2,rad*2); }
+  });
+  darkTex.wrapS=THREE.RepeatWrapping; darkTex.repeat.set(2,1);
+  darkBeamMat=new THREE.MeshBasicMaterial({map:darkTex,color:U.col('#ffffff'),transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,fog:false});
+  darkBeam=new THREE.Group(); darkBeam.position.copy(lampCenter); root.add(darkBeam);
+  for(const s of [1,-1]){
+    for(const [rad,len] of [[7.5,95],[3.6,72]]){
+      const g=new THREE.ConeGeometry(rad,len,28,1,true); g.translate(0,-len/2,0); g.rotateZ(s*PI/2); g.rotateZ(-s*.06);
+      const m=new THREE.Mesh(g,darkBeamMat); m.frustumCulled=false; m.renderOrder=3; darkBeam.add(m);
+    }
+  }
+  const NMO=110, mp=new Float32Array(NMO*3); darkMotes=[];
+  const mr=U.rng(33);
+  for(let i=0;i<NMO;i++){ const side=i%2?1:-1, d=4+mr()*80, a=mr()*TAU, rr=Math.sqrt(mr())*7.2*d/95;
+    darkMotes.push({side,d,a,rr,sp:2.5+mr()*4}); }
+  const mg=new THREE.BufferGeometry(); mg.setAttribute('position',new THREE.BufferAttribute(mp,3));
+  darkMotePts=new THREE.Points(mg,new THREE.PointsMaterial({map:G.tex.soft,color:U.col('#2a1838'),size:1.1,transparent:true,opacity:.85,depthWrite:false,fog:false}));
+  darkMotePts.frustumCulled=false; darkBeam.add(darkMotePts);
+}
+function updateDarkMotes(dt,k){
+  if(!darkMotePts)return; darkMotePts.visible=k>.02; if(!darkMotePts.visible)return;
+  darkMotePts.material.opacity=.85*k;
+  const a=darkMotePts.geometry.attributes.position, arr=a.array;
+  for(let i=0;i<darkMotes.length;i++){ const m=darkMotes[i];
+    m.d-=m.sp*dt*(.4+m.d/60); if(m.d<2.5){ m.d=70+Math.random()*25; m.a=Math.random()*TAU; m.rr=Math.sqrt(Math.random())*7.2*m.d/95; }
+    const r=m.rr*Math.min(1,m.d/(m.rr*13.2+1e-3)); m.a+=dt*.3;
+    arr[i*3]=m.side*m.d; arr[i*3+1]=-m.d*.06+Math.sin(m.a)*r; arr[i*3+2]=Math.cos(m.a)*r; }
+  a.needsUpdate=true;
+}
+
+/* ---------------------------------------------------------------- Halloran's storm lantern */
+let stormObj=null, stormUD=null, stormInteract=null;
+function buildStormModel(){
+  const g=new THREE.Group(); g.name='stormLantern';
+  const iron=G.toon('#2b2a33'), tin=G.toon('#6b5a3e',{emissive:'#1a1208',emissiveIntensity:.3});
+  const base=add(new THREE.CylinderGeometry(.095,.112,.07,10),iron,0,.035,0,g); G.outline(base,{thickness:.008});
+  add(new THREE.CylinderGeometry(.1,.096,.055,12),tin,0,.096,0,g);
+  const prof=[[.05,0],[.078,.04],[.092,.1],[.088,.16],[.066,.205],[.046,.225]].map(p=>new THREE.Vector2(p[0],p[1]));
+  const globeMat=new THREE.MeshBasicMaterial({color:U.col('#ffd8a0'),transparent:true,opacity:.24,depthWrite:false,side:THREE.DoubleSide});
+  const globe=add(new THREE.LatheGeometry(prof,14),globeMat,0,.123,0,g); globe.renderOrder=2;
+  for(let k=0;k<4;k++){const a=k/4*TAU+PI/4; add(new THREE.BoxGeometry(.008,.23,.008),iron,Math.cos(a)*.094,.235,Math.sin(a)*.094,g);}
+  for(const sx of [-1,1]){ add(new THREE.CylinderGeometry(.012,.012,.3,6),tin,sx*.118,.235,0,g); }
+  const cap=add(new THREE.CylinderGeometry(.045,.092,.06,10),iron,0,.375,0,g); G.outline(cap,{thickness:.008});
+  add(new THREE.CylinderGeometry(.022,.03,.04,8),iron,0,.42,0,g);
+  const bail=add(new THREE.TorusGeometry(.115,.006,4,14,PI),iron,0,.33,0,g);
+  // flame + halo + light (plain amber: no violet anywhere)
+  const flame=new THREE.Group(); flame.position.set(0,.2,0); g.add(flame);
+  const fm=new THREE.SpriteMaterial({map:G.tex.flame,color:new THREE.Color('#ffb860'),transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});
+  const fs=new THREE.Sprite(fm); fs.scale.set(.13,.2,1); flame.add(fs);
+  const hm=new THREE.SpriteMaterial({map:G.tex.soft,color:new THREE.Color('#ff9a48'),transparent:true,opacity:.35,blending:THREE.AdditiveBlending,depthWrite:false});
+  const hs=new THREE.Sprite(hm); hs.scale.setScalar(1.3); flame.add(hs);
+  const light=new THREE.PointLight(0xffa850,1.6,12,1.6); flame.add(light);
+  stormUD={g,flame,fs,fm,hs,hm,light,globeMat,col:new THREE.Color('#ffb860'),k:1};
+  return g;
+}
+function buildStorm(){
+  stormObj=buildStormModel(); G.scene.add(stormObj);
+  // a little iron bracket on the shed's west wall it hangs from
+  const iron=G.toon('#2b2a33'), y=STORM_HOME.y+.47;
+  const arm=add(new THREE.BoxGeometry(Math.hypot(hookP.x-hookWall.x,hookP.z-hookWall.z)+.1,.04,.04),iron,(hookP.x+hookWall.x)/2,y,(hookP.z+hookWall.z)/2);
+  arm.rotation.y=-Math.atan2(hookP.z-hookWall.z,hookP.x-hookWall.x); G.outline(arm,{thickness:.01});
+  add(new THREE.BoxGeometry(.04,.3,.04),iron,hookWall.x,y-.12,hookWall.z);
+  add(new THREE.TorusGeometry(.03,.006,4,8),iron,hookP.x,y-.03,hookP.z);
+  stormInteract=G.interact.add({pos:()=>storm().pos,radius:2.1,priority:3,
+    label:()=>storm().spent?'Take the storm lantern (cold)':'Take the storm lantern',
+    enabled:()=>{const T=storm(); return !T.carried&&!T.inCradle&&!T.spent&&!lantern().carried&&playing();},
+    use(){ const T=storm(); const first=!T.found; T.found=true; T.carried=true; T.dark=false;
+      G.emit('storm:pickup',{first});
+      if(first){ G.ui.toast('Halloran’s storm lantern','Plain oil, plain flame');
+        G.ui.say('An old storm lantern, oil still sloshing in the well. The wick takes on the first strike: a small, ordinary, amber flame.'); } }});
+  G.player&&G.player.poseHooks&&G.player.poseHooks.push(T=>{ // hold it out like the keeper's lantern (player.js only poses for G.items.lantern)
+    if(!storm().carried||lantern().carried||G.player.gliding)return;
+    T.shLX=-.95; T.shLZ=.22; T.shLY=-.35; T.elL=-.55; T.wrLX=.5; });
+}
+const _hand=V(), _sw=V();
+function updateStorm(dt,t){
+  const T=storm(), u=stormUD; if(!stormObj)return;
+  stormObj.visible=!(T.carried&&lantern().carried); // never two lanterns in one hand
+  if(T.carried&&lantern().carried){ T.carried=false; }
+  if(T.carried&&G.player&&G.player.hands&&G.player.hands.left){
+    G.player.hands.left.getWorldPosition(_hand);
+    _sw.set(Math.sin(t*2.3)*.02,0,Math.cos(t*1.9)*.02);
+    stormObj.position.set(_hand.x+_sw.x,_hand.y-.4,_hand.z+_sw.z); stormObj.rotation.set(_sw.z*2,G.player.heading||0,-_sw.x*2);
+    T.pos.copy(stormObj.position);
+  }else{ stormObj.position.copy(T.pos); stormObj.rotation.set(0,T.inCradle?0:.4,0); }
+  stormObj.updateMatrixWorld(true); u.flame.getWorldPosition(T.world);
+  // flame: k = size/brightness, col = colour (amber -> violet -> black in the failure)
+  let k=1, base=1.6;
+  const F=S.fail;
+  if(T.spent){ k=0; }
+  else if(F){ const ft=F.t;
+    k=ft<1.1?1+U.smooth(0,1.1,ft)*.7:ft<3?1.7-U.smooth(1.1,3,ft)*.9:ft<4.3?.8*(1-U.smooth(3,4.3,ft)):0;
+    u.col.copy(U.col('#ffb860')).lerp(U.col('#8f5cff'),U.smooth(1.6,3,ft)).lerp(U.col('#1a1024'),U.smooth(3.2,4.2,ft)); }
+  else if(T.failed){ // relit weakly; it flickers harder the nearer you stand to the ink (and on every pulse)
+    const near=S.cured||S.cure?0:1-U.smooth(1.4,4.2,Math.hypot(T.world.x-lampCenter.x,T.world.z-lampCenter.z)+Math.max(0,Math.abs(T.world.y-lampCenter.y)-1.5));
+    const fl=(.5+.5*Math.sin(t*23.1))*(.5+.5*Math.sin(t*17.7+1.3));
+    k=.62-near*.35*fl-S.pulseK*.4-(1-near)*.06*fl; k=Math.max(.05,k); base=1.2; S.stormNear=near;
+    u.col.copy(U.col('#ffa850')); }
+  else u.col.copy(U.col('#ffb860'));
+  const fl=.88+Math.sin(t*13.1)*.06+Math.sin(t*7.3+1)*.04+Math.sin(t*23.7)*.02;
+  const kk=k*fl; u.k=kk;
+  u.fs.visible=u.hs.visible=kk>.02; u.fs.scale.set(.13*Math.max(kk,.05),.2*Math.max(kk,.05),1); u.fm.color.copy(u.col).multiplyScalar(1.4);
+  u.hm.color.copy(u.col); u.hm.opacity=.35*Math.min(1.4,kk); u.hs.scale.setScalar(1.3*(.6+.4*kk));
+  u.light.intensity=base*kk*(1+.35*(G.atmo?G.atmo.dark:0)); u.light.color.copy(u.col);
+  u.globeMat.color.copy(T.spent?U.col('#6a6260'):U.col('#ffd8a0')); u.globeMat.opacity=T.spent?.35:.24;
+}
+
+/* ---------------------------------------------------------------- the sill: dead moth husks + Maren's logbook */
+const LOG_A=ASTART+1.05;
+let logInteract=null;
+function buildSill(){
+  const P=interiorGroup||root;
+  const sillMat=stoneMat(STEP,[6,.3],'#8f8778');
+  add(new THREE.RingGeometry(GLASS_R-.32,GLASS_R+.01,56,1).rotateX(-PI/2),sillMat,CX,GLASS_Y0+.012,CZ,P);
+  // husks: dry, dusty moths on their backs along the sill and a few on the floor (the moths that died against the lamp)
+  const hg=new THREE.PlaneGeometry(.26,.18); hg.rotateX(-PI/2);
+  const hm=G.toon('#7a6e62',{map:G.tex.moth,alphaTest:.45,side:THREE.DoubleSide,transparent:false});
+  const N=26, inst=new THREE.InstancedMesh(hg,hm,N), r=U.rng(91), m4=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler();
+  for(let i=0;i<N;i++){
+    const onSill=i<18, a=LOG_A+(r()-.5)*(onSill?2.4:1.6), rr=onSill?GLASS_R-.08-r()*.2:GLASS_R-.35-r()*.7;
+    const y=(onSill?GLASS_Y0+.02:TOP+.02);
+    e.set((r()-.5)*.5,r()*TAU,(r()-.5)*.5); q.setFromEuler(e); const sc=.8+r()*.45;
+    m4.compose(V(wx(a,rr),y,wz(a,rr)),q,V(sc,sc,sc)); inst.setMatrixAt(i,m4);
+  }
+  P.add(inst);
+  // the logbook: open on the sill, a leather cover with two pale pages
+  const book=new THREE.Group(); P.add(book);
+  book.position.set(wx(LOG_A,GLASS_R-.17),GLASS_Y0+.02,wz(LOG_A,GLASS_R-.17)); book.rotation.y=thOf(LOG_A)+PI;
+  const cover=add(new THREE.BoxGeometry(.46,.025,.32),G.toon('#4a2f2a'),0,.012,0,book); G.outline(cover,{thickness:.006});
+  const pageTex=G.canvasTex(128,(g,s)=>{g.fillStyle='#e6dcc3';g.fillRect(0,0,s,s);g.strokeStyle='rgba(60,45,40,.55)';g.lineWidth=1.4;
+    const rr=U.rng(5); for(let y=14;y<s-10;y+=9){g.beginPath();g.moveTo(10,y);let x=10;while(x<s-12){x+=4+rr()*10;g.lineTo(Math.min(x,s-12),y+(rr()-.5)*1.2);} g.stroke();}});
+  for(const sx of [-1,1]){const pg=add(new THREE.BoxGeometry(.21,.02,.29),G.toon('#efe6cf',{map:pageTex}),sx*.108,.034,0,book); pg.rotation.z=-sx*.08;}
+  logInteract=G.interact.add({pos:()=>V(wx(LOG_A,GLASS_R-.75),TOP,wz(LOG_A,GLASS_R-.75)),radius:1.7,priority:4,
+    label:'Read the logbook',
+    enabled:()=>inRoom(G.player.pos)&&!S.fail,
+    use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook');
+      if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Under the sill the dead moths lie in drifts.'),400); }
+      G.flag('logbook',true); G.emit('logbook:read'); }});
 }
 
 function buildStaff(){
@@ -556,10 +719,49 @@ function updateCure(dt){
   const C=S.cure; if(!C)return; C.t+=dt; const t=C.t;
   if(C.stage===0&&t>4.5){C.stage=1;G.ui.say('They aren’t circling the light. They’re eating the black thing wrapped around the lens. They always were.');}
   if(t>7&&!lantern().cured){lantern().cured=true;}
-  if(C.stage===1&&t>9.5){C.stage=2;G.ui.say('The lens catches. Clean light, violet-white, sweeps out across the water.');}
+  if(C.stage===1&&t>9.5){C.stage=2;G.ui.say('The lens catches. Clean light, warm as a hearth, sweeps out across the water.');}
   if(C.stage===2&&t>14){C.stage=3; S.cured=true; G.atmo.cured=1; G.emit('lamp:cured');}
   if(C.stage===3&&t>15.5){ S.cure=null; }
 }
+/* the storm lantern fails: the ink drinks a plain flame (scripted, ~5.6 s), then pulses toward whoever stands near it */
+function startFail(){
+  const T=storm(); if(S.fail||T.failed||S.cure||S.cured)return;
+  T.carried=false; T.inCradle=true; T.pos.copy(cradlePos);
+  S.fail={t:0,stage:0,drip:0};
+  G.emit('storm:placed');
+  G.ui.say('You set Halloran’s lantern in the cradle. For a moment the flame stands up tall and clean beneath the lens.');
+}
+S.startFail=startFail;
+function updateFail(dt){
+  const F=S.fail; if(!F)return; F.t+=dt; const t=F.t, T=storm();
+  // the black leans down the cradle arms and drinks
+  F.drip-=dt; if(t>1.1&&t<4.2&&F.drip<=0&&G.ink){ F.drip=.22; G.ink.burst(V(cradlePos.x+(Math.random()-.5)*.3,cradlePos.y+.35,cradlePos.z+(Math.random()-.5)*.3),{n:6,speed:.6,size:[.15,.5],life:[.4,.9],up:-.4,embers:2,drops:3}); }
+  if(F.stage===0&&t>1.8){ F.stage=1; G.ui.say('The black around the lens leans down and drinks. The flame gutters violet, then nothing.'); }
+  if(F.stage===1&&t>4.6){ F.stage=2; S.swell=1.2; G.ui.shake&&G.ui.shake(.25);
+    if(G.ink)G.ink.burst(lampCenter,{n:40,speed:2.2,size:[.4,1.4],life:[.8,1.6],up:.2,embers:16,drops:8}); }
+  if(F.stage===2&&t>5.6){
+    S.fail=null; T.inCradle=false; T.failed=true; T.carried=true; T.dark=false; G.flag('stormFailed',true);
+    G.emit('lamp:failed');
+    G.ui.say('You snatch the lantern back. The wick catches again, barely. The thing on the lens is bigger than it was, and it has noticed you.');
+  }
+}
+S.restoreFailed=()=>{ const T=storm(); T.found=true; T.failed=true; T.inCradle=false; S.fail=null; S.swell=1.2; };
+/* the ink notices you: every couple of seconds it surges toward the nearest person in the lamp room */
+function updatePulse(dt,P){
+  if(!(storm().failed&&!S.cure&&!S.cured&&inRoom(P))){ S.pulseK=U.damp(S.pulseK,0,4,dt); S.pulseT=.6; return; }
+  S.pulseT-=dt;
+  if(S.pulseT<=0){ S.pulseT=2.1+Math.random()*.8; S.pulseA=0;
+    S.pulseDir.set(P.x-lampCenter.x,0,P.z-lampCenter.z); if(S.pulseDir.lengthSq()<1e-4)S.pulseDir.set(-1,0,0); S.pulseDir.normalize();
+    if(G.ink)G.ink.burst(V(lampCenter.x+S.pulseDir.x*.9,lampCenter.y-.1,lampCenter.z+S.pulseDir.z*.9),{n:10,speed:1.6,size:[.3,.9],life:[.5,1],up:-.2,embers:4});
+    G.emit('lamp:pulse'); }
+  S.pulseA+=dt; const a=S.pulseA;
+  S.pulseK=a<.25?U.smooth(0,.25,a):1-U.smooth(.25,1.1,a);
+  if(S.stormNear>.55&&storm().carried) say('pulse','Too close. Every time the black swells toward you, your little flame nearly goes out.');
+}
+/* the beam, for the finale boss: yaw() = world angle atan2(dz,dx) of one arm (the other arm is yaw()+PI); lit once cured */
+S.beam={yaw:()=>{const y=darkBeam?darkBeam.rotation.y:beam?beam.rotation.y:0; return Math.atan2(-Math.sin(y),Math.cos(y));},
+  get lit(){return !!S.cured;}, arms:2, get origin(){return lampCenter;},
+  dir(out){const a=S.beam.yaw(); return (out||V()).set(Math.cos(a),0,Math.sin(a));}};
 function cureK(){ if(S.cured)return 1; return S.cure?S.cure.t:0; }
 
 /* ---------------------------------------------------------------- triggers / captions */
@@ -569,14 +771,15 @@ function updateTriggers(){
   const isIn=inside(P);
   if(isIn!==S.wasInside){ S.wasInside=isIn; G.emit(isIn?'tower:enter':'tower:exit'); }
   if(inBody(P)&&rOf(P)<IN_R&&!S.cure&&!S.cured){
-    if(L.carried&&L.lit()) say('enter','Inside, the dark gives way to the lantern an arm’s length at a time. Stone stairs wind up around a central column.');
+    if(L.carried&&L.lit()) say(S.said.enterStorm?'enter2':'enter',S.said.enterStorm?'The violet light goes up the stair ahead of you, and this time the moths come with it.':'Inside, the dark gives way to the lantern an arm’s length at a time. Stone stairs wind up around a central column.');
+    else if(storm().carried&&!storm().failed) say('enterStorm','Inside, the dark gives way to the little amber flame an arm’s length at a time. Stone stairs wind up around a central column.');
     if(!G.quest&&!S.said.objClimb){S.said.objClimb=true;G.ui.objective('Climb to the lamp room');}
     if(L.carried&&P.y>BASE+8) say('mid','The moths come up the stairwell behind you like smoke.');
   }
   if(!G.items.staff.owned&&inBody(P)&&Math.abs(P.y-STAFF_STEP_Y)<4&&Math.hypot(P.x-staffPos.x,P.z-staffPos.z)<6)
     say('staff','Set into the wall above the stair, an iron bracket holds a staff. A violet stone glows in its crook, steady and patient, as if it has been waiting for a hand.');
   if(inRoom(P)&&!S.cure&&!S.cured){
-    say('top','The lamp room. The great lens is wrapped in something black that shifts when you look straight at it. Beneath it is an empty cradle, just the size of your lantern.');
+    say('top','The lamp room. The great lens is wrapped in something black that shifts when you look straight at it. Beneath it is an empty cradle, just the size of a lantern.');
     if(L.carried&&!S.said.objSet){S.said.objSet=true;G.ui.objective('Set the lantern in the lamp','The cradle beneath the lens');}
   }
 }
@@ -584,8 +787,12 @@ function updateTriggers(){
 /* ---------------------------------------------------------------- system */
 G.system('lighthouse',{order:10,modes:'always',
   init(){
-    buildTower(); buildInterior(); buildLamp(); buildStaff();
+    buildTower(); buildInterior(); buildLamp(); buildStaff(); buildSill(); buildStorm();
     G.scene.add(root);
+    G.interact.add({pos:cradlePos,radius:3.6,priority:6,
+      label:'Set the storm lantern in the cradle',
+      enabled:()=>{const T=storm(); return T.carried&&!T.failed&&!lantern().carried&&!S.fail&&!S.cure&&!S.cured&&inRoom(G.player.pos);},
+      use:startFail});
     G.interact.add({pos:cradlePos,radius:3.6,priority:6,
       label:'Set the lantern in the lamp’s cradle',
       enabled:()=>{const L=lantern(); return L.carried&&!L.cured&&!S.cure&&!S.cured&&inRoom(G.player.pos);},
@@ -594,6 +801,7 @@ G.system('lighthouse',{order:10,modes:'always',
   update(dt){
     const t=G.time, P=G.player.pos, L=lantern();
     updateCure(dt);
+    if(playing()){ updateFail(dt); updatePulse(dt,P); }
     if(playing()){
       updateTriggers();
       const inB=inBody(P);
@@ -602,7 +810,12 @@ G.system('lighthouse',{order:10,modes:'always',
     // cure visuals
     const ct=cureK();
     const shrink=S.cured?0:1-U.smooth(2,9.5,ct);
-    blob.visible=shrink>.01; blob.scale.setScalar(Math.max(.001,shrink));
+    blob.visible=shrink>.01;
+    // the failure: the blob sags toward the cradle as it drinks; after it, it's swollen and surges at you
+    const ft=S.fail?S.fail.t:0, sag=S.fail?U.smooth(1,2.4,ft)*(1-U.smooth(3.6,4.6,ft)):0, gulp=S.fail?Math.sin(U.clamp((ft-1)/3.2,0,1)*PI*5)*.05*sag:0;
+    const pk=S.pulseK, sw=S.swell+(S.fail?U.smooth(3.8,4.8,ft)*.2:0);
+    blob.scale.setScalar(Math.max(.001,shrink*(sw+sag*.12+gulp+pk*.22)));
+    blob.position.set(lampCenter.x+S.pulseDir.x*pk*.55,lampCenter.y-sag*.45,lampCenter.z+S.pulseDir.z*pk*.55);
     if(blobInk){ const near=Math.hypot(P.x-lampCenter.x,P.z-lampCenter.z)<60||G.state.mode==='title'; blobInk.intensity=(blob.visible&&near)?(.4+shrink*.6)*(S.cured?0:1)+(ct>0&&!S.cured?(1-shrink)*1.5:0):0; }
     blob.material.uniforms.uFade.value=U.clamp(.25+shrink*.75,0,1);
     if(blob.visible){
@@ -623,9 +836,13 @@ G.system('lighthouse',{order:10,modes:'always',
     lampLight.intensity=lit*2.2;
     lampGlow.material.opacity=lit*.4;
     beamMat.opacity=lit*.085; beam.visible=lit>.01; beam.rotation.y+=dt*.42;
+    // anti-light: full until the lens catches, crossfading out as the warm beam comes in
+    S.darkK=1-lit; darkBeam.rotation.y=beam.rotation.y; darkBeam.visible=S.darkK>.01;
+    darkBeamMat.opacity=S.darkK*(.62+.06*Math.sin(t*.9)); updateDarkMotes(dt,S.darkK);
+    updateStorm(dt,t);
     if(S.cure||S.cured) G.atmo.cured=S.cured?1:U.smooth(8,14,ct);
     // cradle hint
-    const wantHint=L.carried&&!S.cure&&!S.cured&&inRoom(P);
+    const wantHint=(L.carried||(storm().carried&&!storm().failed))&&!S.cure&&!S.cured&&!S.fail&&inRoom(P);
     cradle.material.emissiveIntensity=wantHint?1.1+Math.sin(t*4)*.7:(L.inCradle?.5:0);
     // sconces: light after the cure (from stage 2), two point lights follow the player's height
     const sc=S.cured?1:U.smooth(9,12,ct);
@@ -644,6 +861,7 @@ G.system('lighthouse',{order:10,modes:'always',
       const lw=lanternWorld();
       const dd=Math.hypot(lw.x-doorOut.x,lw.z-doorOut.z)+Math.max(0,Math.abs(lw.y-doorOut.y)-2);
       if(L.lit()&&(L.found||L.carried||L.inCradle)) thin=1-U.smooth(2.2,8,dd);
+      const T=storm(); if(T.carried&&T.lit()){ const sw=T.world, ds=Math.hypot(sw.x-doorOut.x,sw.z-doorOut.z)+Math.max(0,Math.abs(sw.y-doorOut.y)-2); thin=Math.max(thin,1-U.smooth(2.2,8,ds)); }
       if(canEnter()&&!L.carried) thin=Math.max(thin,.75);
     }
     S.veilOpacity=U.damp(S.veilOpacity,want,2.5,dt);

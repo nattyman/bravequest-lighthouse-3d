@@ -204,7 +204,7 @@ function buildMoths(){
     const m={i,p:V(),v:V(),ph:rnd()*TAU,sp:(1.2+rnd()*2.2)*(rnd()<.5?-1:1),rad:.6+rnd()*1.6,hy:rnd()*1.4,
       tgt:'patch',idx:patches.length?i%patches.length:0,prey:null,gp:null,home:null,jx:(rnd()-.5)*.8,jy:(rnd()-.5)*.8,
       scale:.11+rnd()*.05,delay:0,press:rnd()*TAU};
-    if(i<N_GLASS){m.tgt='glass';m.scale*=1.25;}
+    if(i<N_GLASS){m.tgt='spot';m.rad=.6+rnd()*3.2;m.hy=rnd()*3;m.scale*=1.1;} // Act 1 v12: the moths left the lamp when it went wrong; they nest in the old wood with Maren's lantern
     else if(i<N_GLASS+N_SPOT){m.tgt='spot';m.rad=.35+rnd()*1.2;}
     else if(i>=NM-N_ROOST){m.tgt='roost';m.cave=true;m.scale*=.85;m.p.set(0,-999,0);} // hidden until a roost exists
     else if(i>=NM-N_ROOST-N_WANDER||!patches.length){m.tgt='wander';m.rad=3+rnd()*4;}
@@ -283,7 +283,9 @@ function mothTarget(m,t,o){
     }
     case 'lantern': case 'spot': c=lanternPos(); break;
     case 'hunt': c=m.prey?m.prey.center:lanternPos(); break;
-    case 'lamp': c=getLH().lampCenter; break;
+    case 'lamp':{ // the cure: they go past the lantern in the cradle and into the black on the lens, and eat it
+      const b=blobCenter()||getLH().lampCenter, a=m.ph+t*m.sp*1.4, r=.62+m.rad*.28+.12*Math.sin(t*5+m.ph);
+      return o.set(b.x+Math.cos(a)*r, b.y+(m.hy-.9)*.55+Math.sin(t*2.3+m.ph)*.2, b.z+Math.sin(a)*r); }
     case 'satchel': c=satchelPos(); break;                       // loop: drawn to the ichor in the player's satchel
     case 'feed': if(m.feedC)return o.set(m.feedC.x+Math.cos(m.ph+t*m.sp*.35)*m.rad,m.feedC.y+Math.sin(t*2.1+m.ph)*.18,m.feedC.z+Math.sin(m.ph+t*m.sp*.35)*m.rad); c=lanternPos(); break;
     case 'gone': return o.copy(m.p);
@@ -963,14 +965,21 @@ let hal=null;
 const HAL_PRE=[
   'You can see me. Most things out here can’t, anymore. Name was Halloran, once. I kept that light for nineteen years.',
   'Don’t look at the arm. I know. It started with the arm.',
-  'You’ll want a light before you go in there. Maren took the keeper’s lantern west, into the forest, the night the fog came. She never came back. The lantern might have.',
-  'Follow the path down off the cliff and across the moor. Mind the hamlet. Some of the folk there are further gone than me.',
+  'You’ll want a light before you go in there. My old storm lantern hangs on the oil shed, back past the cottage. Plain oil, plain flame. It’ll see you up the stair.',
+  'The lamp went out the night the fog came. Nobody’s been up since. Nobody who came back down, anyway.',
   'Funny thing about moths. Out here they gather where there’s nothing to see at all.',
   'Go on. I’ll keep.'
 ];
+/* after the storm lantern failed in the lamp room: he waits at the foot of the tower */
+const HAL_FAIL=[
+  'The moths left when the lamp went wrong. They nest in the old wood, west.',
+  'Maren knew something about them. The night the fog came she took her lantern, the violet one, out to the old tree at the forest’s heart. She never came back. The lantern might have stayed.',
+  'Something big walks those woods now. I hear it at night, breaking the trees. Keep that staff in your hand, and don’t let it corner you.',
+  'Follow the path down off the cliff and across the moor. Mind the hamlet. I’ll keep.'
+];
 const HAL_MID=[
   'That’s her lantern. Then Maren’s... well. Keep it close. And keep those moths off me.',
-  'The tower stair’s black as pitch. That lamp of hers is the only thing that’ll get you up it.',
+  'My old flame only fed that thing up there. Hers is different. The moths know it.',
   'Go on, then. Up you go.'
 ];
 const HAL_POST=[
@@ -1243,27 +1252,40 @@ function buildHalloran(){
     torso:chest,armL:shL,armR:shR,legL:thL,legR:thR,fore:elL,hand:inkHand,
     skirt:{geo:skG,pos:sp,prev:sprev,ang:sang,init:false},em,
     home,homeYaw,pos:home.clone(),heading:homeYaw,afraid:false,met:false,
-    pre:0,mid:0,post:0,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
+    pre:0,mid:0,post:0,fail:0,stand:false,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
     sit:1,fear:0,talkT:0,talkK:0,blinkT:2,shiftT:3,shift:0,shiftTo:0,twitchT:1,twitch:0,lookYaw:0,lookPitch:0,glanceT:0,creep:1};
   G.interact.add({pos:()=>hal.talkPos.copy(hal.pos),radius:2.8,priority:2,
     label:()=>hal.met?'Talk to Halloran':'Talk to the figure',
     enabled:()=>!hal.afraid&&isPlay(),
     use:talkHalloran});
 }
+/* move him somewhere for a story beat (flow.js): teleports (the player is never watching), stands instead of sitting.
+   halloranAt(null) sends him back to his barrel on the cliff path. */
+let halHome0=null, halYaw0=0;
+function halloranAt(pos,yaw){
+  if(!hal)return;
+  if(!halHome0){halHome0=hal.home.clone(); halYaw0=hal.homeYaw;}
+  if(pos){ hal.home.set(pos.x,G.floorAt?G.floorAt(pos.x,pos.z,(pos.y||0)+2):H(pos.x,pos.z),pos.z); hal.homeYaw=yaw==null?hal.homeYaw:yaw; hal.stand=true; }
+  else { hal.home.copy(halHome0); hal.homeYaw=halYaw0; hal.stand=false; }
+  hal.pos.copy(hal.home); hal.heading=hal.homeYaw; hal.afraid=false; hal.sit=hal.stand?0:1; hal.skirt.init=false;
+  hal.g.position.copy(hal.pos); hal.g.rotation.y=hal.heading;
+}
 function talkHalloran(){
   if(!hal||hal.afraid)return;
   const L=lantern();
   const isCured=cured||(L&&L.cured);
   const found=(L&&L.found)||G.flag('lanternFound');
+  const failed=!!((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'));
   let line, index;
   if(isCured){index=Math.min(hal.post,HAL_POST.length-1);line=HAL_POST[index];hal.post++;}
   else if(found){index=Math.min(hal.mid,HAL_MID.length-1);line=HAL_MID[index];hal.mid++;}
+  else if(failed){index=Math.min(hal.fail,HAL_FAIL.length-1);line=HAL_FAIL[index];hal.fail++;}
   else{index=Math.min(hal.pre,HAL_PRE.length-1);line=HAL_PRE[index];hal.pre++;}
   hal.met=true;
   if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
   hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3;
   G.ui.say(line,'Halloran');
-  G.emit('talk',{who:'Halloran',line,index,phase:isCured?'cured':found?'lantern':'start'});
+  G.emit('talk',{who:'Halloran',line,index,phase:isCured?'cured':found?'lantern':failed?'failed':'start'});
 }
 /* pose tables: standing / seated / afraid. Angles in radians (x: + = backward for limbs, − = forward) */
 const HP={
@@ -1362,7 +1384,7 @@ function updateHalloran(dt){
   hal.walk+=dt*speed*4.2;
   hal.g.position.copy(hal.pos); hal.g.rotation.y=hal.heading;
   // pose blends
-  const sitT=(!hal.afraid&&dh<.45&&speed===0)?1:0;
+  const sitT=(!hal.afraid&&dh<.45&&speed===0&&!hal.stand)?1:0;
   hal.sit=U.damp(hal.sit,sitT,sitT?1.6:3.5,dt);
   hal.fear=U.damp(hal.fear,hal.afraid?1:0,hal.afraid?5:1.5,dt);
   hal.talkT=Math.max(0,hal.talkT-dt);
@@ -1441,7 +1463,7 @@ G.on('lamp:cured',()=>{
 const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negatives,moths,patches,get halloran(){return hal;},
   toPatch, toRoost, setRoost, inCaveRegion, get roost(){return roost;}, clingR:null, N_ROOST,
   lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
-  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),
+  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),halloranAt:(p,yaw)=>halloranAt(p,yaw),
   get glassOpen(){return glassOpen;}, get cured(){return cured;}};
 
 G.system('creatures',{order:30,modes:'always',

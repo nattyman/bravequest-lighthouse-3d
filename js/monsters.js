@@ -1,7 +1,9 @@
 /* =====================================================================
    BRAVE QUEST: LIGHTHOUSE — monsters.js  (Creatures agent)
    The fog's hunters: Hollows, Shade Hounds, and the Hollow Stag (boss).
-   API: G.monsters = {list, spawn(kind,pos,opts), alive(), boss, reset()}
+   Act 1 (v12): the Stag guards Maren's lantern at the Resisting Tree (G.monsters.startStag(), flow.js calls it on
+   approach); it is no longer the finale (finale_boss.js answers 'finale:start'). Its death emits boss:dead {who:'stag'}.
+   API: G.monsters = {list, spawn(kind,pos,opts), alive(), boss, startStag(), stagArena(), reset()}
    ===================================================================== */
 (function(){
 'use strict';
@@ -789,7 +791,7 @@ function remove(m){
   m.alive=false; G.combat.remove(m.hb); G.scene.remove(m.parts.root); dropToken(m); removeFx(m);
   m.parts.root.traverse(o=>{if(o.isMesh){o.geometry.dispose(); if(o.material.dispose)o.material.dispose();}});
   const i=list.indexOf(m); if(i>=0)list.splice(i,1);
-  if(m===boss){ boss=null; G.ui.bossBar(null); G.emit('boss:dead'); }
+  if(m===boss){ boss=null; G.ui.bossBar(null); G.emit('boss:dead',{who:m.kind}); }
 }
 
 /* quietly remove a monster without a kill (no ichor, no event); sink=true leaves a small splash */
@@ -1110,24 +1112,35 @@ function updateBrineling(m,dt){
 }
 
 /* ---- The Hollow Stag ---- */
+/* its arena: the Resisting Tree clearing (the lantern lies in the roots). r 18: charges stay in the clearing, the trunk stops them */
 function arenaOf(){
-  const f=LM().finale; const L=lh();
-  return f&&isFinite(f.x)?{x:f.x,z:f.z,y:isFinite(f.y)?f.y:H(f.x,f.z),r:f.r||28,name:'finale'}:{x:165,z:0,y:42,r:28,name:'finale'};
+  const t=LM().resistingTree;
+  return t&&isFinite(t.x)?{x:t.x,z:t.z,y:isFinite(t.y)?t.y:H(t.x,t.z),r:18,name:'stag'}:{x:-165,z:5,y:H(-165,5),r:18,name:'stag'};
 }
+const GUARD_IN=2, GUARD_OUT=12; // engages inside r+2 (with the staff in hand), goes back to guarding beyond r+12
 function inArena(x,z,pad){const a=m_arena||arenaOf();return Math.hypot(x-a.x,z-a.z)<a.r-pad;}
 let m_arena=null;
 function updateStag(m,dt){
   const p=P.stag, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9, pa=playerAlive();
   m.flare=U.damp(m.flare,0,3,dt);
   if(m.state!=='intro'&&m.state!=='dying')G.ui.bossBar('The Hollow Stag',Math.max(0,m.hp/m.maxHp));
+  const A=m_arena||arenaOf(), dC=pp?Math.hypot(pp.x-A.x,pp.z-A.z):1e9, armed=!!(G.items&&G.items.staff&&G.items.staff.owned);
   switch(m.state){
     case 'intro':
       m.fade=Math.min(1,m.st/2.2); m.mat.uniforms.uFade.value=m.fade; m.flare=1-m.fade*.5;
-      if(m.st>2.6){m.fade=1;setState(m,'stalk');m.cool=1;}
+      if(m.st>2.6){m.fade=1;setState(m,'guard');m.cool=1;}
       break;
+    case 'guard':{ // stands over the lantern; walks back to it if it was drawn off
+      G.ui.bossBar(null);
+      const dh=Math.hypot(m.home.x-m.pos.x,m.home.z-m.pos.z);
+      if(dh>1.2){ faceTo(m,m.home.x,m.home.z,3,dt); if(!moveDir(m,m.heading,p.speed,dt))m.heading+=.4; m.speedNow=p.speed; }
+      else { m.speedNow=0; if(pp)faceTo(m,pp.x,pp.z,1.2,dt); }
+      if(pp&&pa&&armed&&dC<A.r+GUARD_IN&&dh<6){ setState(m,'stalk'); m.cool=1.2; G.emit('stag:engage'); }
+      break;}
     case 'stalk':{
       m.cool-=dt;
       if(!pp||!pa){m.speedNow=0;break;}
+      if(dC>A.r+GUARD_OUT){ setState(m,'guard'); break; }
       faceTo(m,pp.x,pp.z,2.2,dt);
       if(dP>8){ if(!moveDir(m,m.heading,p.speed,dt))m.heading+=.4; m.speedNow=p.speed; } else m.speedNow=0;
       if(!m.summoned&&m.hp<=m.maxHp/2){m.summoned=true;setState(m,'summon');break;}
@@ -1308,26 +1321,30 @@ function spawnZones(){
     }
   }
 }
-function startFinale(){
-  if(boss&&boss.alive&&!boss.dying)return;
+function startStag(){
+  if(boss&&boss.alive&&!boss.dying)return boss;
   m_arena=arenaOf(); const A=m_arena;
-  let x=A.x-10, z=A.z; if(!okGround(x,z))x=A.x-6;
+  // the forest's own hunters clear out of the clearing: this is the Stag's ground
+  for(const o of list.slice()) if(!o.boss&&!o.finale&&o.alive&&!o.dying&&Math.hypot(o.pos.x-A.x,o.pos.z-A.z)<A.r+10)despawn(o,true);
+  // it rises on the far (west) side of the trunk, facing the way you came in
+  let x=A.x-11, z=A.z-1; if(!okGround(x,z)){x=A.x-8; z=A.z+3;}
   boss=spawn('stag',{x,z},{zone:A,aggro:true,intro:true,finale:true,heading:PI/2});
-  boss.state='intro';
+  boss.state='intro'; boss.forest=true;
   ash(V(x,boss.pos.y+2,z),120,4);
-  for(let k=0;k<3;k++){const a=-PI/2+(k-1)*1.1;let hx=A.x+Math.cos(a)*16, hz=A.z+Math.sin(a)*16;
-    if(!okGround(hx,hz)){hx=A.x-14+(k-1)*3;hz=A.z+(k-1)*8;}
+  for(let k=0;k<3;k++){const a=(k-1)*1.4; let hx=A.x+Math.cos(a)*-13, hz=A.z+Math.sin(a)*13;
+    if(!okGround(hx,hz)){hx=A.x-12+(k-1)*3;hz=A.z+(k-1)*7;}
     spawn('hollow',{x:hx,z:hz},{zone:A,aggro:true,intro:true,finale:true});}
+  return boss;
 }
 
 /* ---------------------------------------------------------------- system */
-G.on('finale:start',startFinale);
+// (v12) the Stag no longer answers 'finale:start' — the Gloaming does (finale_boss.js). flow.js calls startStag() in the forest.
 G.on('player:respawn',()=>{
   for(const m of list.slice()){
     if(!m.alive||m.dying)continue;
     if(m.finale&&m.kind==='hound'&&boss){remove(m);continue;}  // summoned hounds vanish; boss re-summons
     m.hp=m.maxHp; m.kv.set(0,0,0); m.pos.copy(m.home); m.onRaft=null; m.board=null; m.noSettle=false; m.lastHit=-99; m.state=m.boss?'stalk':'idle'; m.st=0; m.flare=0; m.cool=1.5; m.aggro=false; m.fled=false;
-    if(m.boss){m.summoned=false;m.summonDone=false;m.state='stalk';}
+    if(m.boss){m.summoned=false;m.summonDone=false;m.state=m.forest?'guard':'stalk';}
     if(m.finale&&!m.boss)m.state='chase';
     dropToken(m);
   }
@@ -1336,7 +1353,7 @@ G.on('player:respawn',()=>{
 });
 G.monsters={list,spawn:(kind,pos,opts)=>spawn(kind,pos,opts||{aggro:false}),
   alive:()=>list.filter(m=>m.alive&&!m.dying).length,
-  get boss(){return boss;}, tokens, startFinale, params:P, despawn:(m,sink)=>despawn(m,sink),
+  get boss(){return boss;}, tokens, startStag, stagArena:()=>m_arena||arenaOf(), params:P, despawn:(m,sink)=>despawn(m,sink),
   kill:(m,info)=>{ if(m&&m.alive&&!m.dying)die(m,info||{}); },
   // shared ink kit (cave_boss.js builds the Undertow with the same look)
   fx:{puff,ember,splash,sparks,gather,puddle,inkMat,sharedUniforms,sweep,mergeGeos,tendril,stepTendril,eyeSprite,anchor,ringMesh,raftInfo,nearestMoth,eatMoth,swarmMoth}};
