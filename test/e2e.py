@@ -1,4 +1,5 @@
-import asyncio
+import asyncio, sys
+URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&headless'
 from playwright.async_api import async_playwright
 STEPS=[
  ("start","document.getElementById('begin').click(); 0"),
@@ -17,13 +18,13 @@ async def main():
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         pg=await b.new_page(viewport={'width':1100,'height':650})
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
-        await pg.goto('http://localhost:8800/dev.html?debug'); await pg.wait_for_timeout(6000)
+        await pg.goto(URL); await pg.wait_for_timeout(6000)
         for name,js in STEPS:
             try: r=await pg.evaluate(js)
             except Exception as e: r='EXC '+str(e)[:300]
             print(name,':',r)
             await pg.wait_for_timeout(1200)
-            if name in('cure','finale','boss'): await pg.screenshot(path=f'/tmp/claude-0/int/e2e-{name}.png')
+            if name in('cure','finale','boss'): await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'/tmp/claude-0/int/e2e-{name}.png')
         print('\n'.join(errs[:15]))
         await b.close()
 asyncio.run(main())

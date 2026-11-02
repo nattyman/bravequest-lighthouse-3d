@@ -2,7 +2,7 @@
 usage: python3 test/loop_e2e.py [url]   (default http://localhost:8800/dev.html?debug)"""
 import asyncio, sys
 from playwright.async_api import async_playwright
-URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug'
+URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&headless'
 STEPS=[
  ("start", "document.getElementById('begin').click(); G.debugStartLoop(); G.step(1/30,30); [G.loop.active, G.lamp.active, Math.round(G.lamp.ether), Math.round(G.fog.radius), document.getElementById('obj').textContent]"),
  ("forage", """(()=>{ const ms=G.world.landmarks.mushrooms; let got=0;
@@ -50,7 +50,7 @@ async def main():
         await pg.click('#continue'); await pg.wait_for_timeout(2500)
         after=await pg.evaluate("[Math.round(G.lamp.ether), G.inv.count('glowcap'), G.inv.count('ichor'), G.blights.filter(b=>b.cured).map(b=>b.id).join(','), [...G.alchemy.known].join(','), G.loop.active]")
         print('save before:',before); print('after load :',after)
-        await pg.screenshot(path='/tmp/claude-0/loop_end.png')
+        await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path='/tmp/claude-0/loop_end.png')
         print('\n'.join(e for e in errs if '404' not in e)[:1500])
         await b.close()
 asyncio.run(main())

@@ -110,7 +110,17 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 **creatures.js** — moth swarm (on the lamp-room glass from the start; drawn to corruption: lantern, patches, negatives, monsters), patch decals, passive negatives (freed by the swarm), Halloran (Unmade NPC with dialogue). **monsters.js** — hostile monsters + the Hollow Stag boss.
 
 ## Testing
-- Server: `http://localhost:8800/dev.html?debug` (already running; if not: `sh test/serve.sh &`). Rebuild dev.html after the lead changes index.html: `python3 test/build_dev.py`.
+The test machine is small (2 cores, software-rendered Chrome), so testing is tiered — don't run the full suites after every change:
+1. **While working**: `node --check` your files, `python3 test/quick.py [url]` (~1–2 min smoke test: boot, loop, every cave room,
+   no errors), plus your own targeted script for the feature (start from a state with `G.debugStartLoop()`,
+   `G.debugEnterCave(room)` or the test tools' start points instead of replaying the story).
+2. **Once, at the end of a task**: the full suites that cover what you touched — `test/e2e.py` (Act 1), `test/loop_e2e.py`
+   (core loop), `test/cave_e2e.py` (the cave). The lead runs all of them again after merging.
+- Add `&headless` to test URLs (the suites do): the game still updates in real time but only draws frames after a `G.step()`
+  and ~2 a second otherwise. Before a screenshot of something animating, call `G.headless.draw(3)` and wait ~250 ms.
+- Several agents may share the machine: use your own server port (`python3 -m http.server <port>` in your checkout) and pass
+  the URL to the suites (`python3 test/cave_e2e.py http://localhost:<port>/dev.html?debug&headless`).
+- Server: `http://localhost:8800/dev.html?debug` (if not running: `sh test/serve.sh &`). Rebuild dev.html after changing index.html or adding a module: `python3 test/build_dev.py`.
 - Screenshot helper: `python3 test/snap.py --out /tmp/claude-0/yourname.png --begin --js "G.player.teleport(160,42,0,0)" --js "..."` (see its docstring). Put your screenshots under `/tmp/claude-0/<module>/`.
 - Headless WebGL is software-rendered: a few fps. For movement/AI tests, step deterministically with `G.step(1/30, n)` inside `--js`, then screenshot.
 - To get into play without flow.js: `document.getElementById('title').hidden=true; G.setMode('play')`.

@@ -9,7 +9,7 @@ Only the start teleports (to the beach); it tops up hp like loop_e2e. Every step
 usage: python3 test/cave_e2e.py [url]   (default http://localhost:8800/dev.html?debug)"""
 import asyncio, sys, os, json
 from playwright.async_api import async_playwright
-URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug'
+URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&headless'
 SHOTS='/tmp/claude-0/cave-int'; os.makedirs(SHOTS,exist_ok=True)
 
 LIB=r"""
@@ -338,7 +338,7 @@ async def main():
         await boot()
         for name,js in STEPS:
             if name.startswith('shot:'):
-                await pg.wait_for_timeout(1400); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png'); print('  shot',name[5:]); continue
+                await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png'); print('  shot',name[5:]); continue
             try:
                 if js=='WAIT_RISE':
                     await pg.wait_for_timeout(2600); await pg.click('#rise'); await pg.wait_for_timeout(600); r={'ok':True}

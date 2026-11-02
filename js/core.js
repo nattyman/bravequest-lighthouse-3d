@@ -656,7 +656,12 @@ G.system('sunFollow',{order:95,modes:'always',update(){
 /** shared model builders (player.js defines G.models.lantern / G.models.staff) */
 G.models={};
 /** deterministic stepping for headless tests: runs every system's update n times without rendering */
-G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; for(let k=0;k<n;k++){ G.input.poll(dt); G.time+=dt; G.dt=dt; G.hints.length=0;
+/* ?headless (tests): the game still updates in real time, but frames are only drawn when something may want to see them —
+   the first frame after a G.step() (so a screenshot right after a scripted step is current), and ~2 a second otherwise.
+   Software-rendered Chrome spends most of its CPU drawing frames nobody watches; this is the tests' big speed-up.
+   G.headless.draw(n) forces the next n frames to draw (e.g. before a screenshot of an animation). */
+G.headless=/[?&]headless/.test(location.search)?{dirty:true,force:0,lastDraw:0,draw(n=2){this.force=Math.max(this.force,n);}}:null;
+G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; if(G.headless)G.headless.dirty=true; for(let k=0;k<n;k++){ G.input.poll(dt); G.time+=dt; G.dt=dt; G.hints.length=0;
   for(const s of systems){ if(!s.update)continue; if(s.modes!=='always'&&!s.modes.includes(mode))continue; try{s.update(dt);}catch(e){console.error('step '+s.name,e);} }
   G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt); G.input.endFrame(); } };
 G.systems=systems;
@@ -682,7 +687,11 @@ G.start=()=>{
       try{s.update(mode==='paused'?0:dt);}catch(e){ if(!s._err){console.error('update '+s.name,e);s._err=1;} }
     }
     G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt);
-    if(composer)composer.render(); else renderer.render(scene,camera);
+    const H=G.headless;
+    if(!H||H.dirty||H.force>0||now-H.lastDraw>500){
+      if(composer)composer.render(); else renderer.render(scene,camera);
+      if(H){ H.dirty=false; if(H.force>0)H.force--; H.lastDraw=now; }
+    }
     G.input.endFrame();
     requestAnimationFrame(frame);
   }
