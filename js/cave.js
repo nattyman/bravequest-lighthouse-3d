@@ -267,7 +267,12 @@ G.cameraConstrainers.push((cam,target)=>{
   const L=Math.hypot(cx-tx,cy-ty,cz-tz), n=Math.max(1,Math.ceil(L/.12));
   let gx=tx,gy=ty,gz=tz;
   if(bad(tx,ty,tz)){ // target itself is tight: just keep the camera under the ceiling
-    cam.set(target.x,O.y+Math.min(Math.max(ty,Fat(tx,tz)+.45),Cat(tx,tz)-.2),target.z); return; }
+    // the follow target is damped, so hugging a curved wall it can lag into the rock: then use the player's own column
+    // (always open floor), moved toward the target only as far as stays clear of the wall
+    let bx=tx, bz=tz; const P=G.player&&G.player.pos;
+    if(P&&Sat(tx,tz)>-.3){ const px=P.x-O.x, pz=P.z-O.z; bx=px; bz=pz; const m=Math.max(1,Math.ceil(Math.hypot(tx-px,tz-pz)/.08));
+      for(let i=1;i<=m;i++){ const x=px+(tx-px)*i/m, z=pz+(tz-pz)*i/m; if(Sat(x,z)>-.3)break; bx=x; bz=z; } }
+    cam.set(bx+O.x,O.y+Math.min(Math.max(ty,Fat(bx,bz)+.45),Cat(bx,bz)-.2),bz+O.z); return; }
   for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
   cam.set(gx+O.x,gy+O.y,gz+O.z);
 });

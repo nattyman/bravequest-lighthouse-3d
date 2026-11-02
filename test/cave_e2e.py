@@ -206,7 +206,7 @@ STEPS=[
    return {ok:s.cured&&G.cave.gate('channel')&&G.items.lantern.carried,t,gate:G.cave.gate('channel'),lab,swarm:T.swarm(),hud:T.hud()}; })()"""),
  ("shot:channel-lit",None),
  # ---------------------------------------------------------------- the hall of drafts
- ("drafts", r"""(()=>{ const r=T.walk([[46,-86.3],[52,-86.5]],{local:true}); const L=G.items.lantern; if(!L.shut)T.tap('shutter',3); const shut=L.shut;
+ ("drafts", r"""(()=>{ const r=T.walk([[Math.min(G.cave.toLocal(G.player.pos).x,44),-86.1],[46,-86.3],[52,-86.5]],{local:true}); /* centre of the walkway first: the raft fight can leave you on its snagging north edge */ const L=G.items.lantern; if(!L.shut)T.tap('shutter',3); const shut=L.shut;
    const f=T.fight({room:'drafts',max:2400,r:45,threats:true}); // shy crabs with nothing to hunt are left alone, like a player would
    const r2=T.walk([[58,-86.3],[60,-80]],{local:true});
    return {ok:r.ok&&r2.ok&&shut&&f.left===0&&T.swarm()>=20,shut,fight:f,r2,swarm:T.swarm(),lost:T.losses.drafts||0,hud:T.hud()}; })()"""),
