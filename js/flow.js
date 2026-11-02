@@ -90,8 +90,8 @@ let finaleArmed=false, finaleT=-1, bossDead=false, endingT=-1, sawDoor=false;
 function lighthouseDoor(){const lh=G.world.lighthouse; return lh&&lh.doorOut?lh.doorOut.clone():lmV('lighthouse',V(180,42,0)).add(V(-5,0,0));}
 function begin(fromSave){
   $('title').hidden=true; $('hud').hidden=false; $('pauseBtn').hidden=false;
-  const save=fromSave===true?readSave():null;
-  if(save){ G.setMode('play'); G.input.lockPointer(); applySave(save); setTimeout(()=>G.ui.say('You pick up where you left off: '+(save.objective||'the island')+'.'),500); return; }
+  const save=fromSave===true?readSave():(fromSave&&typeof fromSave==='object'?fromSave:null); // devtools.js passes a built save object
+  if(save){ G.setMode('play'); G.input.lockPointer(); applySave(save); if(!save.quiet)setTimeout(()=>G.ui.say('You pick up where you left off: '+(save.objective||'the island')+'.'),500); return; }
   const st=LM().start||{x:164,y:42,z:-4,yaw:Math.PI/2};
   G.state.checkpoint.set(st.x,st.y,st.z); G.state.checkpointYaw=st.yaw; G.state.checkpointName='the lighthouse';
   if(G.player.teleport)G.player.teleport(st.x,st.y,st.z,st.yaw);
@@ -166,7 +166,8 @@ function onBossDead(){
 /* ---------- saving ----------
    Auto-saves at milestones and every 45 s of calm play; manual save in the pause menu.
    Stored per browser (localStorage). Killed monsters and freed negatives reset on load. */
-const SAVE_KEY='bq-save-v1';
+const SAVE_KEY='bq-save-v1', TEST_KEY='bq-save-test-v1'; // devtools.js sets G.testSaves: this session then saves to the test slot only
+const saveKey=()=>G.testSaves?TEST_KEY:SAVE_KEY;
 const safePos=new THREE.Vector3(); let safeYaw=0, safeT=0, autoT=0, savedEl=null;
 const arr=v=>v?[+v.x.toFixed(2),+v.y.toFixed(2),+v.z.toFixed(2)]:null;
 function threatened(){ const P=G.player; if(!G.monsters||!G.monsters.list)return false;
@@ -186,12 +187,12 @@ function snapshot(){
 }
 function writeSave(){
   if(G.state.mode!=='play'&&G.state.mode!=='paused'&&G.state.mode!=='ending')return false;
-  try{ localStorage.setItem(SAVE_KEY,JSON.stringify(snapshot())); }catch(e){ return false; }
+  try{ localStorage.setItem(saveKey(),JSON.stringify(snapshot())); }catch(e){ return false; }
   if(savedEl){ savedEl.classList.add('show'); clearTimeout(savedEl._t); savedEl._t=setTimeout(()=>savedEl.classList.remove('show'),1600); }
   return true;
 }
 function autosave(){ setTimeout(writeSave,400); }
-function readSave(){ try{ const d=JSON.parse(localStorage.getItem(SAVE_KEY)||'null'); return d&&d.v===1?d:null; }catch(_){ return null; } }
+function readSave(key){ try{ const d=JSON.parse(localStorage.getItem(key||SAVE_KEY)||'null'); return d&&d.v===1?d:null; }catch(_){ return null; } }
 function applySave(d){
   const L=G.items.lantern, P=G.player, v3=a=>a?V(a[0],a[1],a[2]):null;
   Object.assign(G.state.flags,d.flags||{});
@@ -244,6 +245,8 @@ document.addEventListener('pointerlockchange',()=>{
 
 /* ---------- system ---------- */
 if(G.debug)G.debugStartLoop=()=>{ if(G.lighthouse&&G.lighthouse.restoreCured&&!G.lighthouse.cured){G.lighthouse.restoreCured();G.emit('lamp:cured',{restored:true});} G.items.staff.owned=true; if(G.lighthouse&&G.lighthouse.restoreStaff)G.lighthouse.restoreStaff(); G.emit('staff:pickup',{restored:true}); if(G.items.cloak){G.items.cloak.owned=true; G.player.setCloak&&G.player.setCloak(true);} bossDead=true; finaleArmed=false; startLoop(false); };
+/* hooks for devtools.js (test start points build a save object and play it through applySave, the same path as Continue) */
+G.flow={begin, applySave, snapshot, writeSave, readSave, startLoop, keys:{save:SAVE_KEY,test:TEST_KEY}, get bossDead(){return bossDead;}};
 G.system('flow',{order:60,modes:'always',
   init(){
     initShrooms();
