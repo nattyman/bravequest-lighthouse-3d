@@ -2,7 +2,7 @@
 
 Heath's ask: the player must **see the corrupted lamp before they have the cure**. A plain light gets you
 up the tower; the lamp is corrupted, plain fire fails; *then* you go to the forest for Maren's lantern,
-which the Hollow Stag now guards. A **new boss** comes after the lamp is lit.
+which the Hollow Stag now guards. A **new boss** comes after the lamp is lit (Heath: "a boss there and a boss after fixing the lighthouse").
 
 ## New beat order
 
@@ -13,11 +13,11 @@ which the Hollow Stag now guards. A **new boss** comes after the lamp is lit.
 | 3 | `light` | "Find a light". Halloran (cliff path) now points to **his storm lantern in the oil shed** (landmark `shed`, ~(150,33)). Rewrite HAL_PRE so line 3 is about the shed, *not* Maren/the forest. | A |
 | 4 | `storm` | Take the **storm lantern** (`G.items.storm`): plain warm amber flame, no violet, moths ignore it. It lets you through the doorway exactly like the keeper's lantern does now. Toast "Halloran's storm lantern". | A |
 | 5 | `climb` | Climb. The **staff** is now an objective on the way up ("Take the Keeper's Staff"), not after the cure. | A |
-| 6 | `failed` | Lamp room: the corrupted lens (existing ink). Set the storm lantern in the cradle → short scripted failure (~5 s): flame flares, the ink crawls down the cradle arms and *drinks* it, flame gutters to nothing, the lantern is left ink-crusted and cold (gone from inventory). Camera holds on the lens. Caption: the dark ate the flame. While dark the **anti-light beam** keeps turning (see below). The stair and doorway stay walkable after the failure (leaving is never blocked). | A |
-| 7 | `halloran2` | "Ask Halloran about the lamp" → new HAL_FAIL lines: plain fire is food to that; Maren's lantern was different, the moths loved it; she took it west to the old tree the night the fog came; something big walks those woods now. Objective → forest. | A |
+| 6 | `failed` | Lamp room: the corrupted lens (existing ink). Set the storm lantern in the cradle → short scripted failure (~5 s): the ink swallows the flame — it gutters, goes violet, then black. The ink then **pulses toward you** and the storm lantern (back in your hand, relit weakly) flickers harder the closer you stand, until you back off. On the sill: **dead moth husks** and a **logbook** (interactable) reading *"They always came to the lamp. I thought it was the light they wanted."* — Maren's hand. The player has now seen the lock. Leaving is never blocked. | A |
+| 7 | `halloran2` | Coming down, **Halloran is waiting at the foot of the tower** (move him there for this beat): *"The moths left when the lamp went wrong. They nest in the old wood, west."* plus a line tying to Maren and her lantern, and a warning that something big walks those woods now. Objective → forest. | A |
 | 8 | `forest` | At the Resisting Tree the Keeper's Lantern lies in the roots **inside a Stag arena**. Approaching (≈30 m) starts the **Hollow Stag fight** (existing boss, moved from the finale; same tuning — Heath found it "challenging, but not too hard"). Checkpoint at the arena edge (rise there on death, never inside). On death the lantern becomes takeable. Stag death emits `boss:dead {who:'stag'}` and must NOT start the ending. | A |
-| 9 | `return` | unchanged: carry the violet lantern, moths follow, doorway lets you in. | — |
-| 10 | `cure` | unchanged cure sequence in the lamp room. Anti-light beam turns to the real warm beam. | — |
+| 9 | `return` | carry the violet ether lantern; the walk back is the **visible change**: a swarm trails your light across the moor (make sure it reads — enough moths, close behind). | A |
+| 10 | `cure` | the moths pour **past** the lantern into the ink and eat it — tune the cure so the moths visibly go for the ink, not the flame (this is the reveal the design hinges on). Anti-light beam turns to the real warm beam. | A |
 | 11 | `descend`/`finale` | "Something is climbing the cliff" → the **new finale boss** (see FINALE below), started via `G.emit('finale:start')` as now. | A emits, B builds |
 | 12 | `done` | Ending card on `boss:dead {who:'gloaming'}` → core loop starts (unchanged). | A |
 
