@@ -36,7 +36,7 @@ const ui=(k,...a)=>{ try{ if(G.ui&&G.ui[k])G.ui[k](...a); }catch(e){} };
 
 /* ---------------------------------------------------------------- tuning */
 const T={
-  hp:36, H:11,                          // HP in half-hearts; body height (m)
+  hp:44, H:11,                          // HP in half-hearts; body height (m)
   solidT:2.6, crossTol:.15, warnT:1.6,   // solid window per sweep; beam half-width (rad) that counts as "in"; rim warning lead (s)
   beamW:.42,                             // fallback beam angular speed (rad/s), lighthouse.js uses .42
   slamWind:1.45, slamWind2:1.15, slamR:2.7, slamDmg:2, slamFall:.2,
@@ -460,7 +460,7 @@ function updateTendrils(dt){
   const u=tenMat.uniforms; for(let i=0;i<NTEN;i++){ const r=roots[i]; u.uGrow.value[i]=r.cut?Math.max(r.grow,.05):Math.max(.0,r.grow*.97+.03*Math.min(1,r.live)); u.uLive.value[i]=r.live; u.uHit.value[i]=r.hit; }
 }
 function gutter(r){
-  B.gutterT=T.gutterT; B.solidT=0; G.emit('gloaming:gutter',{root:r.i}); SND.gutter(lampPos());
+  B.gutterT=T.gutterT; const LB=G.lighthouse&&G.lighthouse.beam; if(LB&&LB.gutter)LB.gutter(T.gutterT); B.solidT=0; G.emit('gloaming:gutter',{root:r.i}); SND.gutter(lampPos());
   say('gutter','A tendril reaches the lamp and the beam gutters — without the light it cannot be touched. Cut the roots!');
   ui('toast','The beam gutters','Cut the roots');
 }
@@ -782,7 +782,7 @@ G.system('finaleBoss',{order:43,modes:['play','dead'],
     if(G.state.mode==='play'&&B.withdraw<=0)updateFight(dt);
     else if(B.withdraw>0){ B.warn=U.damp(B.warn,0,4,dt); B.solidT=Math.max(0,B.solidT-dt); }
     if(B.state!=='idle'&&B.state!=='dead')render(dt);
-    if(B.gutterT>0)gutterBeam(Math.min(1,B.gutterT*2,(T.gutterT-B.gutterT)*4));
+    if(B.gutterT>0&&!(G.lighthouse&&G.lighthouse.beam&&G.lighthouse.beam.gutter))gutterBeam(Math.min(1,B.gutterT*2,(T.gutterT-B.gutterT)*4));
     updateFog(dt);
   }
 });
