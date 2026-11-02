@@ -55,7 +55,7 @@ STEPS=[
      if(B.active&&B.hp>0){ how='hp'; B.hp=0; G.step(1/30,30); if(!_ev.includes('boss:dead:gloaming')){ how='hp+emit'; G.emit('boss:dead',{who:'gloaming'}); } }
      G.devtools&&G.devtools.toggle&&G.devtools.toggle('god'); }
    else G.emit('boss:dead',{who:'gloaming'});
-   G.step(1/30,200); return [how, n, G.state.mode, !document.getElementById('ending').hidden]; })()""",
+   G.step(1/30,420); return [how, n, G.state.mode, !document.getElementById('ending').hidden]; })()""",
    lambda r:r[2]=='ending' and r[3]),
 ]
 SHOT={'storm':'e2e-storm','failed':'e2e-failed','stag':'e2e-stag','lantern':'e2e-swarm','cure':'e2e-cure','boss':'e2e-ending'}

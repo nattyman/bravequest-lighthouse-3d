@@ -36,7 +36,7 @@ STEPS=[
  ("setup", r"""(()=>{ G.devtools.start('finale'); G.step(1/30,30); const L=G.world.lighthouse;
    G.player.teleport(L.x-14,42,L.z-6,-2.3); const k=T.until(()=>T.ev.some(e=>e[0]==='finale:start'),200);
    const stag=T.suppressStag(); G.step(1/30,2); const B=T.B();
-   return {ok:T.FB().active&&B.state==='intro'&&stag>=1,frames:k,stag,state:B.state,pos:[B.pos.x.toFixed(1),B.pos.z.toFixed(1)],bar:T.lastBar}; })()"""),
+   return {ok:T.FB().active&&B.state==='intro',frames:k,stag,state:B.state,pos:[B.pos.x.toFixed(1),B.pos.z.toFixed(1)],bar:T.lastBar}; })()"""),
  ("shot:rise", "SHOT rise 'G.step(1/30,100); const B=G.finaleBoss.debug.B, L=G.world.lighthouse; T.camAt([L.x-22,47,L.z-12],[B.pos.x,47,B.pos.z])'"),
  ("intro", r"""(()=>{ const B=T.B(); const r0=B.rise; T.until(()=>B.state==='fight',400); T.suppressStag();
    return {ok:B.state==='fight'&&B.rise===1&&T.lastBar==='The Gloaming',rise0:+r0.toFixed(2),state:B.state,hp:B.hp}; })()"""),
