@@ -710,8 +710,25 @@ function buildArena(){
         vec3 core=vec3(.004,.002,.01)+vec3(.12,.03,.25)*pow(sw*.6,3.)*pulse;
         vec3 rim=vec3(.55,.16,1.5)*pulse*(.6+.7*sw);
         vec3 c=mix(rim*1.3,core,smoothstep(.62,.28,d+sw*.12));
-        float a=edge*uK; gl_FragColor=vec4(c*uK,a); }`});
+        // a readable lip: a bright violet line along both edges that throbs with the heartbeat (synced with the halo + ripple)
+        float ph=mod(t,2.8), hb=max(exp(-pow((ph-.12)*9.,2.)),.7*exp(-pow((ph-.48)*9.,2.)));
+        float lip=smoothstep(.5,.7,d+sw*.08)*smoothstep(1.,.82,d);
+        c+=vec3(.75,.32,1.7)*lip*(.45+1.3*hb);
+        float a=max(edge,lip*(.7+.3*hb))*uK; gl_FragColor=vec4(c*uK,a); }`});
   const cmesh=new THREE.Mesh(cg,cm); caveRoot.add(cmesh);
+  // halo + heartbeat ripple on the water over the crack (the crack itself lies ~2–5 m under the surface, out of sight from the
+  // arena floor): an ellipse of violet that swells with each beat and sends a ring out; rides the tide (updateGatesVis)
+  const hg=new THREE.PlaneGeometry(26,12,1,1).rotateX(-PI/2).translate(WOUND.x,0,WOUND.z-.5);
+  const haloM=new THREE.ShaderMaterial({uniforms:wU,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+    vertexShader:'varying vec3 vP;void main(){vP=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+    fragmentShader:`uniform float uTime,uK;varying vec3 vP;
+      void main(){ vec2 q=vec2((vP.x-60.)/10.5,(vP.z-7.8)/3.6); float e=length(q); float t=uTime;
+        float ph=mod(t,2.8), hb=max(exp(-pow((ph-.12)*9.,2.)),.7*exp(-pow((ph-.48)*9.,2.)));
+        float halo=(1.-smoothstep(.15,1.,e))*(.16+.22*hb);
+        float r=.35+ph/2.8*1.1; float ring=exp(-pow((e-r)*7.,2.))*(1.-ph/2.8)*.55;
+        float fade=1.-smoothstep(1.25,1.5,e);
+        gl_FragColor=vec4(vec3(.42,.16,1.)*(halo+ring)*fade*uK,1.); }`});
+  const halo=new THREE.Mesh(hg,haloM); halo.renderOrder=1; caveRoot.add(halo);
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#8c55ff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false}));
   glow.position.set(WOUND.x,WOUND.y+1.2,WOUND.z); glow.scale.set(22,7,1); caveRoot.add(glow);
   // shafts of light rising from the crack
@@ -719,7 +736,7 @@ function buildArena(){
   const shTex=G.canvasTex(64,(g,s)=>{const gr=g.createLinearGradient(0,0,0,s);gr.addColorStop(0,'rgba(255,255,255,0)');gr.addColorStop(1,'rgba(255,255,255,.9)');g.fillStyle=gr;g.fillRect(0,0,s,s);});
   const shM=new THREE.MeshBasicMaterial({map:shTex,color:C('#7b48ff'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
   const shaft=new THREE.Mesh(shG,shM); shaft.position.set(WOUND.x,WOUND.y,WOUND.z); shaft.scale.set(2.6,1.2,.8); caveRoot.add(shaft);
-  VIS.wound={u:wU,glow,shaft,shM,mesh:cmesh,k:0,ink:null}; cmesh.visible=glow.visible=shaft.visible=false;
+  VIS.wound={u:wU,glow,shaft,shM,mesh:cmesh,halo,k:0,ink:null}; cmesh.visible=glow.visible=shaft.visible=halo.visible=false;
 }
 function updateWallMatrices(dt){
   const W=VIS.wall; if(!W)return; const m4=new THREE.Matrix4(), q=new THREE.Quaternion(), s=new THREE.Vector3();
@@ -1036,7 +1053,7 @@ function collapseWall(o){
 }
 function revealWound(instant){
   if(S.woundShown)return; S.woundShown=true;
-  if(VIS.wound){ const W=VIS.wound; W.mesh.visible=W.glow.visible=W.shaft.visible=true; if(instant)W.k=1;
+  if(VIS.wound){ const W=VIS.wound; W.mesh.visible=W.glow.visible=W.shaft.visible=W.halo.visible=true; if(instant)W.k=1;
     if(G.ink&&G.ink.emitter&&!W.ink){ try{ W.ink=G.ink.emitter({pos:toWorld(WOUND.x,WOUND.y+.3,WOUND.z)},{rate:5,radius:4,height:1,size:[.6,1.8],life:[2,4],rise:.6,drift:.2,alpha:.55,color:'#1a1028',embers:3}); }catch(e){} } }
   G.emit('cave:wound',{pos:toWorld(WOUND.x,WOUND.y,WOUND.z)});
 }
@@ -1046,8 +1063,8 @@ function updateGatesVis(dt){
     const ny=U.damp(y,tgt,1.1,dt); VIS.portcullis.position.y=4+ny; VIS.sluice.position.y=-.6+ny*2.4; if(VIS.wheel)VIS.wheel.rotation.z=ny*2.2; }
   if(VIS.grate){ const tgt=S.gates.shortcut?-3.8:.9; VIS.grate.position.y=U.damp(VIS.grate.position.y,tgt,1.4,dt); }
   if(VIS.wall&&VIS.wall.t>=0&&VIS.wall.t<20){ VIS.wall.t+=dt; updateWallMatrices(dt); if(VIS.wall.t>1.8)revealWound(false); }
-  if(VIS.wound&&S.woundShown){ const W=VIS.wound; W.k=U.damp(W.k,1,.7,dt); const p=.75+.25*Math.sin(t*1.25);
-    W.u.uK.value=W.k; W.glow.material.opacity=.7*W.k*p; W.shM.opacity=.07*W.k*p; W.shaft.rotation.y+=dt*.05;
+  if(VIS.wound&&S.woundShown){ const W=VIS.wound; W.k=U.damp(W.k,1,.7,dt); const ph=t%2.8, p=.62+.38*Math.max(Math.exp(-Math.pow((ph-.12)*9,2)),.7*Math.exp(-Math.pow((ph-.48)*9,2))); /* the shaders' heartbeat */
+    W.u.uK.value=W.k; W.halo.position.y=Math.max(water(),Fat(WOUND.x,WOUND.z))+.05; W.glow.material.opacity=.7*W.k*p; W.shM.opacity=.07*W.k*p; W.shaft.rotation.y+=dt*.05;
     if(W.ink)W.ink.intensity=S.inside?W.k:0; if(waterMat)waterMat.uniforms.uWoundK.value=W.k; }
 }
 
@@ -1059,6 +1076,49 @@ if(G.persist&&G.persist.register) G.persist.register('cave',{
     S.reached=new Set((d.reached||[]).filter(r=>CP_SPOTS.some(c=>c[0]===r))); }
 });
 G.on('cave:bossDead',()=>{ setGate('shortcut',true); });
+
+/* ================================================================ 12b. THE TRAVELER IN THE DARK
+   Underground there is no sun (and no shadow map), so on the black floor the Traveler vanished. Two cheap cues, neither of them
+   a light (the Undertow fight needs it dark): a faint cold fresnel rim on the Traveler's own materials (a uniform, no extra
+   draw calls; 0 on the island) and a soft contact ring on the floor under the feet. */
+const RIM={uCaveRim:{value:0},uCaveRimC:{value:C('#8a78d6')}};
+const PRES={patched:null,ring:null,k:0,ringK:0};
+function patchRim(model){
+  model.traverse(o=>{ if(!o.isMesh||o.name==='outline')return;
+    for(const m of (Array.isArray(o.material)?o.material:[o.material])){
+      if(!m||!m.isMeshToonMaterial||m.userData.caveRim)continue; m.userData.caveRim=1;
+      const prev=m.onBeforeCompile, pk=m.customProgramCacheKey;
+      m.onBeforeCompile=function(sh,r){ if(prev)prev.call(this,sh,r);
+        sh.uniforms.uCaveRim=RIM.uCaveRim; sh.uniforms.uCaveRimC=RIM.uCaveRimC;
+        sh.fragmentShader='uniform float uCaveRim;\nuniform vec3 uCaveRimC;\n'+sh.fragmentShader.replace('#include <aomap_fragment>',
+          '#include <aomap_fragment>\n if(uCaveRim>0.){ float fr=1.-clamp(abs(dot(normal,normalize(vViewPosition))),0.,1.);'+
+          ' reflectedLight.indirectDiffuse+=uCaveRimC*uCaveRim*(.04+1.5*pow(fr,3.)); }'); };
+      m.customProgramCacheKey=function(){ return (pk?pk.call(this):'')+'|caveRim'; };
+      m.needsUpdate=true; } });
+}
+function buildContactRing(){
+  const tex=G.canvasTex(128,(g,s)=>{ const h=s/2, gr=g.createRadialGradient(h,h,0,h,h,h);
+    gr.addColorStop(0,'rgba(255,255,255,.35)'); gr.addColorStop(.45,'rgba(255,255,255,.18)'); gr.addColorStop(.72,'rgba(255,255,255,.75)');
+    gr.addColorStop(.8,'rgba(255,255,255,.3)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=gr; g.fillRect(0,0,s,s); });
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(1.7,1.7).rotateX(-PI/2),new THREE.MeshBasicMaterial({map:tex,color:C('#7a62c8'),transparent:true,opacity:0,
+    blending:THREE.AdditiveBlending,depthWrite:false,fog:false}));
+  m.renderOrder=2; m.frustumCulled=false; m.visible=false; m.name='caveContactRing'; G.scene.add(m); return m;
+}
+function updatePresence(dt){
+  const P=G.player; if(!P)return;
+  if(P.model&&PRES.patched!==P.model){ PRES.patched=P.model; patchRim(P.model); }
+  if(!PRES.ring)PRES.ring=buildContactRing();
+  const L=G.items.lantern, open=!!(L&&L.carried&&L.lit&&L.lit()), lit=S.inside&&S.room&&S.lit.has(S.room);
+  // strongest when the lantern is shut in a dark room (that's when you'd lose yourself); never more than a hint
+  const tgt=!S.inside?0:lit?.25:open?.35:.55;
+  PRES.k=U.damp(PRES.k,tgt,3,dt); RIM.uCaveRim.value=PRES.k<.005?0:PRES.k;
+  const R=PRES.ring, f=S.inside?G.floorAt(P.pos.x,P.pos.z,P.pos.y+.3):-1e9, hgt=P.pos.y-f;
+  const want=S.inside&&P.alive!==false&&f>-1e8&&hgt<3;
+  PRES.ringK=U.damp(PRES.ringK,want?(lit?.25:open?.35:.5)*(1-clamp(hgt/3,0,1)):0,5,dt);
+  R.visible=PRES.ringK>.01;
+  if(R.visible){ R.position.set(P.pos.x,f+.04,P.pos.z); const s=1+.25*clamp(hgt,0,3); R.scale.set(s,1,s);
+    R.material.opacity=PRES.ringK*(.5+.06*Math.sin(G.time*2.1)); }
+}
 
 /* ================================================================ 13. SYSTEMS */
 let mouthIa=null, exitIa=null;
@@ -1085,6 +1145,7 @@ G.system('cave',{order:13,modes:'always',
     const t=G.time, mode=G.state.mode, P=G.player;
     tUni.uTime.value=t;
     mouthRoot.visible=loopOn()&&!S.inside;
+    updatePresence(dt);
     updateTrans(dt);
     // inside/outside from the player's position (also covers loading a save made in the cave)
     if(P&&P.pos&&!S.trans){ const inC=!!room(P.pos)||(inBoxW(P.pos.x,P.pos.z)&&P.pos.y>O.y-40); if(inC!==S.inside)setInside(inC); }
