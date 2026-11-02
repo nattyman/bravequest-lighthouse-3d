@@ -41,6 +41,16 @@ Floating things (crates, the raft) ride the surface.
 | `drafts` | Hall of Drafts | (60, 3, −60) | corridor from z −70 to −40 with **blowholes** along it that gust in time with the sea (every ~6 s, telegraphed by a rising hiss + spray) and scatter moths unless the lantern is **shuttered** (a shut lantern makes the swarm cling tight); door to `arena` at (60, 3, −38) |
 | `arena` | The Undertow | (60, 1, −15), radius 18 | flooded cavern, central pool, ring floor y 1; the boss; beyond a collapsed far wall at (60, −6, 8): **the Wound** (a glowing violet-black crack in the sea floor, pulsing — look, don't touch); exit tunnel back to `mouth` at (20, 1, −5) opens after the boss (shortcut) |
 
+## Checkpoints and soft-lock guards (cave.js)
+- Rising after death: the deepest rise spot (gallery, stair, channel head, sluice, Undertow's door) whose region you have
+  genuinely **stood** in (dry open floor, ~0.6 s) **and** that has an open way back to the mouth under the current seals/gates
+  (`regionAt` splits rooms at their seals/grates: the shortcut tunnel is the mouth's side passage until its grate opens).
+  Otherwise the mouth. Recomputed continuously, so a Continue from an old save is corrected too. Persisted as `cave.reached`.
+- If the player is ever in a region with no open route to the mouth, the interact "Follow the draught back to the mouth" is
+  offered wherever they stand (`G.cave.stranded()`, `G.cave.followDraught()`).
+- **The keeper's bench**: an alchemy table at the dry inner end of the mouth (`G.alchemy.addTable`), with glowcap spots in the
+  mouth and gallery (slow regrow) so a tincture can always be brewed underground. One-time caption on first entry.
+
 ## Puzzles (Puzzle agent)
 - **Ether veins**: glowing mineral veins in the walls (≥ 2 per room). Interact while holding a vial ("Light the vein") →
   consumes 5 ether units (from `G.alchemy`'s vials; first one in `mouth` is free) → the room is permanently lit (warm violet

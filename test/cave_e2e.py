@@ -122,6 +122,21 @@ STEPS=[
  ("mouthVein", r"""(()=>{ const r=T.walk([[-5.5,-9]],{local:true}); const lab=T.label(); const u=T.use(/vein/i); T.wait(2);
    return {ok:r.ok&&/Wake the vein/.test(lab)&&G.cave.isLit('mouth')&&G.alchemy.etherUnits===20,lab,lit:G.cave.isLit('mouth'),ether:G.alchemy.etherUnits,hud:T.hud()}; })()"""),
  ("shot:mouth-lit",None),
+ # ---------------------------------------------------------------- soft-lock guards (Heath died in the gallery and rose behind the Undertow's door)
+ ("tunnelDetour", r"""(()=>{ // the shortcut tunnel is open from the mouth up to its grate: wandering it must not count as reaching the arena
+   const r=T.walk([[2,-9],[7,-10.4],[20,-5.2],[31,-8.2],[40.5,-13.6]],{local:true}); T.wait(1.5); const reg=G.cave.region(G.player.pos), cp=G.state.checkpointName, reached=G.cave.reached();
+   const r2=T.walk([[31,-8.2],[20,-5.2],[7,-10.4],[0,-10]],{local:true});
+   return {ok:r.ok&&r2.ok&&reg==='tunnel'&&/mouth/.test(cp)&&!reached.includes('arena')&&!G.cave.stranded(),reg,cp,reached,r}; })()"""),
+ ("dieInMouth", r"""(()=>{ const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(1,0,0),knockback:4,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:G.state.mode==='dead'&&/mouth/.test(G.state.checkpointName),cp:G.state.checkpointName}; })()"""),
+ ("riseMouth", "WAIT_RISE"),
+ ("afterMouthRise", r"""(()=>{ G.step(1/30,30); return {ok:G.state.mode==='play'&&G.player.alive&&G.cave.region(G.player.pos)==='mouth',at:T.where(),cp:G.state.checkpointName}; })()"""),
+ ("keeperBench", r"""(()=>{ // the alchemy table in the mouth: same panel and recipes as the shed's; glowcaps grow beside it
+   const c0=G.inv.count('glowcap'); const r=T.walk([[0,-16],[-5,-19.3],[3.7,-19.4]],{local:true}); const lab=T.label(); const u=T.use(/bench/); G.step(1/30,3);
+   const open=!document.getElementById('alchemy').hidden, mode=G.state.mode, where=document.getElementById('alchWhere').textContent, rows=document.querySelectorAll('#alchemy [data-brew]').length;
+   G.alchemy.closeTable(); G.step(1/30,3);
+   return {ok:r.ok&&u==='Work the keeper’s bench'&&open&&mode==='menu'&&/cave/.test(where)&&rows>=1&&G.state.mode==='play'&&G.inv.count('glowcap')>c0&&G.flag('caveBench'),lab,where,rows,caps:G.inv.count('glowcap')-c0}; })()"""),
+ ("shot:keeper-bench",None),
  # ---------------------------------------------------------------- the gallery of keepers
  ("gallery", r"""(()=>{ const sw0=T.swarm(); const r=T.walk([[0,-16],[0,-24],[0,-28],[4,-29]],{local:true}); T.wait(3,{until:()=>G.cavePuzzles.roost.count<5});
    const sw1=T.swarm(), roostLeft=G.cavePuzzles.roost.count, packs=G.caveBoss.monsters.filter(m=>m.alive&&m.kind==='brineling').length;
@@ -129,6 +144,19 @@ STEPS=[
  ("shot:gallery-dark",None),
  ("galleryFight", r"""(()=>{ const f=T.fight({room:'gallery'}); T.wait(2);
    return {ok:f.left===0&&T.swarm()>=30&&G.inv.count('ichor')>=1,fight:f,swarm:T.swarm(),lost:T.losses.gallery||0,ichor:G.inv.count('ichor')}; })()"""),
+ ("sealPushDie", r"""(()=>{ // lean on the closed gallery seal (the stair is on its far side), then die against it
+   const r=T.walk([[0,-38],[0,-52]],{local:true,max:240,patience:120}); for(const x of [-2,2]) T.walk([[x,-52]],{local:true,max:90,patience:90});
+   const reg=G.cave.region(G.player.pos), reached=G.cave.reached(), cp=G.state.checkpointName;
+   const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(0,0,-1),knockback:8,ignoreIframes:true}); G.step(1/30,30);
+   return {ok:reg==='gallery'&&!reached.includes('stair')&&/Gallery/.test(cp)&&G.state.mode==='dead'&&!G.cavePuzzles.open('gallery'),reg,reached,cp,at:T.where()}; })()"""),
+ ("riseSeal", "WAIT_RISE"),
+ ("afterSealRise", r"""(()=>{ G.step(1/30,30); const reg=G.cave.region(G.player.pos);
+   return {ok:G.state.mode==='play'&&G.player.alive&&reg==='gallery'&&G.cave.connected().includes(reg)&&!G.cave.stranded(),reg,at:T.where(),cp:G.state.checkpointName}; })()"""),
+ ("strandedDraught", r"""(()=>{ // defence in depth: put the player behind the closed seal; the draught always offers the way back to the mouth
+   const sw0=T.swarm(); G.debugEnterCave('stair'); T.wait(1.5); const lab=T.label(), str=G.cave.stranded(), cp=G.state.checkpointName;
+   const u=T.use(/draught/); T.wait(2.5); const reg=G.cave.region(G.player.pos);
+   const r=T.walk([[0,-16],[0,-24],[0,-30]],{local:true}); T.wait(3);
+   return {ok:str&&lab==='Follow the draught back to the mouth'&&!/Stair/.test(cp)&&reg==='mouth'&&r.ok&&!G.cave.stranded()&&!G.cave.reached().includes('stair')&&T.swarm()>=sw0-6,lab,cp,reg,swarm:[sw0,T.swarm()]}; })()"""),
  ("galleryVein", r"""(()=>{ const r=T.walk([[-12.3,-33]],{local:true}); const lab=T.label(); const u=T.use(/vein/i); T.wait(1.5);
    return {ok:/Light the vein/.test(lab||'')&&G.cave.isLit('gallery')&&G.alchemy.etherUnits===15,lab,ether:G.alchemy.etherUnits,vials:G.inv.count('vial')}; })()"""),
  ("shot:gallery-lit",None),

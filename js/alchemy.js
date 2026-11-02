@@ -241,7 +241,8 @@ function initSpots(){
 function addSpot(pos,o={}){
   const y=o.y!=null?o.y:G.floorAt(pos.x,pos.z);
   let mesh=null; const src=(G.world.mushroomMeshes||[])[spots.length%14]||(G.world.mushroomMeshes||[])[0];
-  if(src){ mesh=src.clone(); mesh.position.set(pos.x,y,pos.z); mesh.rotation.y=Math.random()*TAU; mesh.visible=true; (o.parent||root).add(mesh); }
+  if(src){ mesh=src.clone(); mesh.position.set(pos.x,y,pos.z); mesh.rotation.y=Math.random()*TAU; mesh.visible=true;
+    if(o.parent){ o.parent.updateWorldMatrix(true,false); o.parent.worldToLocal(mesh.position); } (o.parent||root).add(mesh); }
   const s={pos:V(pos.x,y,pos.z),mesh,regrow:0,base:false,tag:o.tag||''}; spots.push(s); return s;
 }
 function updateSpots(dt){
@@ -471,7 +472,8 @@ function buildApparatus(bench){
     pos = the floor at the bench's front-centre; opts.bench builds a plain trestle workbench to carry the apparatus;
     opts.parent: the group to build into (the island's 'alchemy' group is hidden underground, so the cave passes its own). */
 function addTable(pos,o={}){
-  const grp=new THREE.Group(); grp.position.copy(pos); grp.rotation.y=o.yaw||0; (o.parent||root).add(grp);
+  const par=o.parent||root; par.updateWorldMatrix(true,false);
+  const grp=new THREE.Group(); grp.position.copy(par.worldToLocal(pos.clone())); grp.rotation.y=o.yaw||0; par.add(grp);
   const H0=o.height||1.0;
   if(o.bench!==false){ const wood=G.toon(o.wood||'#4f3a2a'), dark=G.toon('#33261d');
     const top=new THREE.Mesh(new THREE.BoxGeometry(2.2,.09,.85),wood); top.position.set(0,H0-.045,0); top.castShadow=true; grp.add(top); G.outline&&G.outline(top,{thickness:.012});
@@ -481,7 +483,7 @@ function addTable(pos,o={}){
   const parts=buildApparatus(bench);
   if(o.beacon!==false){ const b=glow(o.beaconColor||'#a070ff',o.beaconSize||3.6,.32); b.material=b.material.clone(); b.material.fog=false; b.position.set(.3,H0+.5,0); grp.add(b); parts.beacon=b; }
   grp.updateMatrixWorld(true);
-  const world=new THREE.Vector3(); bench.getWorldPosition(world);
+  const world=new THREE.Vector3(); bench.getWorldPosition(world); world.y=pos.y; // the interact point is on the floor, like the shed's
   const en=o.enabled||looping;
   const t={grp,bench,world,on:en,sparkleY:.4,eyebrow:o.eyebrow||null,parent:o.parent||root};
   Object.assign(t,parts); tables.push(t);
