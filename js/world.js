@@ -1704,6 +1704,46 @@ function installConstrainer(){
   });
 }
 
+/* ---------- performance: G.perf + dynamic resolution ----------
+   G.perf = {fps, frameMs, pixelRatio, scale, auto}. If the average frame time stays over budget (60 fps, or 30 with the
+   Saver cap) for ~2 s, the render resolution steps down (1 -> .92 -> .83 -> .75 of the preset's pixel ratio); after a few
+   seconds with headroom it steps back up (waiting longer each time an up-step had to be undone, so it doesn't flicker).
+   Off with ?headless (tests draw on demand) or G.perf.auto=false. Changing quality resets it to the preset. */
+const PF=G.perf={fps:0,frameMs:0,pixelRatio:G.renderer.getPixelRatio(),scale:1,auto:!G.headless};
+const PSTEPS=[1,.917,.833,.75];
+const PS={last:0,acc:0,n:0,ema:16.7,over:0,under:0,upWait:4,lastUp:-1e9,cool:2,idx:0,base:G.renderer.getPixelRatio(),comp:null};
+(function hookComposer(){ // core owns the composer; follow it through the prototype so the bloom targets resize with us
+  const EC=THREE.EffectComposer; if(!EC||!EC.prototype||EC.prototype._bqPerf)return;
+  const sp=EC.prototype.setPixelRatio, rd=EC.prototype.render;
+  EC.prototype.setPixelRatio=function(pr){ return sp.call(this,pr*PF.scale); };
+  EC.prototype.render=function(d){ PS.comp=this; return rd.call(this,d); };
+  EC.prototype._bqPerf=true; })();
+function perfApply(){
+  const R=G.renderer; PF.scale=PSTEPS[PS.idx];
+  R.setPixelRatio(PS.base*PF.scale);
+  if(PS.comp)PS.comp.setPixelRatio(PS.base); // patched: x scale
+  PF.pixelRatio=R.getPixelRatio();
+}
+G.on('quality',()=>{ PS.idx=0; PF.scale=1; PS.base=G.renderer.getPixelRatio(); perfApply(); PS.over=PS.under=0; PS.cool=2; PS.upWait=4; });
+function perfUpdate(){
+  const now=performance.now(), dt=now-PS.last;
+  if(dt<2)return; // extra substeps within one frame (devtools time speed)
+  PS.last=now;
+  if(dt>2500||document.hidden){ PS.over=PS.under=0; return; } // background tab / long stall
+  PS.ema+=(Math.min(dt,250)-PS.ema)*.08; PS.acc+=dt; PS.n++;
+  if(PS.acc>=500){ PF.fps=Math.round(PS.n*1000/PS.acc); PF.frameMs=Math.round(PS.acc/PS.n*10)/10; PS.acc=PS.n=0; }
+  if(!PF.auto)return;
+  const sec=dt/1000; if(PS.cool>0){ PS.cool-=sec; return; }
+  const target=1000/(G.quality.cap||60);
+  if(PS.ema>target*1.12){ PS.over+=sec; PS.under=0; }
+  else if(PS.ema<target*1.04){ PS.under+=sec; PS.over=0; }
+  else { PS.over=Math.max(0,PS.over-sec); PS.under=Math.max(0,PS.under-sec); }
+  if(PS.over>2&&PS.idx<PSTEPS.length-1){
+    if(now-PS.lastUp<8000)PS.upWait=Math.min(PS.upWait*2,64); // the last step up didn't hold
+    PS.idx++; perfApply(); PS.over=PS.under=0; PS.cool=1.5;
+  }else if(PS.under>PS.upWait&&PS.idx>0){ PS.idx--; perfApply(); PS.lastUp=now; PS.over=PS.under=0; PS.cool=1.5; }
+}
+
 W.stats={};
 G.system('world',{order:0,modes:'always',
   init(){
@@ -1720,6 +1760,7 @@ G.system('world',{order:0,modes:'always',
     if(G.debug)console.log('[world] built',JSON.stringify(W.stats));
   },
   update(dt){
+    perfUpdate();
     const A=G.atmo, cam=G.camera, f=G.focus, t=G.time;
     SH.time.value=t;
     // sky & sea follow the camera

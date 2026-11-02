@@ -267,18 +267,25 @@ function setSpeed(n){ G.timeScale=n; if(n>1)testMode(); badge(); render(); }
 let badgeEl=null, fpsTxt='';
 function badge(){
   if(!badgeEl)return;
-  const on=anyCheat()||G.testSaves||DT.cheats.fps;
+  const on=anyCheat()||G.testSaves;
   badgeEl.hidden=!on||G.state.mode==='title';
   const bits=[]; if(anyCheat()||G.testSaves)bits.push('<b>TEST</b>');
   if(DT.cheats.god)bits.push('god'); if(DT.cheats.stamina)bits.push('∞ stamina'); if(DT.cheats.ether)bits.push('∞ ether'); if(G.timeScale>1)bits.push(G.timeScale+'×');
-  if(DT.cheats.fps&&fpsTxt)bits.push(fpsTxt);
   const h=bits.join(' · '); if(badgeEl._h!==h){ badgeEl._h=h; badgeEl.innerHTML=h; }
 }
-let frames=0, fpsT=performance.now(), newFrame=false, calls=0, tris=0;
+/* "Show FPS": a small corner readout — fps, frame ms, render pixel ratio (and the dynamic-resolution scale), draw calls,
+   triangles. renderer.info is read once per frame (all passes: shadows, scene, bloom), so draws include post-processing. */
+let frames=0, fpsT=performance.now(), newFrame=false, calls=0, tris=0, fpsEl=null;
 function rafCount(){ if(!DT.cheats.fps)return; frames++; newFrame=true;
-  const now=performance.now(); if(now-fpsT>=500){ const fps=frames*1000/(now-fpsT); frames=0; fpsT=now; fpsTxt=Math.round(fps)+' fps · '+calls+' draws · '+(tris/1000).toFixed(0)+'k tris'; badge(); }
+  const now=performance.now(); if(now-fpsT>=500){ const fps=frames*1000/(now-fpsT), ms=(now-fpsT)/Math.max(1,frames); frames=0; fpsT=now;
+    const P=G.perf, R=G.renderer, pr=P?P.pixelRatio:(R?R.getPixelRatio():1);
+    const f=P&&P.fps?P.fps:Math.round(fps), m=P&&P.frameMs?P.frameMs:Math.round(ms*10)/10;
+    fpsTxt=`<b>${f}</b> fps · ${m.toFixed(1)} ms<br>${pr.toFixed(2)}× px`+(P&&P.scale<1?` (${Math.round(P.scale*100)}%)`:'')+
+      `<br>${calls} draws · ${(tris/1000).toFixed(0)}k tris<br>${esc(G.quality?G.quality.level:'')}${G.quality&&G.quality.cap?' · '+G.quality.cap+' cap':''}`;
+    if(fpsEl&&fpsEl._h!==fpsTxt){ fpsEl._h=fpsTxt; fpsEl.innerHTML=fpsTxt; } }
   requestAnimationFrame(rafCount); }
 function setFps(on){ const R=G.renderer; if(R&&R.info){ R.info.autoReset=!on; if(!on)R.info.reset(); }
+  if(fpsEl){ fpsEl.hidden=!on; if(!on){ fpsEl.innerHTML=''; fpsEl._h=''; } }
   if(on){ frames=0; fpsT=performance.now(); requestAnimationFrame(rafCount); } else fpsTxt=''; }
 
 /* ---------------------------------------------------------------- panel */
@@ -314,7 +321,11 @@ const css=`
 #dtBadge{position:fixed;top:calc(20px + env(safe-area-inset-top,0px));left:calc(50% + 32px);z-index:6;pointer-events:none;
   font:500 11.5px var(--body);letter-spacing:.06em;color:var(--bone);background:rgba(20,15,26,.62);border:1px solid rgba(214,188,255,.5);
   border-radius:11px;padding:3px 9px;text-shadow:none;white-space:nowrap;font-variant-numeric:tabular-nums;max-width:calc(50% - 48px);overflow:hidden;text-overflow:ellipsis}
-#dtBadge b{color:#ffcf7a;letter-spacing:.16em}`;
+#dtBadge b{color:#ffcf7a;letter-spacing:.16em}
+#dtFps{position:fixed;left:calc(12px + env(safe-area-inset-left,0px));top:calc(64px + env(safe-area-inset-top,0px));z-index:6;pointer-events:none;
+  font:500 11.5px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace;color:#efe6d6;background:rgba(20,15,26,.66);border:1px solid rgba(214,188,255,.4);
+  border-radius:6px;padding:5px 8px;font-variant-numeric:tabular-nums;white-space:nowrap}
+#dtFps b{color:#ffcf7a;font-size:13px}`;
 let card=null, sheet=null, noteEl=null, opener=null, lastNote='';
 function build(){
   const st=document.createElement('style'); st.textContent=css; document.head.appendChild(st);
@@ -323,6 +334,7 @@ function build(){
   sheet=document.createElement('div'); sheet.className='sheet'; card.appendChild(sheet); document.body.appendChild(card);
   sheet.addEventListener('click',onClick);
   badgeEl=document.createElement('div'); badgeEl.id='dtBadge'; badgeEl.hidden=true; document.body.appendChild(badgeEl);
+  fpsEl=document.createElement('div'); fpsEl.id='dtFps'; fpsEl.hidden=!DT.cheats.fps; fpsEl.setAttribute('aria-hidden','true'); document.body.appendChild(fpsEl);
   // entry links on the title card and in the pause menu
   for(const id of ['title','pause']){ const sh=$(id)&&$(id).querySelector('.sheet'), acts=sh&&sh.querySelector('.actions'); if(!acts)continue;
     const d=document.createElement('div'); d.className='dt-entry'; d.innerHTML='<button type="button" data-dt-open>Test tools</button>';
@@ -351,7 +363,7 @@ function render(){
     h+=`<button type="button" class="dt-start${s.main?' main':''}" data-start="${s.id}"><span>${esc(s.name)}</span><small>${esc(sub)}</small></button>`;
   }
   h+=`</div><div class="dt-h">Cheats</div><div class="seg">`;
-  for(const [k,l] of [['god','God mode'],['stamina','Infinite stamina'],['ether','Infinite ether · lamp never drains'],['fps','FPS & draw calls']])
+  for(const [k,l] of [['god','God mode'],['stamina','Infinite stamina'],['ether','Infinite ether · lamp never drains'],['fps','Show FPS']])
     h+=`<button type="button" data-cheat="${k}" aria-pressed="${!!DT.cheats[k]}">${l}</button>`;
   h+=`</div>`;
   if(title)h+=`<p class="dt-note" style="color:#6c5a5f">Pick a start point; the other tools work once you’re playing (toggles carry over).</p>`;
@@ -444,7 +456,7 @@ G.system('devtools',{order:-5,modes:'always',
     if(DT.cheats.fps&&newFrame&&G.renderer&&G.renderer.info){ newFrame=false; const r=G.renderer.info.render; calls=r.calls; tris=r.triangles; G.renderer.info.reset(); }
     if(G.state.mode==='play')applyCheats();
     if(card&&!card.hidden){ renderT-=G.dt||0; if(renderT<=0){ renderT=1; const t=sheet.querySelector('[data-tide]'); if(t&&t.closest('.dt-row')){ const lbl=t.closest('.dt-row').querySelector('small'); if(lbl)lbl.textContent='('+tideName()+')'; } } }
-    if(badgeEl){ const want=!((anyCheat()||G.testSaves||DT.cheats.fps)&&G.state.mode!=='title'); if(badgeEl.hidden!==want)badge(); }
+    if(badgeEl){ const want=!((anyCheat()||G.testSaves)&&G.state.mode!=='title'); if(badgeEl.hidden!==want)badge(); }
   }
 });
 })();
