@@ -19,9 +19,16 @@ HELP=r"""(()=>{ window.T={ev:[],bar:[]};
   T.suppressStag=()=>{ const M=G.monsters; if(!M)return 0; let n=0; for(const m of M.list.slice()){ if(m.finale&&m.alive&&!m.gloaming){ M.despawn(m); n++; } } return n; };
   T.until=(f,max)=>{ let k=0; while(!f()&&k<max){ G.step(1/30,1); k++; } return k; };
   T.strikeBoss=(dmg)=>{ const hb=G.finaleBoss.debug.bodyHB; return G.combat.strike({x:hb.pos.x+2.4,y:hb.pos.y+1,z:hb.pos.z,radius:1.1,team:'player',damage:dmg||2,knockback:5,kind:'melee'}).includes(hb); };
+  T.sectorVisible=()=>{ let v=false; G.scene.traverse(o=>{ if(o.isMesh&&o.visible&&o.material&&o.material.uniforms&&o.material.uniforms.uTh0)v=true; }); return v; };
   T.near=()=>{ const b=T.B().pos; const L=G.world.lighthouse; const a=Math.atan2(b.x-L.x,b.z-L.z); G.player.teleport(b.x-Math.sin(a)*4,42,b.z-Math.cos(a)*4,a); G.player.hp=G.player.maxHp; };
   T.god=on=>{ if(G.devtools&&G.devtools.cheats)G.devtools.cheats.god=!!on; };
   T.ev0=()=>T.ev.length;
+  // screenshot camera (the player camera sits low behind the Traveler; an 11 m boss needs a wider view)
+  T.view=(d,side,h,lookH)=>{ const b=T.B().pos; const L=G.world.lighthouse; let a=Math.atan2(b.x-L.x,b.z-L.z)+(side||0); const x=b.x-Math.sin(a)*d, z=b.z-Math.cos(a)*d; G.player.teleport(x,42,z,a); G.step(1/30,4);
+    const cp=new G.THREE.Vector3(x-Math.sin(a)*6,42+(h==null?3:h),z-Math.cos(a)*6), lp=new G.THREE.Vector3(b.x,42+(lookH==null?5:lookH),b.z);
+    G.scene.onBeforeRender=(r,s,c)=>{ c.position.copy(cp); c.lookAt(lp); c.updateMatrixWorld(); }; };
+  T.camAt=(cp,lp)=>{ G.scene.onBeforeRender=(r,s,c)=>{ c.position.set(cp[0],cp[1],cp[2]); c.lookAt(lp[0],lp[1],lp[2]); c.updateMatrixWorld(); }; };
+  T.camOff=()=>{ G.scene.onBeforeRender=()=>{}; };
   return true; })()"""
 
 STEPS=[
@@ -30,7 +37,7 @@ STEPS=[
    G.player.teleport(L.x-14,42,L.z-6,-2.3); const k=T.until(()=>T.ev.some(e=>e[0]==='finale:start'),200);
    const stag=T.suppressStag(); G.step(1/30,2); const B=T.B();
    return {ok:T.FB().active&&B.state==='intro'&&stag>=1,frames:k,stag,state:B.state,pos:[B.pos.x.toFixed(1),B.pos.z.toFixed(1)],bar:T.lastBar}; })()"""),
- ("shot:rise", "SHOT rise 'G.step(1/30,50); const B=G.finaleBoss.debug.B, L=G.world.lighthouse; G.player.teleport(B.pos.x+16,42,B.pos.z+12,Math.atan2(-16,-12));'"),
+ ("shot:rise", "SHOT rise 'G.step(1/30,100); const B=G.finaleBoss.debug.B, L=G.world.lighthouse; T.camAt([L.x-22,47,L.z-12],[B.pos.x,47,B.pos.z])'"),
  ("intro", r"""(()=>{ const B=T.B(); const r0=B.rise; T.until(()=>B.state==='fight',400); T.suppressStag();
    return {ok:B.state==='fight'&&B.rise===1&&T.lastBar==='The Gloaming',rise0:+r0.toFixed(2),state:B.state,hp:B.hp}; })()"""),
  ("untouchable", r"""(()=>{ T.god(true); const B=T.B(); T.until(()=>!T.FB().solid&&B.tt>2.2,300); T.near(); const hp=B.hp; const hit=T.strikeBoss(3);
@@ -38,7 +45,9 @@ STEPS=[
  ("warnBeforeSolid", r"""(()=>{ const B=T.B(); let maxWarn=0; T.until(()=>{ maxWarn=Math.max(maxWarn,B.warn); return T.FB().solid; },400);
    return {ok:T.FB().solid&&maxWarn>.4,maxWarn:+maxWarn.toFixed(2),solidT:+B.solidT.toFixed(2),omega:+B.omega.toFixed(3)}; })()"""),
  ("inBeam", r"""(()=>{ const B=T.B(); T.near(); const hp=B.hp; T.strikeBoss(2); G.step(1/30,6); T.strikeBoss(2); return {ok:B.hp===hp-4,hp,after:B.hp}; })()"""),
- ("shot:solid", "SHOT solid 'G.headless.draw(3)'"),
+ ("shot:solid", "SHOT solid 'T.view(9,.5,2.5,5)'"),
+ ("realSwing", r"""(()=>{ const B=T.B(); T.until(()=>T.FB().solid&&B.solidT>2,500); T.near(); const hp=B.hp;
+   G.input.setVirtual('attack',true); G.step(1/30,3); G.input.setVirtual('attack',false); G.step(1/30,20); return {ok:B.hp<hp,hp,after:B.hp}; })()"""),
  ("cadence", r"""(()=>{ const B=T.B(); const ts=[]; let was=T.FB().solid, t0=G.time;
    T.until(()=>{ const s=B.solidT>0; if(s&&!was)ts.push(+(G.time-t0).toFixed(2)); was=s; return ts.length>=2; },900);
    const gap=ts.length>=2?ts[1]-ts[0]:null; return {ok:gap!=null&&gap>6.5&&gap<10.5,ts,gap}; })()"""),
@@ -48,36 +57,39 @@ STEPS=[
    return {ok:dec==='slam'&&G.player.hp<hp&&ar>=1,atk:dec,hp,after:G.player.hp,hardHands:ar}; })()"""),
  ("handHit", r"""(()=>{ const ar=G.finaleBoss.debug.arms.find(a=>a.hardT>0); if(!ar)return {ok:false,why:'no hand'}; const B=T.B(), hp=B.hp;
    G.combat.strike({x:ar.hb.pos.x,y:ar.hb.pos.y+.5,z:ar.hb.pos.z,radius:2.4,team:'player',damage:3,kind:'melee'}); return {ok:B.hp<hp,hp,after:+B.hp.toFixed(2)}; })()"""),
- ("sweep", r"""(()=>{ T.god(true); const B=T.B(); T.until(()=>!B.atk&&!T.FB().solid&&B.tt>4,400); G.finaleBoss.debug.attack('sweep'); G.step(1/30,10);
-   return {ok:B.atk&&B.atk.kind==='sweep'&&B.atk.phase==='wind',phase:B.atk&&B.atk.phase}; })()"""),
- ("shot:sweep", "SHOT sweep 'G.headless.draw(3)'"),
+ ("sweep", r"""(()=>{ T.god(true); const B=T.B(); T.until(()=>!T.FB().solid&&B.tt>4,400); T.near(); G.finaleBoss.debug.attack('sweep'); G.step(1/30,10);
+   const wind=!!(B.atk&&B.atk.kind==='sweep'&&B.atk.phase==='wind'), dec=T.sectorVisible(); T.god(false); G.player.hp=10; const hp=G.player.hp;
+   T.until(()=>!B.atk||B.atk.phase==='recover',120); const hurt=G.player.hp<hp; T.god(true);
+   return {ok:wind&&dec&&hurt,wind,decal:dec,hurt}; })()"""),
+ ("shot:sweep", "SHOT sweep 'T.until(()=>!T.B().atk,200); G.finaleBoss.debug.attack(\"sweep\"); G.step(1/30,25); T.view(9,.5,6,0)'"),
  ("hollowsCap", r"""(()=>{ const D=G.finaleBoss.debug; T.until(()=>!T.B().atk,200); D.attack('call'); G.step(1/30,80); D.attack('call'); G.step(1/30,80); D.attack('call'); G.step(1/30,80);
    const n=D.hollows.filter(m=>m.alive&&!m.dying).length; return {ok:n>=2&&n<=3,n}; })()"""),
  ("phase2", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B; D.setHp(17); G.step(1/30,60);
    return {ok:B.phase===2&&D.roots.every(r=>r.active&&!r.cut),phase:B.phase,roots:D.roots.map(r=>[r.active,r.hp,+r.grow.toFixed(2)])}; })()"""),
  ("tendrilClimb", r"""(()=>{ const D=G.finaleBoss.debug; G.step(1/30,300); return {ok:D.roots.some(r=>r.grow>.15),grow:D.roots.map(r=>+r.grow.toFixed(2))}; })()"""),
- ("shot:tendrils", "SHOT tendrils 'const L=G.world.lighthouse; G.player.teleport(L.x-17,42,L.z+9,Math.atan2(17,-9)); G.step(1/30,4);'"),
- ("gutter", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B, r=D.roots[0]; r.delay=0; r.grow=.995; G.step(1/30,3); const g=B.gutterT;
+ ("shot:tendrils", "SHOT tendrils 'const L=G.world.lighthouse; G.player.teleport(L.x-12,42,L.z+4,Math.atan2(12,-4)); G.step(1/30,4); T.camAt([L.x-30,50,L.z+6],[L.x,55,L.z])'"),
+ ("gutter", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B, r=D.roots[0]; r.delay=0; r.grow=.999; G.step(1/30,6); const g=B.gutterT;
    let solidSeen=false; for(let i=0;i<150;i++){ G.step(1/30,1); if(B.solidT>0)solidSeen=true; }
    return {ok:g>5&&!solidSeen&&r.grow<.2&&T.ev.some(e=>e[0]==='gloaming:gutter'),gutterT:+g.toFixed(2),solidSeen,grow:+r.grow.toFixed(2)}; })()"""),
  ("cutRoots", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B; let cuts=0;
    for(const r of D.roots){ for(let k=0;k<2;k++){ G.combat.strike({x:r.pos.x+1,y:r.pos.y+.8,z:r.pos.z,radius:1,team:'player',damage:2,kind:'melee'}); G.step(1/30,4); } if(r.cut)cuts++; }
    G.step(1/30,2); return {ok:cuts===3&&B.staggerT>4&&G.finaleBoss.solid,cuts,staggerT:+B.staggerT.toFixed(2)}; })()"""),
  ("staggerHit", r"""(()=>{ const B=T.B(); T.near(); const hp=B.hp; T.strikeBoss(2); return {ok:B.hp<hp,hp,after:+B.hp.toFixed(2)}; })()"""),
- ("drawCalls", r"""new Promise(res=>{ const r=G.renderer; G.headless&&G.headless.draw(12); let n=0;
-   requestAnimationFrame(function f(){ if(n===0){ r.info.autoReset=false; r.info.reset(); } if(++n<=8)return requestAnimationFrame(f);
-     const c=Math.round(r.info.render.calls/8); r.info.autoReset=true; res({ok:c<=300,calls:c}); }); })"""),
+ ("drawCalls", r"""new Promise(res=>{ const r=G.renderer, D=G.finaleBoss.debug; T.near();
+   const measure=cb=>{ G.headless&&G.headless.draw(12); let n=0; requestAnimationFrame(function f(){ if(n===0){ r.info.autoReset=false; r.info.reset(); } if(++n<=8)return requestAnimationFrame(f);
+     const c=Math.round(r.info.render.calls/8); r.info.autoReset=true; cb(c); }); };
+   measure(withBoss=>{ D.setVisible(false); measure(without=>{ D.setVisible(true); G.step(1/30,2); res({ok:withBoss-without<=30,total:withBoss,gloaming:withBoss-without}); }); }); })"""),
  ("death", r"""(()=>{ T.god(false); const D=G.finaleBoss.debug, B=D.B; G.player.hurt({damage:99,kind:'melee',dir:new G.THREE.Vector3(1,0,0),knockback:0,ignoreIframes:true}); G.step(1/30,20);
    return {ok:G.state.mode==='dead'&&!G.player.alive,mode:G.state.mode,bossState:B.state}; })()"""),
- ("shot:death", "SHOT death 'G.step(1/30,30)'"),
- ("reset", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B; G.player.respawn(G.state.checkpoint.clone(),G.state.checkpointYaw||0); G.setMode('play'); G.step(1/30,3);
-   const st={state:B.state,hp:B.hp,phase:B.phase,roots:D.roots.filter(r=>r.active).length,hollows:D.hollows.filter(m=>m.alive).length,bar:T.lastBar,ten:false};
+ ("shot:death", "SHOT death 'G.step(1/30,30); const p=G.player.pos; T.camAt([p.x+5,p.y+4,p.z+5],[p.x,p.y+.5,p.z])'"),
+ ("reset", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B; const card=!document.getElementById('dead').hidden; document.getElementById('rise').click(); G.step(1/30,3);
+   const st={state:B.state,hp:B.hp,phase:B.phase,roots:D.roots.filter(r=>r.active).length,hollows:D.hollows.filter(m=>m.alive).length,bar:T.lastBar,card,mode:G.state.mode};
    T.until(()=>B.state==='intro',200); const again=B.state;
-   return {ok:st.state==='idle'&&st.hp===G.finaleBoss.maxHp&&st.phase===1&&st.roots===0&&st.hollows===0&&st.bar===null&&again==='intro',st,again}; })()"""),
+   return {ok:st.state==='idle'&&st.hp===G.finaleBoss.maxHp&&st.phase===1&&st.roots===0&&st.hollows===0&&st.bar===null&&st.mode==='play'&&again==='intro',st,again}; })()"""),
  ("defeat", r"""(()=>{ const D=G.finaleBoss.debug, B=D.B; T.god(true); T.until(()=>B.state==='fight',400); T.suppressStag();
    D.setHp(2); T.until(()=>G.finaleBoss.solid,400); T.near(); T.strikeBoss(3); const dying=B.state; G.step(1/30,40); const s1=B.state;
    return {ok:dying==='dying',dying,s1,phase:B.phase}; })()"""),
- ("shot:dissolve", "SHOT dissolve 'G.headless.draw(3)'"),
+ ("shot:dissolve", "SHOT dissolve 'G.step(1/30,10); T.view(16,.3,3,9)'"),
  ("bossDead", r"""(()=>{ const B=T.B(); T.until(()=>B.state==='dead',300); const ev=T.ev.filter(e=>e[0]==='boss:dead');
    return {ok:B.state==='dead'&&ev.length===1&&ev[0][1]==='gloaming'&&T.lastBar===null&&document.getElementById('boss').hidden,ev,bar:T.lastBar,defeated:G.finaleBoss.defeated}; })()"""),
  ("noRestart", r"""(()=>{ G.emit('finale:start'); G.step(1/30,10); T.suppressStag(); return {ok:!G.finaleBoss.active,state:T.B().state}; })()"""),
@@ -97,7 +109,7 @@ async def main():
                 if js.startswith('SHOT'):
                     _,tag,code=js.split(' ',2); code=code.strip("'")
                     await pg.evaluate(f"(()=>{{ {code}; G.headless&&G.headless.draw(3); }})()"); await pg.wait_for_timeout(400)
-                    path=f'{OUT}/{tag}.png'; await pg.screenshot(path=path); print(f'shot {name:14s} {path}'); continue
+                    path=f'{OUT}/{tag}.png'; await pg.screenshot(path=path); await pg.evaluate('T.camOff()'); print(f'shot {name:14s} {path}'); continue
                 r=await pg.evaluate(js); good=bool(r.get('ok')) if isinstance(r,dict) else bool(r)
                 ok=ok and good; print(f"{'ok  ' if good else 'FAIL'} {name:14s} {json.dumps(r)[:400]}")
             except Exception as e: ok=False; print(f'FAIL {name:14s} {str(e)[:300]}')

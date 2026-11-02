@@ -319,7 +319,7 @@ function buildTendrils(){
   }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('aOff',new THREE.Float32BufferAttribute(off,3));
   g.setAttribute('aT',new THREE.Float32BufferAttribute(at,1)); g.setAttribute('aId',new THREE.Float32BufferAttribute(aid,1)); g.setIndex(idx);
-  tenMat=mistMat(VS_TEN,{uGrow:{value:[0,0,0]},uLive:{value:[0,0,0]},uHit:{value:[0,0,0]}},{alpha:.7,dense:.55});
+  tenMat=mistMat(VS_TEN,{uGrow:{value:[0,0,0]},uLive:{value:[0,0,0]},uHit:{value:[0,0,0]}},{alpha:1,dense:.95,ink:'#2a2140'});
   tenMesh=new THREE.Mesh(g,tenMat); tenMesh.frustumCulled=false; tenMesh.renderOrder=5; tenMesh.visible=false; G.scene.add(tenMesh);
 }
 function hideAll(){ if(!B.built)return;
@@ -468,9 +468,10 @@ function gutter(r){
 /* ---------------------------------------------------------------- the beam on it */
 function updateBeam(dt){
   const y=beamYaw();
-  if(B.yawPrev!=null&&dt>0){ const w=U.angDiff(y,B.yawPrev)/dt; if(isFinite(w)&&Math.abs(w)<6)B.omega=U.damp(B.omega,w,4,dt); }
-  B.yawPrev=y;
   const L=tower(), b=Math.atan2(B.pos.x-L.x,B.pos.z-L.z);
+  // closing speed of the beam on its bearing (the beam turns, and the Gloaming drifts round the tower too)
+  if(B.yawPrev!=null&&dt>0){ const w=(U.angDiff(y,B.yawPrev)-U.angDiff(b,B.bPrev))/dt; if(isFinite(w)&&Math.abs(w)<6)B.omega=U.damp(B.omega,w,4,dt); }
+  B.yawPrev=y; B.bPrev=b;
   let s=U.angDiff(b,y); s=((s+PI*.5)%PI+PI)%PI-PI*.5;               // two-sided beam: fold to (-PI/2, PI/2]
   const lit=beamLit()&&B.gutterT<=0;
   B.tt=Math.abs(B.omega)>.02?s/B.omega:99; if(B.tt<0)B.tt+=PI/Math.max(.02,Math.abs(B.omega));
@@ -658,6 +659,7 @@ function render(dt){
   const leanT=B.phase>1&&B.state==='fight'&&B.staggerT<=0?.35:0;
   B.lean=U.damp(B.lean,B.staggerT>0?-.3:leanT-B.recoil*.25,2,dt);
   const up=1-B.rise, by=B.pos.y-up*16;
+  bodyHB.pos.set(B.pos.x,by,B.pos.z);
   B.introK=U.damp(B.introK||0,B.state==='intro'?1:0,1.2,dt);
   for(const m of [body,shell]){ m.position.set(B.pos.x,by,B.pos.z); m.rotation.y=B.facing; const u=m.material.uniforms;
     u.uAlpha.value=(m===shell?.26*(1-.75*B.solidK):.62)*(1+.9*B.introK);
@@ -670,7 +672,7 @@ function render(dt){
   const u=armMat.uniforms; for(const ar of arms){ for(let k=0;k<4;k++)u.uP.value[ar.i*4+k].copy(ar.P[k]); u.uR.value[ar.i]=ar.R*(ar.hardT>0?1.1:1); u.uHand.value[ar.i]=ar.hand; }
   const hard=arms.some(a=>a.hardT>0);
   u.uSolid.value=Math.max(B.solidK,hard?.75:0); u.uWarn.value=B.warn; u.uFlash.value=B.flash; u.uFade.value=B.fade; u.uGround.value=plateauY()-.4; u.uLamp.value.copy(lamp); if(G.scene.fog)u.uFogC.value.copy(G.scene.fog.color);
-  if(tenMat){ const v=tenMat.uniforms; v.uSolid.value=.3+B.solidK*.4; v.uLamp.value.copy(lamp); v.uFade.value=B.fade; if(G.scene.fog)v.uFogC.value.copy(G.scene.fog.color); }
+  if(tenMat){ const v=tenMat.uniforms; v.uSolid.value=.6+B.solidK*.3; v.uWarn.value=B.gutterT>0?.8:0; v.uLamp.value.copy(lamp); v.uFade.value=B.fade; if(G.scene.fog)v.uFogC.value.copy(G.scene.fog.color); }
   // heart, hood, eyes
   const hp=heartPos(_w); heart.position.copy(hp); heart.rotation.y+=dt*.6; heart.rotation.x=Math.sin(t*.7)*.3;
   const beat=.5+.5*Math.pow(Math.max(0,Math.sin(t*(solid()?5:2.2))),3);
