@@ -140,14 +140,14 @@ function spendEther(units){
   return true;
 }
 function useVein(v){
-  if(v.room==='arena'&&!S.bossDead){ G.ui.say('You hold the vial to the seam and the light just goes out of it — swallowed. Something in this dark is drinking every scrap of light you bring.'); return; }
+  if(v.room==='arena'&&!S.bossDead){ G.ui.say('You hold the vial to the seam and the light just goes out of it — swallowed. Something in this dark is drinking every scrap of light you bring.',{priority:'high'}); return; }
   if(v.free&&!S.said.freeVein){
     S.said.freeVein=1; lightRoom(v.room,v);
     setTimeout(()=>G.ui.say('Old ether, left in the rock by whoever came down here before. It takes the lantern’s touch and runs bright. The other seams are dry — they’ll want ether of your own, a vial’s worth each.'),600);
     return;
   }
   if(!spendEther(VEIN_COST)){
-    G.ui.say(vials()?'Not enough ether left in your vials. The vein needs '+VEIN_COST+' — brew more at the alchemy table.':'The seam is dry, and it’s thirsty. A vial of ether — '+VEIN_COST+' units, brewed at the alchemy table — would wake it.');
+    G.ui.say(vials()?'Not enough ether left in your vials. The vein needs '+VEIN_COST+' — brew more at the alchemy table.':'The seam is dry, and it’s thirsty. A vial of ether — '+VEIN_COST+' units, brewed at the alchemy table — would wake it.',{priority:'high',key:'vein'});
     G.emit('cave:veinDry',{room:v.room}); return;
   }
   lightRoom(v.room,v);
@@ -383,8 +383,8 @@ function placeRaft(dt){
 }
 function loadRaft(){
   const L=lantern(); if(!L)return;
-  if(!(G.moths&&G.moths.baited)){ G.ui.say('A bare lantern on a raft is just a lantern on a raft. The moths would need the bait to follow it.'); return; }
-  if(L.shut){ G.ui.say('Open the shutter first — the moths need the light to settle by.'); return; }
+  if(!(G.moths&&G.moths.baited)){ G.ui.say('A bare lantern on a raft is just a lantern on a raft. The moths would need the bait to follow it.',{priority:'high',key:'raft'}); return; }
+  if(L.shut){ G.ui.say('Open the shutter first — the moths need the light to settle by.',{priority:'high',key:'raft'}); return; }
   L.carried=false; L.shut=false; L.pos.set(API.raft.pos.x,API.raft.pos.y+.12,API.raft.pos.z);
   G.emit('lantern:drop',{pos:L.pos.clone(),raft:true});
   API.raft.lantern=true; API.raft.state='loaded'; raftDrifting=false; G.emit('cave:raft',{state:'loaded'});
@@ -466,7 +466,7 @@ function updateDrafts(dt){
       if(P.pos.distanceTo(API.vents[0].pos)<22){ const L=lantern(); if(!(L&&L.shut))say('gustWarn','The floor ahead hisses, and the air drags toward the holes in it. Close the lantern’s shutter — the moths will cling to the cage — and cross between the gusts.'); } }
     if(ph==='burst'){ API.vents.forEach(v=>{ G.emit('cave:gust',{i:v.i,pos:v.pos.clone(),phase:'burst',lead:0});
       if(G.ink&&G.ink.burst)G.ink.burst(V(v.pos.x,v.pos.y+.6,v.pos.z),{n:14,speed:2.5,size:[.6,1.8],life:[.6,1.3],up:6,embers:0,color:'#c3d9de',alpha:.35}); });
-      if(!gustSaid&&P.pos.distanceTo(API.vents[0].pos)<14){ gustSaid=true; say('gust','The sea breathes up through the floor — a roaring gust of spray. Any moth caught in it is simply gone.'); } }
+      if(!gustSaid&&P.pos.distanceTo(API.vents[0].pos)<14){ gustSaid=true; say('gust','The sea breathes up through the floor — a roaring gust of spray. Any moth caught in it is simply gone.',{priority:'high'}); } }
   }
   g.phase=ph; g.next=ph==='telegraph'?GUST_PERIOD-gustClock:ph==='burst'?0:tele0-gustClock;
   // visuals: a hissing build of spray, then a tall column

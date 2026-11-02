@@ -364,7 +364,7 @@ function claimMoths(){
     // least-populated sample first: an even outline
     let best=0,bn=1e9; for(let i=0;i<NS;i++){ let c=0; for(const o of utMoths)if(o._ut===i)c++; c+=(i>=10?.5:0); if(c<bn){bn=c;best=i;} }
     m._ut=best; m.prey=preyS[best]; utMoths.push(m); }
-  if(utMoths.length>n0&&!S.said.reveal&&utMoths.length>=6)later(1.8,()=>{ if(B.state!=='sunk'&&wantDark())say('reveal','In the dark the moths find it at once — they pour off you and settle on something huge in the pool. A coil of rope and ink, wound around a light that isn’t one. Where they land, you can see it.'); });
+  if(utMoths.length>n0&&!S.said.reveal&&utMoths.length>=6)later(1.8,()=>{ if(B.state!=='sunk'&&wantDark())say('reveal','In the dark the moths find it at once — they pour off you and settle on something huge in the pool. A coil of rope and ink, wound around a light that isn’t one. Where they land, you can see it.',{priority:'high'}); });
 }
 function releaseMoths(){
   const baited=G.moths&&G.moths.baited;
@@ -408,13 +408,13 @@ function hitBody(i,info){
   const pos=samples[i];
   if(sampW[i]<.28||B.vis<.5){                   // nothing there to hit: the staff passes through the black like water
     const I=INK(); I&&I.burst(V(pos.x,Math.min(pos.y,floorY+1.2),pos.z),{n:6,speed:1.5,size:[.3,.8],life:[.3,.7],up:.5,embers:0,drops:3,color:'#0b0a10'});
-    if(B.vis<.5)later(.4,()=>say('through','The staff goes through the dark like it’s water. There is something there — you felt it give — but you can’t strike what you can’t see.'));
+    if(B.vis<.5)later(.4,()=>say('through','The staff goes through the dark like it’s water. There is something there — you felt it give — but you can’t strike what you can’t see.',{key:'through'}));
     return;
   }
   B.lastHitT=G.time; B.lastHitKind=info.kind;
   damage(info.damage||1,info,false,pos);
   if(i>=10){ const ar=arms[(i-10)/3|0]; ar.hit=1; }
-  if(B.state==='dragWind'&&i<4){ B.drag=0; setB('recover'); later(.2,()=>say('dragSaved','You strike at the coils dragging them down and they let go. The moths spill back up into the dark.')); }
+  if(B.state==='dragWind'&&i<4){ B.drag=0; setB('recover'); later(.2,()=>say('dragSaved','You strike at the coils dragging them down and they let go. The moths spill back up into the dark.',{priority:'high'})); }
 }
 function hitCore(info){
   if(B.state!=='miss'||B.expose<=0||info.kind==='swarm')return;
@@ -449,7 +449,7 @@ function startFight(){
   if(!B.built)buildUndertow(); arenaGeo();
   setB('rise'); setVisible(true);
   if(!B.started){ B.started=true; G.emit('cave:bossStart',{}); }
-  if(!S.bossSeen){ S.bossSeen=true; G.ui.say('The pool is very still. Then, slowly, it isn’t — the water heaves as if something under it has turned over in its sleep.'); }
+  if(!S.bossSeen){ S.bossSeen=true; G.ui.say('The pool is very still. Then, slowly, it isn’t — the water heaves as if something under it has turned over in its sleep.',{priority:'high'}); }
   G.emit('cave:bossTelegraph',{kind:'rise',pos:A.clone(),lead:3}); voice('rise');
   for(let i=0;i<4;i++)later(i*.6,()=>ripple(A.x,A.z,1,UT.poolR+2,2.2,.45));
   B.phaseName='';
@@ -459,7 +459,7 @@ function chooseAttack(force){
   const ph=phaseNow(), pp=G.player.pos;
   if(force==='lash')ph.high=ph.drag=false;
   if(ph.drag&&B.dragCD<=0&&utMoths.length>=4){ B.dragCD=UT.dragEvery; setB('dragWind'); B.drag=0; telegraph('drag',A,UT.dragWind);
-    if(!S.said.drag)later(.3,()=>{ say('drag','The lower coils are churning — it’s dragging the moths down with it! Strike the coils, or open the lantern and call them back.'); G.ui.toast&&G.ui.toast('The swarm is being pulled under','Strike the coils or open the lantern'); }); return; }
+    if(!S.said.drag)later(.3,()=>{ say('drag','The lower coils are churning — it’s dragging the moths down with it! Strike the coils, or open the lantern and call them back.',{priority:'high'}); G.ui.toast&&G.ui.toast('The swarm is being pulled under','Strike the coils or open the lantern'); }); return; }
   if(ph.high&&rnd()<.6){ setB('surgeWind'); telegraph('surge',A,UT.surgeWind); B.surge=null; return; }
   // lash: the arm nearest the player sweeps across them
   const thp=Math.atan2(pp.z-A.z,pp.x-A.x);
@@ -498,7 +498,7 @@ function updateFight(dt){
       if(k>=1){ if(L.hit){ ar.mode='rest'; setB('recover'); }
         else { ar.mode='slam'; B.slumpDir=L.th1; setB('miss'); B.expose=UT.exposeT; G.ui.shake&&G.ui.shake(.4); G.emit('cave:bossMiss',{});
           const q=ar.pts[NA-4]; INK()&&INK().burst(V(q.x,floorY+.3,q.z),{n:30,speed:3,size:[.5,1.6],life:[.6,1.3],up:1,embers:12,drops:12});
-          if(!S.said.core)later(.5,()=>say('core','It overreached — the coil has flung itself half out of the pool, and at the end of it something glows: a broken lens. Strike it!')); } }
+          if(!S.said.core)later(.5,()=>say('core','It overreached — the coil has flung itself half out of the pool, and at the end of it something glows: a broken lens. Strike it!',{priority:'high'})); } }
       break;}
     case 'miss':{
       B.slump=Math.min(1,B.slump+dt*3.5); B.expose-=dt;
@@ -575,7 +575,7 @@ function onDefeated(restored){
   G.emit('cave:bossDead',{pos:A.clone()});
   G.emit('monster:killed',{kind:'undertow',pos:V(A.x,floorY,A.z),boss:true});
   try{ G.cave&&G.cave.collapseWall&&G.cave.collapseWall(); }catch(e){console.error('collapseWall',e);}
-  later(1.2,()=>{ G.ui.say('The black lets go of it all at once. What it was holding rises out of the pool — a piece of a keeper’s lens, still warm, still turning toward a light that isn’t there.'); G.ui.toast&&G.ui.toast('The Undertow','The lens is free'); });
+  later(1.2,()=>{ G.ui.say('The black lets go of it all at once. What it was holding rises out of the pool — a piece of a keeper’s lens, still warm, still turning toward a light that isn’t there.',{priority:'high'}); G.ui.toast&&G.ui.toast('The Undertow','The lens is free'); });
   later(2.6,()=>{ try{ G.cave&&G.cave.lightRoom&&G.cave.lightRoom('arena'); }catch(e){console.error('arena light',e);} }); // the lens rises and the arena's veins catch its light
   later(5.5,()=>{ try{ G.moths&&G.moths.jar&&G.moths.jar.give&&G.moths.jar.give(); }catch(e){console.error('jar',e);} showPage(3,false); });
   B.woundBeat=true;
@@ -695,7 +695,7 @@ function buildPage(n){
 }
 function showPage(n,instant){ const o=buildPage(n); o.shown=true; o.g.visible=true; if(instant)o.fade=1; }
 function readPage(n){
-  G.ui.say(PAGES[n].text,'Maren’s logbook');
+  G.ui.say(PAGES[n].text,'Maren’s logbook',{priority:'high',key:'page'});
   const first=!S.pages[n]; S.pages[n]=true;
   G.emit('cave:page',{n,first});
   if(first){ const k=Object.keys(S.pages).length; G.ui.toast&&G.ui.toast('Maren’s logbook',k+' of 3 pages'); }
@@ -731,7 +731,7 @@ function updateDiscovery(dt){
     const use=o.use; o.use=function(){ const r=use.apply(this,arguments); if(looping()&&!S.discovered)later(4.5,()=>discover('logbook')); return r; }; }
 }
 G.on('cave:wound',()=>{ if(!B.woundBeat)return; B.woundBeat=false;   // cave.js reveals it once the far wall is down
-  later(4,()=>say('wound','Through the fallen wall, far down: a crack in the sea floor, breathing violet. This is where it comes in.')); });
+  later(4,()=>say('wound','Through the fallen wall, far down: a crack in the sea floor, breathing violet. This is where it comes in.',{priority:'high'})); });
 G.on('tide:low',()=>{ // a nudge each low tide until the player has been inside
   if(!S.discovered||S.entered||!looping())return; const P=G.player, mp=mouthPos(); if(!P||!mp)return;
   if(Math.hypot(P.pos.x-mp.x,P.pos.z-mp.z)<150)later(2.5,()=>{ if(!S.entered)setQuest(); });

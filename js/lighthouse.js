@@ -175,8 +175,8 @@ function onDoorBlocked(){
   if(G.time-S.blockT>1){ S.blockT=G.time; G.emit('door:blocked',{reason}); }
   if(G.time-S.lastBlockSay>9){
     S.lastBlockSay=G.time;
-    if(reason==='shut') G.ui.say('The black in the doorway pushes back against you. Not with the shutter closed.');
-    else if(!S.said.door){ S.said.door=true; G.ui.say('The doorway is black. Not dark, black. One step in and you can’t see your own hands. You back out.'); }
+    if(reason==='shut') G.ui.say('The black in the doorway pushes back against you. Not with the shutter closed.',{priority:'high',key:'door'});
+    else if(!S.said.door){ S.said.door=true; G.ui.say('The doorway is black. Not dark, black. One step in and you can’t see your own hands. You back out.',{priority:'high',key:'door'}); }
   }
 }
 
@@ -589,7 +589,7 @@ function buildStorm(){
     use(){ const T=storm(); const first=!T.found; T.found=true; T.carried=true; T.dark=false;
       G.emit('storm:pickup',{first});
       if(first){ G.ui.toast('Halloran’s storm lantern','Plain oil, plain flame');
-        G.ui.say('An old storm lantern, oil still sloshing in the well. The wick takes on the first strike: a small, ordinary, amber flame.'); } }});
+        G.ui.say('An old storm lantern, oil still sloshing in the well. The wick takes on the first strike: a small, ordinary, amber flame.',{priority:'high'}); } }});
   G.player&&G.player.poseHooks&&G.player.poseHooks.push(T=>{ // hold it out like the keeper's lantern (player.js only poses for G.items.lantern)
     if(!storm().carried||lantern().carried||G.player.gliding)return;
     T.shLX=-.95; T.shLZ=.22; T.shLY=-.35; T.elL=-.55; T.wrLX=.5; });
@@ -656,7 +656,7 @@ function buildSill(){
   logInteract=G.interact.add({pos:()=>V(wx(LOG_A,GLASS_R-.75),TOP,wz(LOG_A,GLASS_R-.75)),radius:1.7,priority:4,
     label:'Read the logbook on the sill',
     enabled:()=>inRoom(G.player.pos)&&!S.fail,
-    use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook');
+    use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook',{priority:'high',key:'logbook'});
       if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Under the sill the dead moths lie in drifts.'),400); }
       G.flag('logbook',true); G.emit('logbook:read'); }});
 }
@@ -712,7 +712,7 @@ function startCure(){
   L.carried=false; L.shut=false; L.inCradle=true; L.pos.copy(cradlePos);
   S.cure={t:0,stage:0};
   G.emit('lamp:placed');
-  G.ui.say('You set the lantern in the cradle at the heart of the lamp. The swarm pours up through the hatch after it.');
+  G.ui.say('You set the lantern in the cradle at the heart of the lamp. The swarm pours up through the hatch after it.',{priority:'high'});
 }
 S.startCure=startCure;
 /* save/load support: jump straight to finished states without replaying the sequences */
@@ -720,9 +720,9 @@ S.restoreCured=()=>{ const L=lantern(); S.cure=null; S.cured=true; G.atmo.cured=
 S.restoreStaff=()=>{ S.staffTaken=true; G.items.staff.owned=true; if(staffObj){staffObj.visible=false;staffGlow.visible=false;staffLight.intensity=0;} };
 function updateCure(dt){
   const C=S.cure; if(!C)return; C.t+=dt; const t=C.t;
-  if(C.stage===0&&t>4.5){C.stage=1;G.ui.say('They aren’t circling the light. They’re eating the black thing wrapped around the lens. They always were.');}
+  if(C.stage===0&&t>4.5){C.stage=1;G.ui.say('They aren’t circling the light. They’re eating the black thing wrapped around the lens. They always were.',{priority:'high'});}
   if(t>7&&!lantern().cured){lantern().cured=true;}
-  if(C.stage===1&&t>9.5){C.stage=2;G.ui.say('The lens catches. Clean light, warm as a hearth, sweeps out across the water.');}
+  if(C.stage===1&&t>9.5){C.stage=2;G.ui.say('The lens catches. Clean light, warm as a hearth, sweeps out across the water.',{priority:'high'});}
   if(C.stage===2&&t>14){C.stage=3; S.cured=true; G.atmo.cured=1; G.emit('lamp:cured');}
   if(C.stage===3&&t>15.5){ S.cure=null; }
 }
@@ -732,20 +732,20 @@ function startFail(){
   T.carried=false; T.inCradle=true; T.pos.copy(cradlePos);
   S.fail={t:0,stage:0,drip:0};
   G.emit('storm:placed');
-  G.ui.say('You set Halloran’s lantern in the cradle. For a moment the flame stands up tall and clean beneath the lens.');
+  G.ui.say('You set Halloran’s lantern in the cradle. For a moment the flame stands up tall and clean beneath the lens.',{priority:'high'});
 }
 S.startFail=startFail;
 function updateFail(dt){
   const F=S.fail; if(!F)return; F.t+=dt; const t=F.t, T=storm();
   // the black leans down the cradle arms and drinks
   F.drip-=dt; if(t>1.1&&t<4.2&&F.drip<=0&&G.ink){ F.drip=.22; G.ink.burst(V(cradlePos.x+(Math.random()-.5)*.3,cradlePos.y+.35,cradlePos.z+(Math.random()-.5)*.3),{n:6,speed:.6,size:[.15,.5],life:[.4,.9],up:-.4,embers:2,drops:3}); }
-  if(F.stage===0&&t>1.8){ F.stage=1; G.ui.say('The black around the lens leans down and drinks. The flame gutters violet, then nothing.'); }
+  if(F.stage===0&&t>1.8){ F.stage=1; G.ui.say('The black around the lens leans down and drinks. The flame gutters violet, then nothing.',{priority:'high'}); }
   if(F.stage===1&&t>4.6){ F.stage=2; S.swell=1.2; G.ui.shake&&G.ui.shake(.25);
     if(G.ink)G.ink.burst(lampCenter,{n:40,speed:2.2,size:[.4,1.4],life:[.8,1.6],up:.2,embers:16,drops:8}); }
   if(F.stage===2&&t>5.6){
     S.fail=null; T.inCradle=false; T.failed=true; T.carried=true; T.dark=false; G.flag('stormFailed',true);
     G.emit('lamp:failed');
-    G.ui.say('You snatch the lantern back. The wick catches again, barely. The thing on the lens is bigger than it was, and it has noticed you.');
+    G.ui.say('You snatch the lantern back. The wick catches again, barely. The thing on the lens is bigger than it was, and it has noticed you.',{priority:'high'});
   }
 }
 S.restoreFailed=()=>{ const T=storm(); T.found=true; T.failed=true; T.inCradle=false; S.fail=null; S.swell=1.2; };
@@ -759,7 +759,7 @@ function updatePulse(dt,P){
     G.emit('lamp:pulse'); }
   S.pulseA+=dt; const a=S.pulseA;
   S.pulseK=a<.25?U.smooth(0,.25,a):1-U.smooth(.25,1.1,a);
-  if(S.stormNear>.55&&storm().carried) say('pulse','Too close. Every time the black swells toward you, your little flame nearly goes out.');
+  if(S.stormNear>.55&&storm().carried) say('pulse','Too close. Every time the black swells toward you, your little flame nearly goes out.',{priority:'high'});
 }
 /* the beam, for the finale boss. Heading convention (like G.player.heading): yaw() is the angle whose horizontal direction is
    (sin yaw, 0, cos yaw) along one arm; the beam is double-ended, so yaw()+PI is the other arm. lit once cured.
@@ -781,7 +781,7 @@ function updateTriggers(){
     if(L.carried&&L.lit()) say(S.said.enterStorm?'enter2':'enter',S.said.enterStorm?'The violet light goes up the stair ahead of you, and this time the moths come with it.':'Inside, the dark gives way to the lantern an arm’s length at a time. Stone stairs wind up around a central column.');
     else if(storm().carried&&!storm().failed) say('enterStorm','Inside, the dark gives way to the little amber flame an arm’s length at a time. Stone stairs wind up around a central column.');
     if(!G.quest&&!S.said.objClimb){S.said.objClimb=true;G.ui.objective('Climb to the lamp room');}
-    if(L.carried&&P.y>BASE+8) say('mid','The moths come up the stairwell behind you like smoke.');
+    if(L.carried&&P.y>BASE+8) say('mid','The moths come up the stairwell behind you like smoke.',{priority:'low'});
   }
   if(!G.items.staff.owned&&inBody(P)&&Math.abs(P.y-STAFF_STEP_Y)<4&&Math.hypot(P.x-staffPos.x,P.z-staffPos.z)<6)
     say('staff','Set into the wall above the stair, an iron bracket holds a staff. A violet stone glows in its crook, steady and patient, as if it has been waiting for a hand.');

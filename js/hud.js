@@ -11,6 +11,26 @@ const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 /* ---------- captions ---------- */
 const capEl=$('cap'), capText=$('capText'), capWho=$('capWho');
 const queue=[]; let cur=null;
+/* Caption pacing. say(text, who?, {priority:'high'|'normal'|'low', key}) — the old say(text, who) call is 'normal'.
+   - high (boss/quest beats, danger): interrupts the current line at once (a current high line keeps its minimum time first)
+   - normal: a queued line with the same key is replaced; dropped if it has waited longer than STALE
+   - low: flavour; dropped quickly if it can't be shown, never cuts anything
+   Reading time scales with length; any waiting line cuts the current one short once its minimum time has passed. */
+const CAP={MIN:2.5, PER:.06, MAX:7, TYPE:44, STALE:{0:2.5,1:6,2:14}, QMAX:4};
+const PRI={low:0,normal:1,high:2};
+const capRead=t=>U.clamp(t.length*CAP.PER,CAP.MIN,CAP.MAX);
+function capItem(text,who,o){ const p=PRI[o.priority]; return {t:text,who:who||'',pri:p==null?1:p,key:o.key||null,age:0}; }
+function capEnqueue(it){
+  let i=queue.length; while(i>0&&(queue[i-1].pri<it.pri||(it.requeued&&queue[i-1].pri===it.pri)))i--; // higher priority goes ahead, FIFO within a priority (an interrupted line resumes first)
+  queue.splice(i,0,it);
+  while(queue.length>CAP.QMAX){ let w=0; for(let j=1;j<queue.length;j++)if(queue[j].pri<queue[w].pri)w=j; queue.splice(w,1); } // drop the oldest of the least important
+}
+function capShow(it){
+  const typeT=reduceMotion?0:it.t.length/CAP.TYPE;
+  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,
+       read:Math.max(capRead(it.t),typeT+1.2), min:Math.max(CAP.MIN,Math.min(typeT+.6,CAP.MAX)), requeued:it.requeued};
+  capWho.textContent=it.who; capWho.hidden=!it.who; capEl.classList.add('show');
+}
 /* ---------- objective ---------- */
 const objEl=$('obj'), objSub=$('objSub'); let objTimer=0;
 /* ---------- toast ---------- */
@@ -22,7 +42,24 @@ let shakeAmt=0;
 const hurtEl=$('hurt');
 
 G.ui={
-  say(text,who){ if(!text)return; if(cur&&cur.t===text)return; if(queue.some(q=>q.t===text))return; queue.push({t:text,who:who||''}); if(queue.length>4)queue.shift(); },
+  say(text,who,opts){
+    if(!text)return;
+    if(who&&typeof who==='object'){opts=who;who=opts.who;} // say(text,{priority,key,who}) also works
+    const it=capItem(text,who,opts||{});
+    if(cur&&cur.t===text){ cur.pri=Math.max(cur.pri,it.pri); return; }
+    const d=queue.findIndex(q=>q.t===text); if(d>=0){ if(queue[d].pri<it.pri){queue.splice(d,1);capEnqueue(it);} return; }
+    if(it.key){
+      const k=queue.findIndex(q=>q.key===it.key); if(k>=0)queue.splice(k,1); // a newer line for the same thing replaces the waiting one
+      if(cur&&cur.key===it.key&&it.pri>=cur.pri){ capShow(it); return; }   // ...or the one on screen
+    }
+    if(it.pri>=2&&cur&&!(cur.pri>=2&&cur.el<cur.min)){
+      // interrupt now; a line cut off early (under half read) comes back once afterwards
+      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)) capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true});
+      capShow(it); return;
+    }
+    if(it.pri===0&&(cur||queue.length)&&queue.some(q=>q.pri>0))return; // flavour never waits behind real lines
+    capEnqueue(it);
+  },
   objective(text,sub){
     if(text!=null&&objEl.textContent!==text){ objEl.textContent=text; objEl.classList.add('fresh'); clearTimeout(objTimer); objTimer=setTimeout(()=>objEl.classList.remove('fresh'),2600); }
     objSub.textContent=sub||'';
@@ -45,12 +82,23 @@ function placeBoss(){
   toastEl.style.top='calc(max(18%, '+(top+58)+'px) + env(safe-area-inset-top,0px))'; // toasts ("The lens is free") go under the bar
 }
 function updateCaption(dt){
-  if(!cur&&queue.length){const q=queue.shift();cur={t:q.t,who:q.who,i:reduceMotion?1e4:0,hold:0,shown:-1};capWho.textContent=q.who;capWho.hidden=!q.who;capEl.classList.add('show');}
+  dt=dt||0;
+  for(let j=queue.length-1;j>=0;j--){ const q=queue[j]; q.age+=dt; if(q.age>CAP.STALE[q.pri])queue.splice(j,1); } // late lines are stale lines
+  if(cur){
+    cur.el+=dt;
+    if(queue.length&&cur.el>=cur.min&&(queue[0].pri>=cur.pri||cur.el>=cur.read*.6))cur=null; // something is waiting: cut short after the minimum
+    else if(cur.el>=cur.read)cur=null;
+    if(!cur&&!queue.length)capEl.classList.remove('show');
+  }
+  if(!cur&&queue.length)capShow(queue.shift());
   if(!cur)return;
-  cur.i+=dt*44; const n=Math.min(cur.t.length,Math.floor(cur.i));
+  cur.i+=dt*(queue.length?CAP.TYPE*1.6:CAP.TYPE); const n=Math.min(cur.t.length,Math.floor(cur.i));
   if(n!==cur.shown){capText.textContent=cur.t.slice(0,n);cur.shown=n;}
-  if(n>=cur.t.length){cur.hold+=dt; if(cur.hold>(queue.length?1.8:4)+cur.t.length*.026){cur=null; if(!queue.length)capEl.classList.remove('show');}}
 }
+/* for tests and devtools: what is on screen and waiting */
+G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2)},
+  queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)}))});
+G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); };
 
 /* ---------- hearts ---------- */
 const heartsEl=$('hearts'); let lastHearts='';

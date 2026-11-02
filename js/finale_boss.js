@@ -364,7 +364,7 @@ function start(force){
   ui('bossBar','The Gloaming',1); music(true); SND.rise(B.pos);
   ui('shake',.5);
   if(!B.said.intro){ B.said.intro=1; setTimeout(()=>{ if(active())ui('toast','The Gloaming','The fog answers the light'); },900); }
-  later(2.2,()=>say('intro2','It is made of the fog itself. Your light goes straight through it — but where the great beam turns across it, it catches.'));
+  later(2.2,()=>say('intro2','It is made of the fog itself. Your light goes straight through it — but where the great beam turns across it, it catches.',{priority:'high'}));
   return true;
 }
 function resetFight(quiet){
@@ -390,7 +390,7 @@ function hitBody(info){
     const p=P(), at=p&&p.pos?V(U.lerp(p.pos.x,B.pos.x,.55),p.pos.y+1.2,U.lerp(p.pos.z,B.pos.z,.55)):hp;
     for(let k=0;k<10;k++)mistPuff(at.x,at.y,at.z,(rnd()-.5)*3,.6+rnd()*1.4,(rnd()-.5)*3,.8+rnd()*.6,.6,1.8,.55,C_PALE);
     if(G.time-B.hitT>.25)SND.whff(at); B.hitT=G.time;
-    if(!B.said.through)later(.3,()=>say('through','The staff passes through it like breath on a cold morning. Wait for the beam to come round.'));
+    if(!B.said.through)later(.3,()=>say('through','The staff passes through it like breath on a cold morning. Wait for the beam to come round.',{key:'through'}));
     return;
   }
   // one swing sweeps the tall cylinder once
@@ -427,7 +427,7 @@ function stagger(){
   B.staggerT=T.staggerT; B.atk=null; endAttackVisuals(); B.solidT=0;
   tenMesh.visible=roots.some(r=>r.live>.01);
   G.emit('gloaming:solid',{stagger:true}); SND.solid(heartPos(_w)); ui('shake',.6);
-  say('stagger','Cut off from the tower, it reels. The whole of it hardens — strike now!');
+  say('stagger','Cut off from the tower, it reels. The whole of it hardens — strike now!',{priority:'high'});
 }
 
 /* ---------------------------------------------------------------- phase 2 */
@@ -436,7 +436,7 @@ function enterPhase2(){
   roots.forEach((r,i)=>{ r.active=true; r.hp=T.rootHp; r.cut=false; r.grow=0; r.live=0; r.delay=1.2+i*T.climbGap; r.ring.visible=true; });
   tenMesh.visible=true;
   G.emit('gloaming:phase',{n:2}); SND.tendril(tower()); ui('shake',.45);
-  say('phase2','It turns from you to the tower. Tendrils of fog are climbing toward the lamp — cut their roots at the tower’s foot!');
+  say('phase2','It turns from you to the tower. Tendrils of fog are climbing toward the lamp — cut their roots at the tower’s foot!',{priority:'high'});
   ui('toast','It reaches for the lamp','Cut the roots at the tower’s foot');
 }
 function updateTendrils(dt){
@@ -461,7 +461,7 @@ function updateTendrils(dt){
 }
 function gutter(r){
   B.gutterT=T.gutterT; const LB=G.lighthouse&&G.lighthouse.beam; if(LB&&LB.gutter)LB.gutter(T.gutterT); B.solidT=0; G.emit('gloaming:gutter',{root:r.i}); SND.gutter(lampPos());
-  say('gutter','A tendril reaches the lamp and the beam gutters — without the light it cannot be touched. Cut the roots!');
+  say('gutter','A tendril reaches the lamp and the beam gutters — without the light it cannot be touched. Cut the roots!',{priority:'high'});
   ui('toast','The beam gutters','Cut the roots');
 }
 
@@ -480,7 +480,7 @@ function updateBeam(dt){
     B.lastCross=G.time; B.solidT=Math.max(B.solidT,T.solidT); B.recoil=1; B.flash=Math.max(B.flash,.6);
     if(B.atk&&B.atk.phase==='wind'){ B.atk=null; endAttackVisuals(); }   // the light breaks the windup
     G.emit('gloaming:solid',{stagger:false}); SND.solid(heartPos(_w));
-    if(!B.said.solid)later(.2,()=>say('solid','The beam sweeps across it and for a moment it is solid — a shape of wet stone-grey, its ink heart glowing. Strike!'));
+    if(!B.said.solid)later(.2,()=>say('solid','The beam sweeps across it and for a moment it is solid — a shape of wet stone-grey, its ink heart glowing. Strike!',{priority:'high'}));
   }
 }
 
@@ -516,7 +516,7 @@ function startSweep(pp){
   sector.visible=true; sector.position.set(B.pos.x,ground(B.pos.x,B.pos.z,plateauY()+4)+.08,B.pos.z);
   const u=sector.material.uniforms; u.uR0.value=T.sweepR0; u.uR1.value=T.sweepR1; u.uTh0.value=Math.min(B.atk.th0,B.atk.th1); u.uTh1.value=Math.max(B.atk.th0,B.atk.th1); u.uA.value=0; u.uK.value=sign>0?0:1;
   G.emit('gloaming:telegraph',{kind:'sweep',pos:B.pos.clone(),lead:T.sweepWind}); SND.wind(B.pos);
-  if(!B.said.sweep)later(.2,()=>say('sweep','It draws a long arm back low across the stone — jump it, or roll through.'));
+  if(!B.said.sweep)later(.2,()=>say('sweep','It draws a long arm back low across the stone — jump it, or roll through.',{priority:'high'}));
 }
 function callHollows(){
   B.called[B.phase-1]=true;
@@ -535,7 +535,7 @@ function callHollows(){
       try{ if(G.monsters&&G.monsters.spawn){ const m=G.monsters.spawn('hollow',{x,z},{zone,aggro:true,intro:true}); if(m){ m.gloaming=true; hollows.push(m); } } }catch(e){ console.error('gloaming hollow',e); }
       for(let k=0;k<18;k++){ const a=rnd()*TAU; mistPuff(x+Math.cos(a)*1.2,ground(x,z)+.3,z+Math.sin(a)*1.2,Math.cos(a)*.6,1+rnd()*1.5,Math.sin(a)*.6,1.4,.8,2.4,.55); } });
   }
-  say('call'+B.phase,'It draws up shapes out of the fog — Hollows, crawling from the mist at its hem.');
+  say('call'+B.phase,'It draws up shapes out of the fog — Hollows, crawling from the mist at its hem.',{key:'call'});
 }
 function endAttackVisuals(){ decals.forEach(freeDecal); if(sector)sector.visible=false; for(const ar of arms){ if(ar.mode!=='rest'&&ar.hardT<=0)ar.mode='rest'; } }
 function updateAttack(dt){
@@ -575,7 +575,7 @@ function slamImpact(s){
   SND.slam(t); ui('shake',.35);
   const F=FX(); if(F&&F.puff)for(let k=0;k<30;k++){ const a=rnd()*TAU, sp=2+rnd()*4; F.puff(t.x+Math.cos(a)*T.slamR*.6,t.y+.2,t.z+Math.sin(a)*T.slamR*.6,Math.cos(a)*sp,.6+rnd()*1.4,Math.sin(a)*sp,.9+rnd()*.5,.6,2.2,.6,C_MIST,0,2.2); }
   const I=INK(); if(I&&I.burst)I.burst(V(t.x,t.y+.2,t.z),{n:10,speed:2,size:[.3,.9],life:[.4,.9],up:.6,embers:6,drops:3});
-  if(!B.said.hand)later(.4,()=>say('hand','Where the hand struck the stone the fog has hardened. Hit it before it melts away.'));
+  if(!B.said.hand)later(.4,()=>say('hand','Where the hand struck the stone the fog has hardened. Hit it before it melts away.',{key:'hand'}));
 }
 
 /* ---------------------------------------------------------------- movement + pose */
@@ -722,7 +722,7 @@ function updateFight(dt){
   if(!B.atk&&!solid()){ B.cool-=dt; if(B.cool<=0&&playerOK()&&!playerInTower())chooseAttack(); }
   for(let i=hollows.length-1;i>=0;i--)if(!hollows[i].alive)hollows.splice(i,1);
   ui('bossBar','The Gloaming',B.hp/T.hp);
-  if(B.solidT<=0&&B.staggerT<=0&&!B.said.wait&&B.st>14&&B.hp>=T.hp)say('wait','It can’t be struck in the fog. Watch the turning beam — its edge glows warm just before the light finds it.');
+  if(B.solidT<=0&&B.staggerT<=0&&!B.said.wait&&B.st>14&&B.hp>=T.hp)say('wait','It can’t be struck in the fog. Watch the turning beam — its edge glows warm just before the light finds it.',{key:'wait'});
 }
 function startDying(){
   if(B.state==='dying')return;

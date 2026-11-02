@@ -66,7 +66,7 @@ function updatePickups(dt){
     const d=Math.hypot(s.pos.x-P.pos.x,s.pos.z-P.pos.z);
     if(d<1.5&&Math.abs(s.pos.y-P.pos.y)<2&&P.hp<P.maxHp&&P.alive){
       P.heal(4); s.regrow=90; if(s.mesh)s.mesh.visible=false; G.emit('pickup',{kind:'mushroom'});
-      if(!G.flag('ateShroom')){G.flag('ateShroom',true); G.ui.say('The mushroom glows the same violet as the lantern. Eating it, you feel steadier, as if something gave you back a little of yourself.');}
+      if(!G.flag('ateShroom')){G.flag('ateShroom',true); G.ui.say('The mushroom glows the same violet as the lantern. Eating it, you feel steadier, as if something gave you back a little of yourself.',{priority:'low'});}
     }
   }
 }
@@ -182,7 +182,7 @@ function onTowerExit(){
   if(G.quest.step==='failed'&&storm().failed&&!G.items.lantern.found){
     halToTower();
     setStep('halloran2','Talk to Halloran','He’s waiting at the foot of the tower',halPos(),'Halloran');
-    setTimeout(()=>G.ui.say('Halloran is standing at the foot of the tower, as if he’s been waiting a while. “Well,” he says. “I saw it go out from down here.”'),400);
+    setTimeout(()=>G.ui.say('Halloran is standing at the foot of the tower, as if he’s been waiting a while. “Well,” he says. “I saw it go out from down here.”',{priority:'high'}),400);
   }
 }
 function onStormPlaced(){ setStep('failed','Watch','',null,''); }
@@ -199,14 +199,14 @@ function updateForest(){
   G.monsters.startStag();
   const e=stagEdge(); G.state.checkpoint.copy(e); G.state.checkpointYaw=-Math.PI/2; G.state.checkpointName='the edge of the old wood';
   if(!G.flag('stagSeen')){ G.flag('stagSeen',true);
-    G.ui.say('Something vast stands up out of the roots: a stag made of absence, its crown burning with ink. It plants itself over the violet light.');
+    G.ui.say('Something vast stands up out of the roots: a stag made of absence, its crown burning with ink. It plants itself over the violet light.',{priority:'high'});
     G.ui.toast('The Hollow Stag','It guards Maren’s lantern'); }
-  if(!G.items.staff.owned)setTimeout(()=>G.ui.say('It watches you, and waits. Not with empty hands. The Keeper’s Staff still hangs in the tower.'),3800);
+  if(!G.items.staff.owned)setTimeout(()=>G.ui.say('It watches you, and waits. Not with empty hands. The Keeper’s Staff still hangs in the tower.',{key:'stagStaff'}),3800);
   setStep('forest','Take back Maren’s lantern','The Hollow Stag stands over it',sp,'Lantern');
 }
 function onStagDead(){
   if(stagDead)return; stagDead=true; G.flag('stagDead',true);
-  G.ui.say('The Stag comes apart like smoke in a high wind. Among the roots, the violet lantern is still burning.');
+  G.ui.say('The Stag comes apart like smoke in a high wind. Among the roots, the violet lantern is still burning.',{priority:'high'});
   setStep('forest','Take Maren’s lantern','It lies in the roots of the old tree',lanternSpot(),'Lantern');
   autosave();
 }
@@ -224,7 +224,7 @@ function updateFinale(dt){
   if(G.quest.step==='staff'&&G.items.staff.owned) setStep('descend','Something is climbing the cliff','Go down and meet it',lighthouseDoor(),'Lighthouse door');
   if(finaleT<0&&G.items.staff.owned&&!inside){
     finaleT=0; G.emit('finale:start');
-    G.ui.say('The fog answers the light. Something vast is dragging itself up over the edge of the cliff, and the beam passes right through it.');
+    G.ui.say('The fog answers the light. Something vast is dragging itself up over the edge of the cliff, and the beam passes right through it.',{priority:'high'});
     setStep('finale','Defend the lighthouse','Only the beam makes it solid',null,'');
   }
 }
@@ -234,7 +234,7 @@ function onBossDead(e){
   if(who!=='gloaming')return; // only the Gloaming ends the act
   if(bossDead)return;
   bossDead=true; endingT=4.5; autosave();
-  G.ui.say('Caught in the light, the fog giant comes loose from the bottom up and rises into the beam like breath into a lamp. Then there is only the beam, turning, and the fog lifting off the water.');
+  G.ui.say('Caught in the light, the fog giant comes loose from the bottom up and rises into the beam like breath into a lamp. Then there is only the beam, turning, and the fog lifting off the water.',{priority:'high'});
   setStep('done','The lamp burns','Explore the island freely',null,'');
 }
 function updateBeats(){
@@ -388,7 +388,7 @@ G.system('flow',{order:60,modes:'always',
     // Maren's lantern can't be taken while the Stag stands over it
     G.interact.add({pos:()=>G.items.lantern.pos,radius:2.2,priority:9,label:'The Hollow Stag stands over it',
       enabled:()=>{ const L=G.items.lantern; return !L.found&&!L.carried&&!stagDead&&!!(G.monsters&&G.monsters.boss&&G.monsters.boss.kind==='stag'); },
-      use(){ G.ui.say('You reach for the lantern and the Stag’s crown flares. Not while it stands.'); }});
+      use(){ G.ui.say('You reach for the lantern and the Stag’s crown flares. Not while it stands.',{priority:'high',key:'stagLantern'}); }});
     G.on('player:dead',onDead);
     G.on('negative:freed',()=>{ G.state.freed=(G.state.freed||0)+1; G.ui.toast('A negative freed',G.state.freed+' of 8'); });
     const l=$('loading'); if(l)l.textContent='Ready when you are.';

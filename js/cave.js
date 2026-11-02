@@ -936,7 +936,7 @@ function updateCheckpoint(dt){
   // defence in depth: wherever you are, if there's no open way back to the mouth, the draught offers one
   const P=G.player, reg=regionAt(P.pos.x-O.x,P.pos.z-O.z);
   S.stranded=!!reg&&!conn.has(reg);
-  if(S.stranded&&!G.flag('caveDraught')){ G.flag('caveDraught',true); G.ui.say('A cold draught slips past you toward the sea, through cracks too narrow for the light. You could follow it back to the mouth.'); }
+  if(S.stranded&&!G.flag('caveDraught')){ G.flag('caveDraught',true); G.ui.say('A cold draught slips past you toward the sea, through cracks too narrow for the light. You could follow it back to the mouth.',{priority:'high'}); }
 }
 function followDraught(){
   if(!S.inside||S.trans)return false;
