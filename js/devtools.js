@@ -376,6 +376,10 @@ function render(){
     <button type="button" data-act="heal"${dis(!title)}>Heal</button></div>
   <div class="dt-row"><span class="lbl">Tide <small>(${tideName()})</small></span><div class="seg">${['low','rising','high','falling'].map(k=>`<button type="button" data-tide="${k}" aria-pressed="${tideName()===k}"${dis(!title&&loop)}>${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div></div>
   <div class="dt-row"><span class="lbl">Time speed</span><div class="seg">${[1,4].map(n=>`<button type="button" data-speed="${n}" aria-pressed="${(G.timeScale||1)===n}">${n}×</button>`).join('')}</div></div>
+  <div class="dt-h">Map</div><div class="seg">
+    <button type="button" data-act="mapReveal"${dis(!title&&G.map)}>Reveal the whole map</button>
+    <button type="button" data-act="mapCover"${dis(!title&&G.map)}>Cover it in cloud again</button>
+    <button type="button" data-act="mapOpen"${dis(!title&&G.map)}>Open the map</button></div>
   <div class="dt-h">Teleport</div><div class="seg">`;
   for(const s of SPOTS)h+=`<button type="button" data-tp="${s.id}"${dis(!title)}>${esc(s.name)}</button>`;
   h+=`</div><div class="seg">`;
@@ -407,6 +411,9 @@ function onClick(e){
     else if(d.act==='jar'){ testMode(); msg=G.moths.jar.give()?'The moth jar is yours':'You already have it'; }
     else if(d.act==='heal'){ G.player.heal(G.player.maxHp); msg='Healed'; }
     else if(d.act==='kill')msg=killNearby();
+    else if(d.act==='mapReveal'){ testMode(); G.map.revealAll(); msg='The whole island is charted'; }
+    else if(d.act==='mapCover'){ testMode(); G.map.reset(); msg='Clouds over everything again (they clear as you walk)'; }
+    else if(d.act==='mapOpen'){ closePanel(); G.map.open(); return; }
   }catch(err){ console.error('devtools',err); msg='That failed: '+(err&&err.message); }
   note(msg); render();
 }

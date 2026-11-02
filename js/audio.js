@@ -74,7 +74,7 @@ function unlock(){
   if(ctx.state==='suspended')ctx.resume();
 }
 addEventListener('pointerdown',unlock,true);
-addEventListener('keydown',e=>{ unlock(); if(e.code==='KeyM'&&!e.repeat){ settings.muted=!settings.muted; save(); applyVolume(); syncUI(); if(G.ui&&G.ui.toast)G.ui.toast(settings.muted?'Sound off':'Sound on'); } },true);
+addEventListener('keydown',e=>{ unlock(); if(e.code==='KeyN'&&!e.repeat){ settings.muted=!settings.muted; save(); applyVolume(); syncUI(); if(G.ui&&G.ui.toast)G.ui.toast(settings.muted?'Sound off':'Sound on'); } },true);
 
 /* ---------- small helpers ---------- */
 const midi=m=>440*Math.pow(2,(m-69)/12);
@@ -1213,14 +1213,14 @@ function buildUI(){
   box.style.cssText='display:grid;grid-template-columns:auto 1fr;gap:8px 14px;align-items:center;font-size:14px;color:#3d2f33';
   box.innerHTML='<label for="volAll">Volume</label><input id="volAll" type="range" min="0" max="100" style="width:100%;accent-color:#4b3863">'+
     '<label for="volMusic">Music</label><input id="volMusic" type="range" min="0" max="100" style="width:100%;accent-color:#4b3863">'+
-    '<label for="volMute" style="grid-column:1 / -1;display:flex;gap:8px;align-items:center"><input id="volMute" type="checkbox" style="accent-color:#4b3863"> Mute all sound <kbd style="margin-left:4px">M</kbd></label>';
+    '<label for="volMute" style="grid-column:1 / -1;display:flex;gap:8px;align-items:center"><input id="volMute" type="checkbox" style="accent-color:#4b3863"> Mute all sound <kbd style="margin-left:4px">N</kbd></label>';
   const actions=sheet.querySelector('.actions'); sheet.insertBefore(box,actions);
   volEl=box.querySelector('#volAll'); musEl=box.querySelector('#volMusic'); muteEl=box.querySelector('#volMute');
   volEl.addEventListener('input',()=>{settings.volume=volEl.value/100;applyVolume();save();});
   musEl.addEventListener('input',()=>{settings.music=musEl.value/100;applyVolume();save();});
   muteEl.addEventListener('change',()=>{settings.muted=muteEl.checked;applyVolume();save();});
   syncUI();
-  const keys=document.getElementById('keys'); if(keys){const s=document.createElement('span');s.innerHTML='<kbd>M</kbd> sound';keys.appendChild(s);}
+  const keys=document.getElementById('keys'); if(keys){const s=document.createElement('span');s.innerHTML='<kbd>N</kbd> sound';keys.appendChild(s);}
 }
 
 /* ---------- system ---------- */
