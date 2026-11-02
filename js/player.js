@@ -545,6 +545,7 @@ Object.assign(P,{
   radius:.38,height:1.45,hp:10,maxHp:10,stamina:1,exhausted:false,alive:true,grounded:true,state:'idle',
   lockTarget:null,gliding:false,sprinting:false,inputEnabled:true,model:null,heading:START.yaw,camYaw:START.yaw,
   hands:{left:null,right:null},
+  actionLock:0,speedMul:1,poseHooks:[], // hooks for other modules' actions (potions.js)
   hurt(info={}){
     if(!P.alive)return false;
     const kind=info.kind||'melee';
@@ -630,6 +631,8 @@ function updateCloakEquip(dt){
 P.setCloak=function(b){ G.items.cloak=G.items.cloak||{owned:false}; G.items.cloak.owned=!!b; if(!b)P.gliding=false; CK.t=-1; CK.unfurl=1;
   applyCloak(!!b); if(R){R.hood.scale.copy(R.hoodBase); R.cape.scale.set(1,1,.82);} };
 P.hasCloak=hasCloak;
+/** put the staff on the back (another module needs the right hand, e.g. to drink) */
+P.sheathe=function(){ if(staffDrawn)sheathe(); };
 G.on('cloak:found',()=>{ if(CK.t<0&&CK.worn&&CK.done)return; CK.done=true; equipFlourish(); });
 
 function checkpointPos(){
@@ -915,7 +918,7 @@ function update(dt){
   // jump input
   if(ctl&&I.pressed('jump'))jumpBuf=.15; else jumpBuf=Math.max(0,jumpBuf-dt);
   jumpHeld=ctl&&I.down('jump');
-  const busy=hurtT>0||stunT>0||interactT>0||spinT>=0;
+  const busy=hurtT>0||stunT>0||interactT>0||spinT>=0||P.actionLock>0; // actionLock: another module's committed action (potions.js: drinking)
   // roll / dodge (buffered); in the air it is the dive (once per jump)
   const M=MT();
   if(ctl&&I.pressed('roll'))rollBuf=M?M.buffer.roll:.1; else rollBuf=Math.max(0,rollBuf-dt);
@@ -1221,6 +1224,7 @@ function locomotion(dt,wish,mag,ctl,busy){
     sprinting=ctl&&I.down('sprint')&&mag>.3&&!P.exhausted&&!P.lockTarget&&!charge.on;
     let target=mag<.08?0:P.exhausted?2.3:sprinting?8.4:lerp(1.7,5.4,smooth(.25,.9,mag));
     if(charge.on)target=Math.min(target,2.1);
+    if(P.speedMul!=null&&P.speedMul<1)target*=Math.max(0,P.speedMul);
     if(sprinting){P.stamina=Math.max(0,P.stamina-dt*.2); staminaDelay=.6; if(P.stamina<=0){P.exhausted=true; sprinting=false;}}
     if(P.lockTarget){
       target=Math.min(target,4.2);
@@ -1531,6 +1535,8 @@ function animate(dt){
     const sw=Math.sin(ph)*.12*walk;
     T.shLX=-.95+sw; T.shLZ=.22; T.shLY=-.35; T.elL=-.55; T.wrLX=.5;
   }
+  // ---- other modules' poses (potions.js: raising a draught) — G.player.poseHooks: fn(T,dt)->rate|undefined ----
+  if(P.alive)for(const f of P.poseHooks){ try{ const r=f(T,dt); if(r)rate=r; }catch(e){ console.error('poseHook',e); } }
   // ---- death ----
   if(!P.alive){
     const k1=smooth(0,.45,deadT), k2=smooth(.5,1.3,deadT);
