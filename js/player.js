@@ -1705,7 +1705,8 @@ function updateCamera(dt){
   else if(P.lockTarget){
     const tp=P.lockTarget.pos;
     const a=Math.atan2(tp.x-P.pos.x,tp.z-P.pos.z);
-    cam.yaw=U.dampAngle(cam.yaw,a,5,dt); cam.pitch=damp(cam.pitch,.3,3,dt);
+    const tall=(P.lockTarget.height||1.4)>4; // giants (the Gloaming): pull back and look up so the whole shape stays in frame
+    cam.yaw=U.dampAngle(cam.yaw,a,5,dt); cam.pitch=damp(cam.pitch,tall?.06:.3,3,dt); if(tall)dist=Math.max(dist,7.5);
   }else if(cam.recenter>0){
     cam.recenter-=dt; cam.yaw=U.dampAngle(cam.yaw,P.heading,12,dt); cam.pitch=damp(cam.pitch,.26,8,dt);
   }else if(cam.idle>.7&&spd>1.2&&ak<.05){
@@ -1726,7 +1727,7 @@ function updateCamera(dt){
   else{cam.target.x=damp(cam.target.x,head.x,16,dt); cam.target.z=damp(cam.target.z,head.z,16,dt); cam.target.y=damp(cam.target.y,head.y,P.grounded?9:6,dt);}
   // look point (lock frames both)
   const look=tmp2.copy(cam.target);
-  if(P.lockTarget){const tp=P.lockTarget.pos; look.lerp(tmp3.set(tp.x,tp.y+(P.lockTarget.height||1.5)*.5,tp.z),.32);}
+  if(P.lockTarget){const tp=P.lockTarget.pos; look.lerp(tmp3.set(tp.x,tp.y+(P.lockTarget.height||1.5)*.5,tp.z),(P.lockTarget.height||1.5)>4?.45:.32);}
   if(cam.snap)cam.look.copy(look); else cam.look.lerp(look,1-Math.exp(-dt*12));
   // boom with collision
   const cp=Math.cos(cam.pitch);
