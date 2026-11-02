@@ -59,7 +59,9 @@ def check(name,cond,info=''):
 EXPECT={
  'story':lambda s:s['obj']=='Get out of the cold' and not s['loop'] and not s['staff'],
  'loop':lambda s:s['loop'] and s['cured'] and s['staff'] and s['cloak'] and s['lamp'] and s['obj']=='Feed the light',
- 'stag':lambda s:not s['loop'] and s['cured'] and s['staff'] and s['obj']=='Something is climbing the cliff',
+ 'lamp-failed':lambda s:not s['loop'] and not s['cured'] and s['staff'] and s['obj']=='Go back down',
+ 'stag':lambda s:not s['loop'] and not s['cured'] and s['staff'] and s['obj']=='Find Maren’s lantern',
+ 'finale':lambda s:not s['loop'] and s['cured'] and s['staff'] and s['obj']=='Something is climbing the cliff',
  'sandbar':lambda s:s['loop'] and s['tideLow'] and s['carried'] and s['swarm']>=50 and not s['inside'] and 'Cave' in s['obj'],
  'cave:mouth':lambda s:s['inside'] and s['room']=='mouth' and s['open']==[] and s['lit']==[] and s['swarm']>=50,
  'cave:gallery':lambda s:s['room']=='gallery' and s['open']==[] and s['lit']==['mouth'] and s['swarm']>=50,
@@ -84,15 +86,26 @@ async def run_start2(ctx,pg,errs,sid):
     s=await pg.evaluate("T.state()")
     check(sid+' state',EXPECT[sid](s) and s['test'] and s['hud'] and s['mode']=='play',s)
     extra={}
+    if sid=='lamp-failed':
+        r=await pg.evaluate("""(()=>{ G.input.setVirtual('forward',true); G.step(1/30,50); G.input.setVirtual('forward',false); G.step(1/30,10);
+          const h=G.creatures.halloran.pos; return {obj:document.getElementById('obj').textContent,hal:+Math.hypot(h.x-180,h.z).toFixed(1)}; })()""")
+        check('lamp-failed: stepping out, Halloran waits at the tower',r['obj']=='Talk to Halloran' and r['hal']<14,r)
     if sid=='stag':
-        r=await pg.evaluate("""(()=>{ const lh=G.world.lighthouse, d=lh.doorOut; G.player.teleport(d.x-3,d.y,d.z,-Math.PI/2); G.step(1/30,120);
-          const b=G.monsters.boss; return {obj:document.getElementById('obj').textContent,boss:!!b}; })()""")
-        check('stag: stepping out starts the finale',r['obj']=='Defend the lighthouse' and r['boss'],r)
-        r=await pg.evaluate("""(()=>{ const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; } G.step(1/30,420); return {n,mode:G.state.mode,ending:!document.getElementById('ending').hidden}; })()""")
-        check('stag: boss falls -> ending card',r['ending'],r)
+        r=await pg.evaluate("""(()=>{ G.input.setVirtual('forward',true); G.step(1/30,60); G.input.setVirtual('forward',false); G.step(1/30,30);
+          const b=G.monsters.boss; return {obj:document.getElementById('obj').textContent,boss:b&&b.kind}; })()""")
+        check('stag: walking in raises the Hollow Stag',r['boss']=='stag' and r['obj']=='Take back Maren’s lantern',r)
+        r=await pg.evaluate("""(()=>{ const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; } G.step(1/30,150);
+          return {n,mode:G.state.mode,ending:!document.getElementById('ending').hidden,obj:document.getElementById('obj').textContent}; })()""")
+        check('stag: it falls, no ending, the lantern is next',not r['ending'] and r['obj']=='Take Maren’s lantern',r)
+    if sid=='finale':
+        r=await pg.evaluate("""(()=>{ window._fs=0; G.on('finale:start',()=>_fs++); const lh=G.world.lighthouse, d=lh.doorOut; G.player.teleport(d.x-3,d.y,d.z,-Math.PI/2); G.step(1/30,120);
+          return {obj:document.getElementById('obj').textContent,fs:_fs,stag:!!G.monsters.boss}; })()""")
+        check('finale: stepping out starts the finale (no Stag)',r['obj']=='Defend the lighthouse' and r['fs']==1 and not r['stag'],r)
+        r=await pg.evaluate("""(()=>{ const B=G.finaleBoss; if(B&&B.active){ B.hp=0; G.step(1/30,30); } G.emit('boss:dead',{who:'gloaming'}); G.step(1/30,200); return {mode:G.state.mode,ending:!document.getElementById('ending').hidden}; })()""")
+        check('finale: the Gloaming falls -> ending card',r['ending'],r)
         await pg.evaluate("document.getElementById('keep').click(); 0"); await pg.wait_for_timeout(500)
         r=await pg.evaluate("[G.loop.active,document.getElementById('obj').textContent]")
-        check('stag: keep exploring -> loop',r[0] and r[1]=='Feed the light',r)
+        check('finale: keep exploring -> loop',r[0] and r[1]=='Feed the light',r)
     if sid=='sandbar':
         r=await pg.evaluate("""(()=>{ const m=G.world.landmarks.caveMouth; G.player.teleport(m.x,m.y,m.z-.4,Math.PI); G.step(1/30,4); const c=G.interact.pick(G.player.pos); const lab=c&&G.interact.label(c); if(c)c.use(); G.step(1/30,60);
           return {lab,inside:G.cave.inside,room:G.cave.room(G.player.pos),swarm:T.state().swarm}; })()""")

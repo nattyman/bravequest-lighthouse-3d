@@ -69,6 +69,9 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 - Flags: `G.flag('lanternFound', true)`; `G.flag('x')` reads.
 - Atmosphere: `G.atmo.darkTarget` (lighthouse sets 1 when the player is inside the unlit tower body), `G.atmo.dark` (core damps it), `G.atmo.cured` 0..1 (lighthouse animates during the cure). world.js reads these every frame to set fog/sky/hemi.
 - Items: `G.items.lantern {found,carried,shut,cured,inCradle,pos,world,lit()}` and `G.items.staff {owned,pos}`.
+  `G.items.storm {found,carried,inCradle,failed,spent,pos,world,lit()}` (lighthouse.js): Halloran's plain storm lantern; it opens the doorway like the keeper's, moths ignore it.
+- Beam: `G.lighthouse.beam = {yaw(), lit, arms:2, origin, dir(out)}` — `yaw()` is the world angle atan2(dz,dx) of one arm (the other is yaw()+π); before the cure it's the anti-light beam (`lit` false), after it the warm beam.
+- Act 1 hooks: `G.monsters.startStag()` / `stagArena()`, `G.creatures.halloranAt(pos|null, yaw)`, `G.flow.stagDead`, `G.flow.stagEdge()`.
 - World queries: `G.world.height(x,z)`, `G.world.walkable(x,z)`, `G.floorAt(x,z,y)` (terrain + floor providers), `G.floorProviders.push(fn(x,z,y)->h|null)`, `G.constrainers.push(fn(prev,next,y,radius,who)->blocked)`, `G.cameraConstrainers.push(fn(cam,target))`, `G.addCollider({x,z,r,y0,y1})`, `G.addBoxCollider({x,z,hw,hd,yaw,y0,y1})`.
 - **Movement for every character:** `G.moveCharacter(pos, dx, dz, radius, who)` → handles circles, boxes, constrainers, walkability, max step 0.65 m and steep slopes (>~54° blocks — cliffs are walls). Then set `pos.y` from `G.floorAt(pos.x,pos.z,pos.y)` with your own gravity.
 - Interaction: `G.interact.add({pos|()=>pos, radius, label|()=>label, priority, enabled:()=>bool, use()})`. player.js calls `G.interact.pick(playerPos)` each frame and `use()`s the current one on the interact action. HUD shows `G.interact.current`. Extra per-frame prompt rows: `G.hint('F','Close the shutter')`.
@@ -100,8 +103,13 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 | `talk` | {who, line, index} | creatures (Halloran) |
 | `negative:freed` | {kind,pos} | creatures |
 | `monster:killed` | {kind,pos,boss} | monsters |
-| `finale:start` | — | flow (≈6 s after lamp:cured) |
-| `boss:dead` | — | monsters |
+| `storm:pickup` | {first} | lighthouse (Halloran's storm lantern, `G.items.storm`) |
+| `storm:placed` / `lamp:failed` | — | lighthouse (the plain flame in the cradle; the ink drinks it) |
+| `lamp:pulse` | — | lighthouse (after the failure the ink surges at whoever is in the lamp room) |
+| `logbook:read` | — | lighthouse (Maren's logbook on the lamp-room sill) |
+| `stag:engage` | — | monsters (the Hollow Stag leaves its guard over Maren's lantern) |
+| `finale:start` | — | flow (when you step outside after lamp:cured); finale_boss.js answers it — the Stag no longer does |
+| `boss:dead` | {who:'stag'\|'gloaming'} | monsters (stag) / finale_boss (gloaming). Only `who:'gloaming'` ends Act 1 |
 
 ## Module briefs (who owns what)
 **world.js** — `G.world.height/walkable/landmarks` (synchronous), terrain mesh(es) with vertex colours (cel-shaded), sea (animated), sky dome (dusk gradient + moon + stars faint), fog, sea stacks, forest (instanced trunks/canopies; colliders for trunks), moor heath + wildflowers, local grass that follows `G.focus` for density, rocks, ruined hamlet, standing stones, stone walls, keeper's cottage + shed with warm windows, the cliff-path ramp, the Resisting Tree, path rendering, mushrooms visuals, atmosphere application (reads `G.atmo`), hemi/sun colours. Registers colliders for trees, rocks, buildings.

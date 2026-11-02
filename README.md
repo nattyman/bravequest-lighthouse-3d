@@ -13,7 +13,16 @@ python3 -m http.server 8800
 - `http://localhost:8800/dev.html` uses the bundled copy of Three.js in `vendor/` (works offline)
 - `http://localhost:8800/index.html` loads Three.js from public CDNs (this is the page that gets published)
 - add `?debug` to either for test helpers (`G.step`, `G.debugStartLoop`, …)
-- **Test tools (God Mode)**: the small "Test tools" link on the title card or in the pause menu, or the backquote key (`` ` ``). Start points (story, lighthouse lit, before the Hollow Stag, the sandbar, every cave room, after the Undertow), cheats, items, tide, time speed, teleports, monsters. Anything used there sends that session's saves to a separate test slot (`bq-save-test-v1`), never the real one. `js/devtools.js`; hide it with `G.DEVTOOLS=false` in `core.js`. Test: `python3 test/devtools_e2e.py`
+- **Test tools (God Mode)**: the small "Test tools" link on the title card or in the pause menu, or the backquote key (`` ` ``). Start points (story, the lamp failed, before the Hollow Stag, before the finale boss, lighthouse lit, the sandbar, every cave room, after the Undertow), cheats, items, tide, time speed, teleports, monsters. Anything used there sends that session's saves to a separate test slot (`bq-save-test-v1`), never the real one. `js/devtools.js`; hide it with `G.DEVTOOLS=false` in `core.js`. Test: `python3 test/devtools_e2e.py`
+
+## Act 1 (v12)
+
+Halloran points you to his **storm lantern** on the oil shed; its plain flame gets you through the black doorway and up the
+stair (the Keeper's Staff on the way). Set in the lamp's cradle, the ink on the lens drinks it — you've seen the lock before
+you have the key (dead moth husks and Maren's logbook on the sill: *"They always came to the lamp. I thought it was the light
+they wanted."*). Halloran waits at the tower foot and sends you west; the **Hollow Stag** guards Maren's violet lantern at the
+Resisting Tree. The swarm follows it home and eats the ink; the anti-light beam the dead lamp has been turning since the first
+second becomes the warm beam, and the fog answers with the finale boss (the Gloaming, `js/finale_boss.js`). Spec: `ACT1.md`.
 
 `dev.html` is generated: run `python3 test/build_dev.py` after changing `index.html` or adding a module.
 
