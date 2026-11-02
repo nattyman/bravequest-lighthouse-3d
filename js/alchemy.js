@@ -93,9 +93,11 @@ const A=G.alchemy={
   canBrew(id){ const r=RECIPES[id]; if(!r||!A.known.has(id))return false; for(const k in r.needs)if(!G.inv.has(k,r.needs[k]))return false; return true; },
   brew(id,o={}){ return brew(id,o); },
   pour(){ return pour(); },
-  openTable(){ openPanel(); },
+  openTable(t){ activeTable=t||table; openPanel(); },
   closeTable(){ closePanel(); },
   addMushroomSpot(pos,o){ return addSpot(pos,o); },
+  addTable(pos,o){ return addTable(pos,o); },
+  get tables(){ return tables; },
   get spots(){ return spots; },
   get harvest(){ return drops.filter(d=>d.tidal); },
   get drops(){ return drops; },
@@ -237,9 +239,9 @@ function initSpots(){
   list.forEach((m,i)=>spots.push({pos:V(m.x,m.y,m.z),mesh:meshes[i]||null,regrow:0,base:true}));
 }
 function addSpot(pos,o={}){
-  const y=G.floorAt(pos.x,pos.z);
+  const y=o.y!=null?o.y:G.floorAt(pos.x,pos.z);
   let mesh=null; const src=(G.world.mushroomMeshes||[])[spots.length%14]||(G.world.mushroomMeshes||[])[0];
-  if(src){ mesh=src.clone(); mesh.position.set(pos.x,y,pos.z); mesh.rotation.y=Math.random()*TAU; mesh.visible=true; root.add(mesh); }
+  if(src){ mesh=src.clone(); mesh.position.set(pos.x,y,pos.z); mesh.rotation.y=Math.random()*TAU; mesh.visible=true; (o.parent||root).add(mesh); }
   const s={pos:V(pos.x,y,pos.z),mesh,regrow:0,base:false,tag:o.tag||''}; spots.push(s); return s;
 }
 function updateSpots(dt){
@@ -415,12 +417,24 @@ function buildHamletPage(){
 /* =====================================================================
    8. THE ALCHEMY TABLE (dresses the shed's outdoor bench, world.js)
    ===================================================================== */
-let table=null; // {grp, burner, flame, glowS, liquid, bubbles, world:Vector3}
+let table=null; // the shed's table {grp, bench, flame, flame2, g1, liquid, bubbles, bulb, world:Vector3}
+const tables=[];  // every table (the shed's first; G.alchemy.addTable adds more, e.g. the keeper's bench in the sea cave)
+let activeTable=null; // the table whose panel is open (brew sparkles rise from it)
 let brewT=0, brewGlow=0;
 function buildTable(){
   const S0=LM().shed||{x:150,y:42,z:33};
   const grp=new THREE.Group(); grp.position.set(S0.x,S0.y,S0.z); grp.rotation.y=.15; root.add(grp);
   const bench=new THREE.Group(); bench.position.set(2.9,1.01,-.6); grp.add(bench); // top of the bench world.js builds
+  const parts=buildApparatus(bench);
+  bench.updateMatrixWorld(true);
+  const world=new THREE.Vector3(); bench.getWorldPosition(world);
+  table=Object.assign({grp,bench,world:V(world.x,S0.y,world.z),on:looping,sparkleY:1.4},parts);
+  A.table=table; tables.push(table);
+  G.interact.add({pos:()=>table.world,radius:2.8,priority:2,label:'Work the alchemy table',
+    enabled:()=>looping(),use(){ activeTable=table; openPanel(); }});
+}
+/** the burner, retort, vial rack, mortar and caps, dressed onto a bench-top group (its origin = the top's surface) */
+function buildApparatus(bench){
   const glass=new THREE.MeshToonMaterial({color:col('#b9d6d0'),gradientMap:G.gradientMap,transparent:true,opacity:.55,depthWrite:false});
   const brass=G.toon('#b08a3e'), iron=G.toon('#2c2628'), stone=G.toon('#8a847a'), wood=G.toon('#5e4330');
   const liquid=new THREE.MeshBasicMaterial({color:new THREE.Color(1.0,.5,2.2),fog:true});
@@ -448,26 +462,47 @@ function buildTable(){
   add(new THREE.PlaneGeometry(.26,.2),G.toon('#e6dbc0',{side:THREE.DoubleSide}),.42,.004,.2,m=>{m.rotation.x=-PI/2;m.rotation.z=.3;});
   const cap=src=>{ const g=(G.world.mushroomMeshes||[])[src]; if(!g)return; const c=g.clone(); c.scale.setScalar(.35); c.position.set(-.85+src*.06,0,.18); bench.add(c); };
   cap(2); cap(5);
-  const g1=glow('#a070ff',1.6,.25); g1.position.set(-.05,.45,0); bench.add(g1);
+  const g1=glow('#a070ff',1.6,.25); g1.material=g1.material.clone(); g1.position.set(-.05,.45,0); bench.add(g1);
   // bubbles inside the bulb
   const bubbles=[]; for(let k=0;k<5;k++){ const b=glow('#e4d0ff',.05,.9); b.position.set(-.05,.5,0); b.userData.ph=k/5; bench.add(b); bubbles.push(b); }
-  bench.updateMatrixWorld(true);
+  return {flame,flame2,g1,liquid,bubbles,bulb};
+}
+/** another alchemy table (same panel, same recipes): G.alchemy.addTable(worldPos, {yaw, parent, bench, eyebrow, label, enabled, radius})
+    pos = the floor at the bench's front-centre; opts.bench builds a plain trestle workbench to carry the apparatus;
+    opts.parent: the group to build into (the island's 'alchemy' group is hidden underground, so the cave passes its own). */
+function addTable(pos,o={}){
+  const grp=new THREE.Group(); grp.position.copy(pos); grp.rotation.y=o.yaw||0; (o.parent||root).add(grp);
+  const H0=o.height||1.0;
+  if(o.bench!==false){ const wood=G.toon(o.wood||'#4f3a2a'), dark=G.toon('#33261d');
+    const top=new THREE.Mesh(new THREE.BoxGeometry(2.2,.09,.85),wood); top.position.set(0,H0-.045,0); top.castShadow=true; grp.add(top); G.outline&&G.outline(top,{thickness:.012});
+    for(const sx of [-.9,.9]) for(const sz of [-.3,.3]){ const l=new THREE.Mesh(new THREE.BoxGeometry(.1,H0-.09,.1),dark); l.position.set(sx,(H0-.09)/2,sz); l.rotation.z=sx*.04; grp.add(l); }
+    const sh=new THREE.Mesh(new THREE.BoxGeometry(1.9,.05,.6),dark); sh.position.set(0,.28,0); grp.add(sh); }
+  const bench=new THREE.Group(); bench.position.set(.35,H0,0); grp.add(bench);
+  const parts=buildApparatus(bench);
+  if(o.beacon!==false){ const b=glow(o.beaconColor||'#a070ff',o.beaconSize||3.6,.32); b.material=b.material.clone(); b.material.fog=false; b.position.set(.3,H0+.5,0); grp.add(b); parts.beacon=b; }
+  grp.updateMatrixWorld(true);
   const world=new THREE.Vector3(); bench.getWorldPosition(world);
-  table={grp,bench,flame,flame2,g1,liquid,bubbles,bulb,world:V(world.x,S0.y,world.z)};
-  A.table=table;
-  G.interact.add({pos:()=>table.world,radius:2.8,priority:2,label:'Work the alchemy table',
-    enabled:()=>looping(),use(){ openPanel(); }});
+  const en=o.enabled||looping;
+  const t={grp,bench,world,on:en,sparkleY:.4,eyebrow:o.eyebrow||null,parent:o.parent||root};
+  Object.assign(t,parts); tables.push(t);
+  t.ia=G.interact.add({pos:()=>t.world,radius:o.radius||2.6,priority:o.priority||2,label:o.label||'Work the alchemy table',
+    enabled:()=>en()&&G.player.alive!==false,use(){ activeTable=t; openPanel(); }});
+  return t;
 }
 function animTable(dt){
-  if(!table)return;
-  const t=G.time, on=looping()?1:0;
+  if(!tables.length)return;
+  const t=G.time;
   brewGlow=U.damp(brewGlow,brewT>0?1:0,4,dt);
-  const k=(on*.75+brewGlow*.9)*(.85+Math.sin(t*9)*.08+Math.sin(t*23)*.05);
-  table.flame.visible=table.flame2.visible=on>0;
-  table.flame.scale.set(.3+k*.18,.36+k*.3,1); table.flame.material.opacity=.95;
-  table.g1.material.opacity=.18+brewGlow*.45; table.g1.scale.setScalar(1.4+brewGlow*1.2);
-  const lp=.8+brewGlow*1.2+Math.sin(t*2.2)*.12; table.liquid.color.setRGB(.5*lp,.25*lp,1.15*lp);
-  for(const b of table.bubbles){ const ph=(t*(.6+brewGlow*1.6)+b.userData.ph)%1; b.visible=on>0; b.position.set(-.05+Math.sin(ph*9+b.userData.ph*6)*.04,.45+ph*.15,Math.cos(ph*7)*.03); b.scale.setScalar(.03+.04*Math.sin(ph*PI)); }
+  for(const tb of tables){
+    const on=tb.on()?1:0, bg=tb===(activeTable||table)?brewGlow:0;
+    const k=(on*.75+bg*.9)*(.85+Math.sin(t*9)*.08+Math.sin(t*23)*.05);
+    tb.flame.visible=tb.flame2.visible=on>0;
+    tb.flame.scale.set(.3+k*.18,.36+k*.3,1); tb.flame.material.opacity=.95;
+    tb.g1.material.opacity=.18+bg*.45; tb.g1.scale.setScalar(1.4+bg*1.2);
+    const lp=.8+bg*1.2+Math.sin(t*2.2)*.12; tb.liquid.color.setRGB(.5*lp,.25*lp,1.15*lp);
+    if(tb.beacon)tb.beacon.material.opacity=on*(.26+.06*Math.sin(t*1.7));
+    for(const b of tb.bubbles){ const ph=(t*(.6+bg*1.6)+b.userData.ph)%1; b.visible=on>0; b.position.set(-.05+Math.sin(ph*9+b.userData.ph*6)*.04,.45+ph*.15,Math.cos(ph*7)*.03); b.scale.setScalar(.03+.04*Math.sin(ph*PI)); }
+  }
 }
 
 /* =====================================================================
@@ -509,7 +544,7 @@ function brew(id,o={}){
       bigToast('Moth Bait','The lantern glass is smeared · '+r.bait+' s'); }
     else{ A.etherUnits+=r.units; G.inv.add('vial',1,{silent:true});
       const n=G.inv.count('vial'); bigToast(r.name,'+'+r.units+' ether · '+n+(n>1?' vials':' vial')+' held'); }
-    if(table)sparkle(table.world.clone().setY(table.world.y+1.4),'#c4a0ff',26,{radius:.25,up:1.8});
+    const tb=activeTable||table; if(tb)sparkle(tb.world.clone().setY(tb.world.y+tb.sparkleY),'#c4a0ff',26,{radius:.25,up:1.8});
     G.emit('brew',{recipe:id,units:r.units||0});
     if(!S.firsts.brew){ S.firsts.brew=1; setTimeout(()=>G.ui.say('The steam smells of rain and violets. What drips from the retort glows faintly in the vial — ether, the same stuff that burns in the lamp.'),300); }
     refreshPanel(); chainNow();
@@ -591,7 +626,7 @@ function buildDOM(){
   panel=document.createElement('div'); panel.className='card'; panel.id='alchemy'; panel.hidden=true;
   panel.setAttribute('role','dialog'); panel.setAttribute('aria-modal','true'); panel.setAttribute('aria-labelledby','alchTitle');
   panel.innerHTML=`<div class="sheet">
-    <div class="alch-head"><span class="eyebrow">The keeper’s shed</span><h2 id="alchTitle">The Alchemy Table</h2>
+    <div class="alch-head"><span class="eyebrow" id="alchWhere">The keeper’s shed</span><h2 id="alchTitle">The Alchemy Table</h2>
       <p class="alch-lede">A burner that takes a violet flame, a retort, a mortar worn smooth. Whatever you steep here comes out as ether.</p></div>
     <div class="alch-brewing" hidden aria-live="polite"><svg viewBox="0 0 46 56"><path d="M17 4h12v4h-2v10l11 20a7 7 0 0 1-6 11H12a7 7 0 0 1-6-11l11-20V8h-2z" fill="rgba(255,255,255,.35)" stroke="#4b3863" stroke-width="2"/><path class="liq" d="M9 38h28l3.4 6.4A3.6 3.6 0 0 1 37.2 50H8.8a3.6 3.6 0 0 1-3.2-5.6z" fill="#a56cff"/><g fill="#efe4ff"><circle class="bub" cx="19" cy="40" r="2"/><circle class="bub" cx="26" cy="43" r="1.6"/><circle class="bub" cx="22" cy="38" r="1.3"/></g></svg><span>Steeping…</span></div>
     <div class="alch-list" id="alchList"></div>
@@ -649,6 +684,7 @@ function openPanel(){
   G.setMode('menu');            // set before unlocking, so flow.js doesn't read the unlock as a pause
   G.input.unlockPointer();
   panel.hidden=false; panelOpenAt=performance.now(); padPrevB=true;
+  { const w=$q('#alchWhere',panel), tb=activeTable||table; if(w)w.textContent=(tb&&tb.eyebrow)||'The keeper’s shed'; }
   refreshPanel();
   if(!S.firsts.table){ S.firsts.table=1; }
 }
