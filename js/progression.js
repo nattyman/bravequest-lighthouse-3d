@@ -90,10 +90,11 @@ const ICON={
 
 /* ---------------------------------------------------------------- world helpers: perches (floor + walkable + collider) */
 const perches=[];   // {x,z,r,top,tide:boolean (only above water at low tide)}
-// a perch is a built surface: it accepts the player only from above (no free step-ups beyond the normal 0.65 m)
+// a perch is a built surface you jump onto: it only catches you from above (the landing test samples 0.3 m up, so a
+// jump has to clear the top to within 0.35 m; walking never steps up onto one)
 G.floorProviders.push((x,z,y)=>{
   let best=null;
-  for(const p of perches){ const dx=x-p.x, dz=z-p.z; if(dx*dx+dz*dz>p.r*p.r)continue; if(p.top<=y+.35&&(best==null||p.top>best))best=p.top; }
+  for(const p of perches){ const dx=x-p.x, dz=z-p.z; if(dx*dx+dz*dz>p.r*p.r)continue; if(p.top<=y+.05&&(best==null||p.top>best))best=p.top; }
   return best;
 });
 const tideLevel=()=>(G.world&&G.world.tide)||0;
@@ -189,23 +190,27 @@ const CACHES=[];
 function buildSpots(){
   const M=mats();
   const lm=LM();
-  /* 1. Standing stones: the shortest standing stone (stone 1, top ~2.5 m) — jump onto the fallen stone beside it, then double jump. */
-  { const st=lm.stones||{x:40,z:-35}, a1=1/9*TAU+.2, a2=2/9*TAU+.2;
-    const s1={x:st.x+Math.cos(a1)*8.5,z:st.z+Math.sin(a1)*8.5}, s2={x:st.x+Math.cos(a2)*8.5,z:st.z+Math.sin(a2)*8.5};
-    const t1=topOf(s1.x,s1.z,H(s1.x,s1.z)+2.5), t2=topOf(s2.x,s2.z,H(s2.x,s2.z)+.7);
-    addPerch({x:s2.x,z:s2.z,r:1.05,top:t2});           // the fallen stone (a step)
-    addPerch({x:s1.x,z:s1.z,r:.62,top:t1});            // the standing stone's crown
-    lowerCollider(s1.x,s1.z,t1-.25);
-    SPOTS.push({id:'stones',name:'The standing stones',how:'On the crown of the shortest standing stone. Hop onto the fallen stone beside it, then double jump across.',
-      pos:V(s1.x,t1+.55,s1.z),from:V(s2.x,t2,s2.z)}); }
-  /* 2. Glide ledge: a rock shelf on the headland's south cliff, west of the cottage — glide down from the cliff top. */
-  { const x=142, top=27; let zf=40; for(let z=40;z<64;z+=.25){ if(H(x,z)<top-.5){ zf=z; break; } }
-    const cx=x, cz=zf+.9;
-    addPerch({x:cx,z:cz,r:2.1,top});
-    const shelf=new THREE.Mesh(rockGeo(2.3,1.2,2.6,11),M.stone); shelf.position.set(cx,top-1.3,cz); shelf.scale.set(1.15,1,.95); root.add(shelf);
-    const cap=new THREE.Mesh(new THREE.CylinderGeometry(2.2,2.3,.14,8),M.moss); cap.position.set(cx,top-.06,cz); root.add(cap);
-    SPOTS.push({id:'ledge',name:'The cliff ledge',how:'A rock shelf halfway down the headland’s south cliff. Walk off the cliff top above it and glide down; glide on west to the beach to leave.',
-      pos:V(cx,top+.55,cz+.4),from:V(cx,42,zf-4)}); }
+  /* 1. Standing stones: the crown of the shortest standing stone (stone 1, ~2.5 m) — too tall for a double jump from the grass.
+     A broken-off chunk of it lies at its foot: jump onto that, then double jump up. */
+  { const st=lm.stones||{x:40,z:-35}, a1=1/9*TAU+.2;
+    const s1={x:st.x+Math.cos(a1)*8.5,z:st.z+Math.sin(a1)*8.5}, g1=H(s1.x,s1.z), t1=topOf(s1.x,s1.z,g1+2.5);
+    const ox=Math.cos(a1), oz=Math.sin(a1), rb={x:s1.x+ox*2.0+oz*.45,z:s1.z+oz*2.0-ox*.45}, gr=H(rb.x,rb.z), tr=gr+.85;
+    addPerch({x:s1.x,z:s1.z,r:.82,top:t1}); lowerCollider(s1.x,s1.z,t1-.4);   // the standing stone's crown
+    addPerch({x:rb.x,z:rb.z,r:.78,top:tr});                                   // the broken chunk (a step)
+    const stoneMat=G.toon('#86878d');
+    const chunk=new THREE.Mesh(rockGeo(.7,.85,tr-gr+.3,21),stoneMat); chunk.position.set(rb.x,gr+(tr-gr+.3)/2-.3,rb.z); chunk.rotation.set(.08,a1,-.06); chunk.scale.set(1.05,1,.8); chunk.castShadow=true; root.add(chunk);
+    const cap=new THREE.Mesh(new THREE.CylinderGeometry(.66,.7,.1,8),M.moss); cap.position.set(rb.x,tr-.04,rb.z); cap.scale.set(1.05,1,.8); cap.rotation.y=a1; root.add(cap);
+    G.addCollider({x:rb.x,z:rb.z,r:.75,y0:gr-1,y1:tr-.35});
+    SPOTS.push({id:'stones',name:'The standing stones',how:'On the crown of the shortest standing stone (north-east side of the circle), 2.5 m up: too tall for a double jump from the grass. Jump onto the broken-off chunk at its foot, then double jump.',
+      pos:V(s1.x,t1+.55,s1.z),from:V(rb.x,tr,rb.z)}); }
+  /* 2. The moor spire: a ~11 m stone spire on the moor at the foot of the headland's west face, beside the bottom of the cliff
+     path. Too tall to climb: glide to it off the headland's west edge (the sea-facing cliffs are walls; this face is a steep
+     slope you can run off). */
+  { const x=101.5, z=10, g=H(x,z), top=Math.max(g+10,26);   // ~13 m out from the edge: the cloak sinks about 1 m per metre flown
+    addPerch({x,z,r:1.7,top}); pillar(root,x,z,g-.5,top,1.7,{flare:1.7});
+    for(let i=0;i<3;i++){ const a=i*2.1+.4, rx=x+Math.cos(a)*3.4, rz=z+Math.sin(a)*3.4; const r=new THREE.Mesh(rockGeo(.4,.7,.9,i+31),M.stoneDark); r.position.set(rx,H(rx,rz)+.3,rz); root.add(r); }
+    SPOTS.push({id:'spire',name:'The moor spire',how:'On top of an 11 m stone spire beside the foot of the cliff path. Too tall to climb: from the headland top, run west off the steep edge just north of where the cliff path starts down (z ≈ 10), glide straight at the spire and let go over it.',
+      pos:V(x,top+.55,z),from:V(118,H(118,10),10)}); }
   /* 3. Sea stack at low tide: a shelf at the foot of a stack off the south beach, under water except at low tide. */
   { const x=46; let z=80; for(;z<100;z+=.25){ if(H(x,z)<-1.75)break; }
     const sand=H(x,z), top=sand+1.25;   // sand ~-1.75 (dry only at low tide); the shelf top ~-0.5: above low water, under high water
@@ -217,7 +222,7 @@ function buildSpots(){
   /* 4. Hamlet attic: a loft of old floorboards inside the north-west ruin; a heap of fallen slates is the step up. */
   { const hx=-28, hz=41, yaw=.35, base=Math.min(H(hx-3,hz-2),H(hx+3,hz-2),H(hx-3,hz+2),H(hx+3,hz+2));
     const L=(lx,lz)=>({x:hx+lx*Math.cos(yaw)+lz*Math.sin(yaw), z:hz-lx*Math.sin(yaw)+lz*Math.cos(yaw)});
-    const loft=L(-1.8,.9), heap=L(.6,-.6), lt=base+2.45, ht=base+.95;
+    const loft=L(-1.8,.9), heap=L(.6,-.6), lt=base+2.6, ht=base+.95;
     addPerch({x:loft.x,z:loft.z,r:1.25,top:lt}); addPerch({x:heap.x,z:heap.z,r:.75,top:ht});
     const boards=new THREE.Mesh(new THREE.BoxGeometry(2.8,.14,2.2),M.plank); boards.position.set(loft.x,lt-.07,loft.z); boards.rotation.y=yaw; root.add(boards);
     for(const s of [-1,1]){ const post=new THREE.Mesh(new THREE.BoxGeometry(.16,lt-base,.16),M.timber); const q=L(-1.8+s*1.1,1.8); post.position.set(q.x,base+(lt-base)/2,q.z); root.add(post); }
@@ -238,10 +243,11 @@ function buildSpots(){
   /* 8. The sea cave, off the main path: the Flooding Stair's upper ledge (reached at high tide from the floating crates). */
   { const a=caveAnchor('stair','ledge',V(7.6,62.6,734)); a.x+=.6;
     SPOTS.push({id:'cave',name:'The Flooding Stair’s ledge',how:'In the sea cave: the upper ledge of the Flooding Stair. At high tide, ride the floating crates up and jump across.',pos:V(a.x,a.y+.55,a.z),cave:true,from:a.clone()}); }
-  /* 9. The lighthouse gallery, outside the lamp-room glass (seaward side). */
-  { const lh=G.world.lighthouse, cx=lh?lh.x:180, cz=lh?lh.z:0, ty=(lh&&lh.topY)||66, a=.35, r=4.45;
-    SPOTS.push({id:'gallery',name:'The lamp gallery',how:'Outside the lamp-room glass, on the gallery that rings the top of the tower (seaward side). Climb the tower and step out.',
-      pos:V(cx+Math.cos(a)*r,ty+.55,cz+Math.sin(a)*r),from:V(cx+Math.cos(a+.5)*r,ty,cz+Math.sin(a+.5)*r)}); }
+  /* 9. The cliff-path outcrop: a rock jutting from the drop beside the cliff path's long northward run, 1.6 m above it. */
+  { const px=115.5, pz=-6, py=H(px,pz); let ox=px-2.7; const top=py+1.6, g=Math.min(H(ox,pz),py-.5);
+    addPerch({x:ox,z:pz,r:.85,top}); pillar(root,ox,pz,g-1,top,.85,{flare:1.5});
+    SPOTS.push({id:'outcrop',name:'The cliff-path outcrop',how:'On a rock jutting out over the drop beside the cliff path where it runs north along the headland’s west face. Double jump from the path.',
+      pos:V(ox,top+.55,pz),from:V(px+.6,py,pz)}); }
   /* 10. The tidepool on the sandbar (cave.js's causeway under the headland: dry only at low tide, core loop only). */
   { const x=131, z=56.35, y=-.95;
     const pool=new THREE.Mesh(new THREE.CircleGeometry(1.1,14),G.toon('#2f4a5a',{emissive:'#1a2a3a',emissiveIntensity:.3})); pool.rotation.x=-PI/2; pool.position.set(x,y+.04,z); root.add(pool); SAND.push(pool);
@@ -277,10 +283,10 @@ function buildSpots(){
   }
 }
 /* the actual top of a world mesh at (x,z) (raycast straight down; used for the standing stone) */
-function topOf(x,z,fb){
+function topOf(x,z,fb,strict){
   try{ const rc=new THREE.Raycaster(V(x,fb+8,z),V(0,-1,0),0,12); const list=[]; G.scene.traverse(o=>{ if(o.isMesh&&!o.isInstancedMesh&&o.visible&&o.name!=='terrain'&&o.name!=='sea'&&!(o.parent&&o.parent.name==='progression'))list.push(o); });
     const h=rc.intersectObjects(list,false).filter(q=>Math.hypot(q.point.x-x,q.point.z-z)<.2&&q.point.y>fb-1.6&&q.point.y<fb+1.6); if(h.length)return h[0].point.y; }catch(e){}
-  return fb;
+  return strict?null:fb;
 }
 function lowerCollider(x,z,y1){ try{ for(const c of G.collidersNear(x,z)) if(Math.hypot(c.x-x,c.z-z)<.3&&c.y1>y1)c.y1=y1; }catch(e){} }
 
@@ -445,7 +451,8 @@ function updateWorld(dt){
     // the glint carries further at a distance (screen-size floor) so the spot reads from where you'd look for it
     const far=U.clamp((d-15)/60,0,1); u.glow.scale.multiplyScalar(1+far*2.2);
     if(play&&d<CHIME_R){ s.chimeT-=dt; if(s.chimeT<=0){ s.chimeT=3.6+Math.random()*1.6; chime(d); } }
-    if(play&&p.alive&&d<PICK_R&&Math.abs(s.pos.y-.55-p.pos.y)<1.5)collectShard(s);
+    const dy=p.pos.y-(s.pos.y-.55); // standing at the shard's footing (or just above): no grabbing it in passing from below a perch
+    if(play&&p.alive&&d<PICK_R&&dy>-.4&&dy<1.6)collectShard(s);
   }
   for(const c of CACHES){
     const d=Math.hypot(c.pos.x-p.pos.x,c.pos.z-p.pos.z), vis=d<200&&(!!c.cave===inCave)&&(!c.when||c.when());
@@ -469,11 +476,11 @@ function buildBeams(){
 
 /* ---------------------------------------------------------------- DOM: reward card, Temper tab, Journal */
 const CSS=`
-#rewardCard{position:fixed;left:50%;bottom:calc(16% + env(safe-area-inset-bottom,0px));transform:translate(-50%,14px);z-index:7;pointer-events:none;opacity:0;
+#rewardCard{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(18% + env(safe-area-inset-bottom,0px));transform:translate(0,14px);z-index:7;pointer-events:none;opacity:0;
   transition:opacity .45s,transform .55s cubic-bezier(.2,.8,.2,1);width:min(440px,calc(100% - 32px));display:grid;grid-template-columns:64px 1fr;gap:4px 16px;align-items:center;
   color:var(--ink);background:linear-gradient(180deg,var(--parch),var(--parch-2));padding:16px 20px 15px;border-radius:3px;
   box-shadow:0 18px 50px rgba(0,0,0,.55),inset 0 0 0 1px rgba(60,40,30,.25),inset 0 0 0 5px rgba(239,228,204,1),inset 0 0 0 6px rgba(60,40,30,.35)}
-#rewardCard.show{opacity:1;transform:translate(-50%,0)}
+#rewardCard.show{opacity:1;transform:translate(0,0)}
 #rewardCard .rc-ic{grid-row:1/span 3;width:64px;height:64px;display:grid;place-items:center;border-radius:50%;background:radial-gradient(circle,rgba(165,108,255,.28),rgba(165,108,255,0) 70%)}
 #rewardCard .rc-ic svg{width:46px;height:46px;filter:drop-shadow(0 2px 3px rgba(0,0,0,.35))}
 #rewardCard .eyebrow{font-size:11.5px}
@@ -482,6 +489,7 @@ const CSS=`
 #rewardCard .rc-sub{grid-column:2;font:600 12.5px var(--body);color:#6c3f5f;display:flex;align-items:center;gap:8px}
 .rc-pips{display:inline-flex;gap:3px}.rc-pips i{width:11px;height:15px;clip-path:polygon(50% 0,100% 35%,50% 100%,0 35%);background:rgba(75,56,99,.22)}
 .rc-pips i.on{background:#9a6cff}
+@media (max-width:760px){#rewardCard{right:auto;left:50%;bottom:auto;top:calc(76px + env(safe-area-inset-top,0px));transform:translate(-50%,-10px)}#rewardCard.show{transform:translate(-50%,0)}}
 @media (max-width:520px){#rewardCard{grid-template-columns:48px 1fr;padding:13px 15px;gap:3px 12px}#rewardCard .rc-ic{width:48px;height:48px}#rewardCard .rc-ic svg{width:36px;height:36px}#rewardCard .rc-desc{font-size:15px}}
 /* Temper tab on the keeper's bench */
 .alch-tabs{display:flex;gap:6px;border-bottom:1px solid rgba(60,40,30,.3);margin-top:-2px}
