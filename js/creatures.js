@@ -403,7 +403,8 @@ function updateMoths(dt){
     if((m.tgt==='roost'&&!m.rp)||(m.tgt==='jar'&&m.inJar)){ if(!m.hidden){m.hidden=true;_m4.makeScale(0,0,0);_m4.setPosition(0,-999,0);mothMesh.setMatrixAt(i,_m4);} continue; }
     if(m.tgt!=='jar')m.inJar=false;
     m.hidden=false;
-    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander'||m.tgt==='roost')&&lanternCount<90&&m.p.distanceToSquared(lp)<recR2&&rnd()<dt*.9){m.tgt='lantern';m.rad=.35+rnd()*1.4;}
+    if(canRecruit&&(m.tgt==='patch'||m.tgt==='wander'||m.tgt==='roost')&&lanternCount<90&&m.p.distanceToSquared(lp)<recR2&&rnd()<dt*.9*((G.player&&G.player.mods&&G.player.mods.mothGather)||1)){ // Lantern Charm: x1.25
+      m.tgt='lantern';m.rad=.35+rnd()*1.4;}
     if(m.tgt==='lantern'||m.tgt==='hunt')lc++;
     mothTarget(m,t,tmp);
     route(m,g);

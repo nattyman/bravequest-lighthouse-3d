@@ -517,6 +517,9 @@ const charge={on:false,t:0,ready:0};
 let spinT=-1, spinExclude=null, boltPoseT=0;
 /* techniques (combat.js holds the numbers in G.moves.T): the move in progress, cooldowns, input buffers, air flags */
 const MT=()=>(G.moves&&G.moves.T)||null;
+/* stamina spend through the upgrade hooks: a bigger pool (Moth Wings) makes every cost a smaller fraction; Ashwood Grip trims rolls/techniques */
+const MOD=()=>P.mods||{};
+const spend=(c,trim)=>c*(trim?(MOD().cost||1):1)/(MOD().stamMax||1);
 const mv={id:null,t:0,phase:'',exclude:null,top:0,spd0:0,power:0,ry:0,label:''};
 const cool={};
 let atkBuf=0, rollBuf=0, postRollT=0, djUsed=false, dived=false, djFlipT=-1, atkHoldLock=false;
@@ -546,6 +549,9 @@ Object.assign(P,{
   lockTarget:null,gliding:false,sprinting:false,inputEnabled:true,model:null,heading:START.yaw,camYaw:START.yaw,
   hands:{left:null,right:null},
   actionLock:0,speedMul:1,poseHooks:[], // hooks for other modules' actions (potions.js)
+  // upgrade multipliers (progression.js sets them): dmg +half-hearts per staff hit/bolt, cost x technique/roll stamina, stamMax x stamina pool,
+  // charge x bolt charge rate, boltSpeed x, pierce extra bolt targets. camPull {yaw,pitch,dist,rate}: the camera eases to it (reward moment)
+  mods:{dmg:0,cost:1,stamMax:1,charge:1,boltSpeed:1,pierce:0}, camPull:null,
   hurt(info={}){
     if(!P.alive)return false;
     const kind=info.kind||'melee';
@@ -800,6 +806,7 @@ function startSwing(i,wish){
 function staffTip(out){ if(staffObj){staffObj.userData.tip.getWorldPosition(out);} else out.copy(P.pos).y+=1; return out; }
 function staffMid(out){ if(staffObj){staffObj.localToWorld(out.set(0,.75,0));} else out.copy(P.pos).y+=1; return out; }
 function doStrike(o){
+  if(MOD().dmg)o=Object.assign({},o,{damage:(o.damage||1)+MOD().dmg}); // Ether Tip
   const hits=G.combat.strike(Object.assign({team:'player',kind:'melee',source:P},o));
   if(hits.length){
     stopT=Math.max(stopT,.055); camShake(.12);
@@ -818,7 +825,7 @@ function fireBolt(o={}){
   staffTip(tmp);
   const from=tmp.clone(); let dir, life=1.3;
   const A=MT()?MT().aim:null, B=A?(o.great?A.great:A.bolt):{dmg:4,kb:6,speed:24,radius:.38};
-  const speed=B.speed;
+  const speed=B.speed*(MOD().boltSpeed||1), pierce=MOD().pierce|0; let pierced=0; // Lens Shard
   if(P.lockTarget){const t=P.lockTarget; tmp2.copy(t.pos); tmp2.y+=(t.height||1.4)*.55; dir=tmp2.sub(from).normalize();}
   else if(o.point){ dir=tmp2.copy(o.point).sub(from); const d=dir.length(); dir.normalize(); life=clamp(d/speed+.06,.12,2.6);
     P.heading=Math.atan2(dir.x,dir.z); }
@@ -826,8 +833,8 @@ function fireBolt(o={}){
   const m=new THREE.Group(), gs=o.great?1.45:1;
   const core=new THREE.Mesh(new THREE.SphereGeometry(.11*gs,12,10),new THREE.MeshBasicMaterial({color:glowCol(o.great?'#ffe6c0':'#c9a8ff',3)})); m.add(core);
   m.add(sprite(G.tex.flame,o.great?'#d9b8ff':'#a070ff',.9*gs,1)); m.add(sprite(G.tex.soft,'#7a4cff',2.2*gs,.5));
-  const proj=G.combat.spawnProjectile({pos:from,vel:dir.clone().multiplyScalar(speed),radius:B.radius,team:'player',damage:B.dmg,life,kind:'bolt',mesh:m,knockback:B.kb,
-    onHit(h){sparks(proj.pos,'#c9a6ff',o.great?16:10); camShake(o.great?.2:.1); if(o.great)stopT=Math.max(stopT,.06);},
+  const proj=G.combat.spawnProjectile({pos:from,vel:dir.clone().multiplyScalar(speed),radius:B.radius,team:'player',damage:B.dmg+(MOD().dmg||0),life,kind:'bolt',mesh:m,knockback:B.kb,pierce:pierce>0,
+    onHit(h){ if(pierce>0&&++pierced>pierce)proj.pierce=false;sparks(proj.pos,'#c9a6ff',o.great?16:10); camShake(o.great?.2:.1); if(o.great)stopT=Math.max(stopT,.06);},
     onEnd(p){spawnFx({pos:p.pos,size:.4*gs,grow:1.8*gs,life:.3,color:'#a070ff',tex:G.tex.flame});}});
   proj.great=!!o.great;
   bolts.push(proj);
@@ -963,7 +970,7 @@ function update(dt){
 function startRoll(wish,mag){
   if(P.exhausted)return;
   if(atk.on){atk.on=false; atk.queued=false;}
-  P.stamina=Math.max(0,P.stamina-.1); staminaDelay=.5;
+  P.stamina=Math.max(0,P.stamina-spend(.1,true)); staminaDelay=.5;
   rollT=0; rollKind='roll'; rollDur=.48;
   if(P.lockTarget){
     const f=P.facing(), rgt=new V3(-f.z,0,f.x).negate(); // character's right
@@ -980,7 +987,7 @@ function startRoll(wish,mag){
 /* the air roll: a forward dive out of a jump (or a glide). Strike during or after it for the Starfall Plunge. */
 function startDive(wish,mag){
   const D=MT().dive; if(P.exhausted)return;
-  P.stamina=Math.max(0,P.stamina-D.stamina); staminaDelay=.5;
+  P.stamina=Math.max(0,P.stamina-spend(D.stamina,true)); staminaDelay=.5;
   if(atk.on){atk.on=false; atk.queued=false;}
   P.gliding=false; rollT=0; rollKind='dive'; rollDur=D.dur; dived=true;
   rollDir.copy(mag>.1?wish:P.facing()); rollDir.y=0; rollDir.normalize();
@@ -1000,7 +1007,7 @@ function canDoubleJump(ctl,busy){
 function doDoubleJump(){
   const D=MT().doubleJump;
   vy=D.vy; djUsed=true; jumpBuf=0; P.gliding=false; djFlipT=0; airT=Math.min(airT,.2);
-  P.stamina=Math.max(0,P.stamina-D.stamina); staminaDelay=.5;
+  P.stamina=Math.max(0,P.stamina-spend(D.stamina)); staminaDelay=.5;
   if(atk.on){atk.on=false; atk.queued=false;}
   // two pale moth wings open behind the shoulders and scatter into motes
   const f=P.facing(), rx=-f.z, rz=f.x;
@@ -1037,7 +1044,7 @@ function moveCancellable(){
 }
 function startMove(id,wish){
   const M=MT(), m=M[id];
-  if(m.stamina){P.stamina=Math.max(0,P.stamina-m.stamina); staminaDelay=.5;}
+  if(m.stamina){P.stamina=Math.max(0,P.stamina-spend(m.stamina,true)); staminaDelay=.5;}
   Object.assign(mv,{id,t:0,phase:'',exclude:new Set(),top:Math.max(fallTop,P.pos.y),spd0:Math.hypot(hv.x,hv.z),power:0,ry:0,label:''});
   atk.on=false; atk.queued=false; attackHeld=0; atkHoldLock=true; postRollT=0;
   drawStaff();
@@ -1174,7 +1181,7 @@ function handleAttack(dt,wish,mag,busy){
     atk.on=false; atk.queued=false; charge.on=true; charge.t=0; charge.ready=0; drawStaff();
   }
   if(charge.on){
-    charge.t+=dt; staffDrawnT=3;
+    charge.t+=dt*(MOD().charge||1); staffDrawnT=3;
     if(charge.ready<1&&charge.t>=.38){charge.ready=1; staffTip(tmp); spawnFx({pos:tmp,size:.3,grow:1.4,life:.3,color:'#d8c0ff',tex:G.tex.flame});}
     if(charge.ready<2&&charge.t>=1.3){charge.ready=2; staffTip(tmp); spawnFx({pos:tmp,size:.5,grow:2.2,life:.4,color:'#ffe9b0',tex:G.tex.flame});}
     if(Math.random()<dt*14){staffTip(tmp); spawnFx({pos:tmp.add(new V3(Math.random()-.5,Math.random()-.5,Math.random()-.5).multiplyScalar(.5)),vel:new V3(0,.4,0),size:.08,grow:.02,life:.4,color:'#b58aff',tex:G.tex.flame});}
@@ -1225,7 +1232,7 @@ function locomotion(dt,wish,mag,ctl,busy){
     let target=mag<.08?0:P.exhausted?2.3:sprinting?8.4:lerp(1.7,5.4,smooth(.25,.9,mag));
     if(charge.on)target=Math.min(target,2.1);
     if(P.speedMul!=null&&P.speedMul<1)target*=Math.max(0,P.speedMul);
-    if(sprinting){P.stamina=Math.max(0,P.stamina-dt*.2); staminaDelay=.6; if(P.stamina<=0){P.exhausted=true; sprinting=false;}}
+    if(sprinting){P.stamina=Math.max(0,P.stamina-spend(dt*.2)); staminaDelay=.6; if(P.stamina<=0){P.exhausted=true; sprinting=false;}}
     if(P.lockTarget){
       target=Math.min(target,4.2);
       P.heading=U.dampAngle(P.heading,Math.atan2(P.lockTarget.pos.x-P.pos.x,P.lockTarget.pos.z-P.pos.z),14,dt);
@@ -1280,7 +1287,7 @@ function airControl(dt,wish,mag,ctl){
   if(P.gliding&&(!wantGlide)){P.gliding=false; fallTop=P.pos.y;}
   if(P.gliding){
     glideT+=dt;
-    P.stamina=Math.max(0,P.stamina-dt*.038); staminaDelay=.6;
+    P.stamina=Math.max(0,P.stamina-spend(dt*.038)); staminaDelay=.6;
     if(P.stamina<=0){P.exhausted=true; P.gliding=false; fallTop=P.pos.y;}
     if(mag>.08)P.heading=U.dampAngle(P.heading,Math.atan2(wish.x,wish.z),2.4,dt);
     const ff=P.facing(); const gs=mag>.08?lerp(5,7.2,mag):4.6;
@@ -1702,6 +1709,7 @@ function updateCamera(dt){
   if(inCot){dist=Math.min(dist,3.6); pMin=.42; pMax=1.15; if(cam.pitch<.5&&cam.idle>.3)cam.pitch=damp(cam.pitch,.5,2.5,dt);}
   const spd=Math.hypot(hv.x,hv.z);
   if(!P.alive){cam.yaw+=dt*.12; cam.pitch=damp(cam.pitch,.55,1.2,dt); dist=Math.min(dist,4.6);}
+  else if(P.camPull){ const c=P.camPull; cam.yaw=U.dampAngle(cam.yaw,c.yaw,c.rate||4,dt); cam.pitch=damp(cam.pitch,c.pitch==null?.15:c.pitch,3,dt); dist=Math.min(dist,c.dist||3.4); cam.idle=0; }
   else if(P.lockTarget){
     const tp=P.lockTarget.pos;
     const a=Math.atan2(tp.x-P.pos.x,tp.z-P.pos.z);

@@ -121,6 +121,7 @@ const STARTS=[
   {id:'lamp-failed',name:'The lamp failed',sub:'The storm lantern’s flame was drunk · staff in hand, at the foot of the stairs: Halloran waits outside',group:'Act 1'},
   {id:'stag',name:'Before the Hollow Stag',sub:'Edge of the old wood, staff in hand · the Stag guards Maren’s lantern',group:'Act 1'},
   {id:'finale',name:'Before the finale boss',sub:'Lamp cured, staff in hand, at the foot of the stairs: step outside',group:'Act 1'},
+  {id:'late',name:'Late game',sub:'Loop running · 10 hearts, 4 Moth Wings, every upgrade, all shards and caches · moth jar',group:'Act 1'},
   {id:'sandbar',name:'The sandbar, low tide',sub:'Loop running, lantern baited, 60 moths · the cave mouth ahead',group:'The cave'},
   {id:'cave:mouth',name:'The Mouth',sub:'Just inside, nothing lit yet',group:'The cave'},
   {id:'cave:gallery',name:'Gallery of Keepers',sub:'Mouth lit · the gallery seal ahead',group:'The cave'},
@@ -168,6 +169,13 @@ function runStart(id){
       pos:arr(inP),yaw:-PI/2});
     F.begin(s); return;
   }
+  if(id==='late'){ // progression.js: everything a thorough player has (hearts, wings, upgrades) — then the real loop + jar
+    const s=loopSave({lantern:true,known:Object.keys((G.alchemy&&G.alchemy.recipes)||{}),inv:{glowcap:12,ichor:8,vial:4,kelp:4,brine:4,pearl:2}});
+    s.flags.undertowDead=true; s.hp=20; s.freed=[0,1,2,3,4,5,6,7];
+    if(G.progress)s.mods.progress=G.progress.lateGame();
+    s.mods.cavePuzzles={v:1,lit:[],open:[],prog:{},raft:{t:0,done:false},bossDead:true,said:{},jar:{owned:true,count:0,left:0,said:{}}};
+    s.mods.caveBoss={v:1,pages:[1,2,3],defeated:true,discovered:true,hal:false,entered:true,bossSeen:true,said:[]};
+    s.pos=arr(lhDoorOut()); F.begin(s); if(G.moths&&G.moths.jar&&!G.moths.jar.owned)G.moths.jar.give({silent:true}); if(G.progress)G.progress.apply(); G.player.hp=G.player.maxHp; return; }
   if(id==='sandbar'){
     const s=caveSave('mouth'); s.mods.caveBoss.discovered=false; s.mods.caveBoss.entered=false;
     F.begin(s); caveSwarmAndEnter(null);
@@ -374,6 +382,11 @@ function render(){
     <button type="button" data-act="swarm"${dis(!title)}>60-moth swarm</button>
     <button type="button" data-act="jar"${dis(!title&&G.moths&&G.moths.jar&&!G.moths.jar.owned)}>Moth jar</button>
     <button type="button" data-act="heal"${dis(!title)}>Heal</button></div>
+  ${G.progress?`<div class="dt-row"><span class="lbl">Progress <small>(${G.progress.shards} shards · ${G.progress.marks} marks)</small></span><div class="seg">
+    <button type="button" data-prog="shard"${dis(!title)}>+1 Heart Shard</button><button type="button" data-prog="heart"${dis(!title)}>+1 Keeper’s Heart</button>
+    <button type="button" data-prog="mark"${dis(!title)}>+1 Mark</button><button type="button" data-prog="wing"${dis(!title)}>+1 Moth Wing</button>
+    <button type="button" data-prog="upgrades"${dis(!title)}>All upgrades</button>
+    <button type="button" data-prog="reveal" aria-pressed="${!!G.progress.reveal}"${dis(!title)}>Reveal collectibles</button></div></div>`:''}
   <div class="dt-row"><span class="lbl">Tide <small>(${tideName()})</small></span><div class="seg">${['low','rising','high','falling'].map(k=>`<button type="button" data-tide="${k}" aria-pressed="${tideName()===k}"${dis(!title&&loop)}>${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div></div>
   <div class="dt-row"><span class="lbl">Time speed</span><div class="seg">${[1,4].map(n=>`<button type="button" data-speed="${n}" aria-pressed="${(G.timeScale||1)===n}">${n}×</button>`).join('')}</div></div>
   <div class="dt-h">Teleport</div><div class="seg">`;
@@ -389,14 +402,15 @@ function render(){
   sheet.innerHTML=h; noteEl=$('dtNote'); noteEl.textContent=lastNote;
   if(focusKey){ const el=sheet.querySelector(focusKey); if(el&&!el.disabled){ try{el.focus({preventScroll:true});}catch(_){el.focus();} if(G.input.device==='gamepad')el.classList.add('pad-focus'); } }
 }
-function keyOf(el){ for(const a of ['data-start','data-cheat','data-give','data-act','data-tide','data-speed','data-tp','data-spawn']) if(el.hasAttribute(a))return `[${a}="${el.getAttribute(a)}"]`; return null; }
+function keyOf(el){ for(const a of ['data-prog','data-start','data-cheat','data-give','data-act','data-tide','data-speed','data-tp','data-spawn']) if(el.hasAttribute(a))return `[${a}="${el.getAttribute(a)}"]`; return null; }
 function onClick(e){
   const b=e.target.closest('button'); if(!b||b.disabled)return;
   const d=b.dataset; let msg='';
   try{
     if(d.start){ chooseStart(d.start); return; }
     if(d.cheat){ toggle(d.cheat); return; }
-    if(d.give)msg=giveItem(d.give);
+    if(d.prog){ testMode(); if(d.prog==='reveal'){ G.progress.reveal=!G.progress.reveal; msg=G.progress.reveal?'Shards (violet) and caches (amber) marked with beams':'Markers hidden'; } else { G.progress.give(d.prog); msg='Given: '+d.prog; } }
+    else if(d.give)msg=giveItem(d.give);
     else if(d.tide){ testMode(); msg=setTide(d.tide); }
     else if(d.speed){ setSpeed(+d.speed); return; }
     else if(d.tp)msg=teleport(d.tp);
