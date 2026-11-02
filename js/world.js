@@ -523,6 +523,75 @@ function setupLights(){
   skyU.uSunDir.value.copy(G.lights.sunDir); seaU.uSunDir.value.copy(G.lights.sunDir);
 }
 
+/* ---------- landscape shading (tier 1): wind, rim light, grass parting — all in the vertex/fragment shaders ----------
+   SH.wind  xy = wind direction (xz), z = strength. Trees, bushes and grass share one gust field so they move together.
+   SH.sunV  view-space direction to the sun (rim / back-light on canopies); SH.sunW world-space; SH.rim/sunCol warm tints
+   scaled by the sun's intensity every frame (so they vanish in the dark tower and indoors).
+   SH.push  up to 8 xz pushers (x, z, radius, strength): grass bends away from the Traveler and nearby monsters. */
+const PUSHN=8;
+const FOL={mats:[],trees:[]}; // foliage materials (quality defines) and tree feet [x,z,r,...] for contact shading
+SH.wind={value:new THREE.Vector4(.87,.49,1,0)};
+SH.sunV={value:new THREE.Vector3(0,1,0)}; SH.sunW={value:new THREE.Vector3(0,1,0)};
+SH.rim={value:new THREE.Color()}; SH.sunCol={value:new THREE.Color()};
+SH.push={value:Array.from({length:PUSHN},()=>new THREE.Vector4(0,0,1,0))};
+const RIM0=col('#ffc290'), SUNC0=col('#ffcf96');
+const WIND_GLSL=`uniform float uTime;uniform vec4 uWind;
+float bqGust(vec2 p){ // travelling gust crests along the wind
+  float a=dot(p,uWind.xy)*.085-uTime*1.35+sin(dot(p,vec2(-uWind.y,uWind.x))*.045+uTime*.21)*1.7;
+  return smoothstep(.45,1.,sin(a)*.5+.5)*(.55+.45*sin(uTime*.23+p.x*.004));}
+vec2 bqTreeWind(vec2 p){
+  float ph=dot(p,vec2(.071,.053));
+  #ifdef BQ_LQ
+  return uWind.xy*(sin(uTime*1.05+ph*6.)*.5+.45)*uWind.z*.22;
+  #else
+  float s=sin(uTime*1.05+ph*6.)*.55+sin(uTime*1.9+ph*9.7)*.2;
+  vec2 side=vec2(-uWind.y,uWind.x)*sin(uTime*1.3+ph*4.)*.16;
+  return (uWind.xy*(s*.45+.25+bqGust(p)*.6)+side)*uWind.z*.24;
+  #endif
+}`;
+/** sway instanced trees/bushes in the vertex shader: amount grows with local height (trunk flexes, canopy sways) */
+function foliageShader(m,o){
+  const leaf=!!o.leaf, rim=o.rim!==false&&leaf;
+  m.onBeforeCompile=sh=>{
+    sh.uniforms.uTime=SH.time; sh.uniforms.uWind=SH.wind; sh.uniforms.uSunV=SH.sunV; sh.uniforms.uRimCol=SH.rim;
+    sh.vertexShader=WIND_GLSL+'\n'+sh.vertexShader.replace('#include <project_vertex>',`vec4 mvPosition=vec4(transformed,1.);
+  #ifdef USE_INSTANCING
+  mvPosition=instanceMatrix*mvPosition;
+  { vec2 ip=instanceMatrix[3].xz; float k=clamp(transformed.y/9.,0.,1.35); k*=k;
+    mvPosition.xz+=bqTreeWind(ip)*k;
+    ${leaf?`#ifndef BQ_LQ
+    float fl=sin(uTime*3.3+dot(transformed,vec3(2.1,1.7,2.9))+ip.x)*.045*k;
+    mvPosition.xyz+=vec3(fl,fl*.6,-fl);
+    #endif`:''}
+  }
+  #endif
+  mvPosition=modelViewMatrix*mvPosition;
+  gl_Position=projectionMatrix*mvPosition;`);
+    if(rim)sh.fragmentShader='uniform vec3 uSunV;uniform vec3 uRimCol;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  { vec3 bqV=normalize(vViewPosition); float bqF=1.-max(dot(normal,bqV),0.);
+    float bqSun=smoothstep(-.3,.9,dot(normal,uSunV)), bqBack=max(-dot(uSunV,bqV),0.);
+    totalEmissiveRadiance+=uRimCol*diffuseColor.rgb*pow(bqF,2.)*(bqSun*.55+bqBack*bqBack*.9+.08); }`);
+  };
+  m.customProgramCacheKey=()=>'bqFol'+(leaf?'L':'T')+(rim?'R':'')+(m.defines&&m.defines.BQ_LQ?'q':'');
+  return m;
+}
+/** rim/back-light only (non-instanced canopies, e.g. the Resisting Tree) */
+function rimShader(m){
+  m.onBeforeCompile=sh=>{ sh.uniforms.uSunV=SH.sunV; sh.uniforms.uRimCol=SH.rim;
+    sh.fragmentShader='uniform vec3 uSunV;uniform vec3 uRimCol;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  { vec3 bqV=normalize(vViewPosition); float bqF=1.-max(dot(normal,bqV),0.);
+    float bqSun=smoothstep(-.3,.9,dot(normal,uSunV)), bqBack=max(-dot(uSunV,bqV),0.);
+    totalEmissiveRadiance+=uRimCol*diffuseColor.rgb*pow(bqF,2.)*(bqSun*.45+bqBack*bqBack*.7); }`); };
+  m.customProgramCacheKey=()=>'bqRim'; return m;
+}
+/** "fluffy" canopy normals: blend each vertex normal toward the direction from the canopy centre */
+function spherize(g,cx,cy,cz,amt,sy=1){
+  const P=g.attributes.position,N=g.attributes.normal;
+  for(let i=0;i<P.count;i++){ _v.set(P.getX(i)-cx,(P.getY(i)-cy)*sy,P.getZ(i)-cz).normalize(); _n.fromBufferAttribute(N,i);
+    _n.lerp(_v,amt).normalize(); N.setXYZ(i,_n.x,_n.y,_n.z); }
+  return g;
+}
+
 /* ---------- trees ---------- */
 function oakGeos(seed){
   const r=rnd(seed),trunk=[],canopy=[];
@@ -547,29 +616,35 @@ function oakGeos(seed){
     tops.push(new THREE.Vector3(s[0]+d.x*L,s[1]+d.y*L,s[2]+d.z*L));
   }
   const tp=axis(1); tops.push(new THREE.Vector3(tp[0],H+.4,tp[2]));
-  const dark=col('#121a15'),mid=col('#223021'),lite=col('#3e5232');
+  const dark=col('#1d2a20'),mid=col('#344a2d'),lite=col('#5a7343'),warm=col('#77744a');
   let yMin=1e9,yMax=-1e9; const bl=[];
   for(const t of tops){const n=1+(r()<.5?1:0);
     for(let k=0;k<n;k++){const rr=1.5+r()*1.0, g=blob(rr,1,seed*3+k+t.x,.25);
       const m=mat4(t.x+(r()-.5)*1.4,t.y+.5+r()*.6,t.z+(r()-.5)*1.4,0,r()*3,0,1,.72,1);
       bl.push({g,m}); yMin=Math.min(yMin,t.y-rr*.5); yMax=Math.max(yMax,t.y+rr*1.3);}}
   for(const b of bl)canopy.push({g:b.g,m:b.m,c:(p,n,o)=>{const t=clamp((p.y-yMin)/(yMax-yMin),0,1);
-    o.copy(dark).lerp(mid,smooth(.1,.6,t)).lerp(lite,smooth(.4,1,t)*clamp(n.y*.8+.4,0,1)*.8);
-    o.multiplyScalar(.88+vnoise(p.x*1.7,p.z*1.7+p.y)*.24);}});
-  return {trunk:mergeParts(trunk),canopy:mergeParts(canopy),h:H};
+    const vn=vnoise(p.x*1.7,p.z*1.7+p.y);
+    o.copy(dark).lerp(mid,smooth(0,.5,t)).lerp(lite,smooth(.35,1,t)*clamp(n.y*.8+.45,0,1)*.85).lerp(warm,smooth(.55,.85,vn)*smooth(.3,.9,t)*.35);
+    o.multiplyScalar(.86+vn*.28);}});
+  const cg=mergeParts(canopy); cg.computeBoundingBox(); const bb=cg.boundingBox;
+  spherize(cg,(bb.min.x+bb.max.x)/2,lerp(bb.min.y,bb.max.y,.32),(bb.min.z+bb.max.z)/2,.55,1.25);
+  return {trunk:mergeParts(trunk),canopy:cg,h:H};
 }
 function pineGeos(seed){
   const r=rnd(seed),H=9+r()*3;
   const tg=new THREE.CylinderGeometry(.12,.34,H,7,1,true); tg.translate(0,H/2-.2,0);
   const trunk=mergeParts([{g:tg,c:col('#3a2c24')}]);
-  const parts=[], n=5, dark=col('#0f1813'), lite=col('#2c4130');
+  const parts=[], n=5, dark=col('#16241b'), lite=col('#3f5a3f');
   for(let k=0;k<n;k++){const t=k/(n-1),R=lerp(2.7,.85,t),ch=lerp(3.2,2.2,t),y=2.4+t*(H-3.4);
     const g=new THREE.ConeGeometry(R,ch,10,2,false), P=g.attributes.position;
     for(let i=0;i<P.count;i++){const x=P.getX(i),yy=P.getY(i),z=P.getZ(i);
       if(yy<-ch/2+.01){const a=Math.atan2(z,x),j=(Math.round(a/(TAU/10))&1)?1.18:.9;P.setXYZ(i,x*j,yy-.35*j,z*j);}}
     g.computeVertexNormals();
-    parts.push({g,m:mat4(0,y,0,0,r()*3,0),c:(p,nn,o)=>{o.copy(dark).lerp(lite,clamp((p.y-y+ch/2)/ch*.5+nn.y*.35+.15,0,1));}});}
-  return {trunk,canopy:mergeParts(parts),h:H};
+    parts.push({g,m:mat4(0,y,0,0,r()*3,0),c:(p,nn,o)=>{o.copy(dark).lerp(lite,clamp((p.y-y+ch/2)/ch*.55+nn.y*.3+.12,0,1)).multiplyScalar(.9+vnoise(p.x*2,p.y*1.3+p.z*2)*.2);}});}
+  // soft cones: normals lean out from the trunk axis (and up) so tiers shade as rounded masses, not facets
+  const cg=mergeParts(parts), P=cg.attributes.position, N=cg.attributes.normal;
+  for(let i=0;i<P.count;i++){ _v.set(P.getX(i),.55,P.getZ(i)).normalize(); _n.fromBufferAttribute(N,i).lerp(_v,.45).normalize(); N.setXYZ(i,_n.x,_n.y,_n.z); }
+  return {trunk,canopy:cg,h:H};
 }
 
 /* ---------- rocks ---------- */
@@ -587,11 +662,15 @@ function rockGeo(seed){
 const SPAWN=new Set(); // occupied cells for prop spacing
 function buildForest(){
   const r=rnd(4242);
-  const trunkMat=G.toon('#ffffff',{vertexColors:true}), leafMat=G.toon('#ffffff',{vertexColors:true});
-  G.nearFade(trunkMat,1.4,4.2); G.nearFade(leafMat,1.8,5.5);
+  const trunkMat=G.toon('#ffffff',{vertexColors:true}), leafMat=foliageShader(G.toon('#ffffff',{vertexColors:true}),{leaf:true});
+  const treeTrunkMat=foliageShader(G.toon('#ffffff',{vertexColors:true}),{leaf:false}); // standing trunks flex; fallen logs don't
+  G.nearFade(trunkMat,1.4,4.2); G.nearFade(treeTrunkMat,1.4,4.2); G.nearFade(leafMat,1.8,5.5);
+  // nearFade replaces the cache key: give each foliage program its own again (and the quality variant)
+  for(const [m,k] of [[leafMat,'L'],[treeTrunkMat,'T']])m.customProgramCacheKey=()=>'bqFolNF'+k+(m.defines&&m.defines.BQ_LQ?'q':'');
+  FOL.mats.push(leafMat,treeTrunkMat);
   const oaks=[oakGeos(11),oakGeos(29),oakGeos(53)], pines=[pineGeos(7),pineGeos(19)];
-  const T={oakT:oaks.map(o=>new Tiled(o.trunk,trunkMat,{cast:true})),oakC:oaks.map(o=>new Tiled(o.canopy,leafMat,{cast:true})),
-    pineT:pines.map(o=>new Tiled(o.trunk,trunkMat,{cast:true})),pineC:pines.map(o=>new Tiled(o.canopy,leafMat,{cast:true}))};
+  const T={oakT:oaks.map(o=>new Tiled(o.trunk,treeTrunkMat,{cast:true})),oakC:oaks.map(o=>new Tiled(o.canopy,leafMat,{cast:true})),
+    pineT:pines.map(o=>new Tiled(o.trunk,treeTrunkMat,{cast:true})),pineC:pines.map(o=>new Tiled(o.canopy,leafMat,{cast:true}))};
   W._treeTiles=T;
   const addTree=(kind,x,z,s,lean,leanDir,tint)=>{
     const y=gh(x,z);
@@ -599,6 +678,7 @@ function buildForest(){
     // rotation built with Y first then lean in world X/Z (approximation is fine)
     if(kind==='oak'){const v=Math.floor(r()*oaks.length); T.oakT[v].add(m); T.oakC[v].add(m,tint); G.addCollider({x,z,r:.55*s});}
     else{const v=Math.floor(r()*pines.length); T.pineT[v].add(m); T.pineC[v].add(m,tint); G.addCollider({x,z,r:.35*s});}
+    FOL.trees.push(x,z,(kind==='oak'?3.4:2.4)*s);
   };
   W._addTree=addTree;
   let n=0; const S=4.7;
@@ -622,7 +702,8 @@ function buildForest(){
     const g=mergeParts(parts); const N=g.attributes.normal; for(let i=0;i<N.count;i++)N.setXYZ(i,0,1,0); return g;})();
   const fernMat=G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide});
   G.nearFade(fernMat,1.2,3.5);
-  const bushG=mergeParts([{g:blob(1,1,3,.3),c:(p,n,o)=>o.copy(col('#1c2a1c')).lerp(col('#3d5233'),clamp(n.y*.6+.4,0,1))},{g:blob(.7,1,8,.3),m:mat4(.7,.1,.3),c:(p,n,o)=>o.copy(col('#1c2a1c')).lerp(col('#3d5233'),clamp(n.y*.6+.4,0,1))}]);
+  const bushC=(p,n,o)=>o.copy(col('#202f21')).lerp(col('#4a6238'),clamp(n.y*.6+.4,0,1));
+  const bushG=spherize(mergeParts([{g:blob(1,1,3,.3),c:bushC},{g:blob(.7,1,8,.3),m:mat4(.7,.1,.3),c:bushC}]),.3,-.2,.1,.4);
   const ferns=new Tiled(fern,fernMat,{}), bushes=new Tiled(bushG,leafMat,{cast:true});
   for(let i=0;i<5200;i++){const x=-232+r()*176,z=-106+r()*212; const edge=smooth(-56,-76,x); if(r()>edge)continue;
     const h=gh(x,z); if(h<2.6||gslope(x,z)>.8||pathDist(x,z)<1.6)continue;
@@ -696,7 +777,7 @@ function buildResistingTree(){
       TP.setXYZ(i,TP.getX(i)-N.getX(i)*.55*(1-sc),TP.getY(i)-N.getY(i)*.55*(1-sc),TP.getZ(i)-N.getZ(i)*.55*(1-sc));}
     tp.push({g:tube,c:(p,n,o)=>o.copy(bark2).lerp(bark,clamp(n.y*.5+.5,0,1)).lerp(col('#3f5530'),smooth(.5,1,n.y)*.4)});}
   // great limbs + canopy
-  const leaves=[]; const lDark=col('#1a2421'),lMid=col('#33433a'),lLite=col('#6a6a58');
+  const leaves=[]; const lDark=col('#1e2a25'),lMid=col('#3a4c3f'),lLite=col('#76765e');
   for(let k=0;k<6;k++){const a=k/6*TAU+r()*.5,el=.75+r()*.35,len=7+r()*4,y=9+r()*3;
     const sx=Math.sin(y/H*2.2)*.8,sz=Math.sin(y/H*1.7)*.5;
     const pts=[new THREE.Vector3(sx,y,sz)];
@@ -711,7 +792,7 @@ function buildResistingTree(){
   for(const l of leaves)l.c=(p,n,o)=>{o.copy(lDark).lerp(lMid,smooth(8,16,p.y)).lerp(lLite,smooth(.2,1,n.y)*smooth(12,22,p.y)*.55);};
   const tm=G.toon('#ffffff',{vertexColors:true,emissive:'#2a1840',emissiveIntensity:.35});
   const tmesh=new THREE.Mesh(mergeParts(tp),tm); tmesh.castShadow=tmesh.receiveShadow=true; g.add(tmesh);
-  const lmesh=new THREE.Mesh(mergeParts(leaves),G.toon('#ffffff',{vertexColors:true,emissive:'#24183a',emissiveIntensity:.5})); lmesh.castShadow=true; lmesh.receiveShadow=true; g.add(lmesh);
+  const lmesh=new THREE.Mesh(mergeParts(leaves),rimShader(G.toon('#ffffff',{vertexColors:true,emissive:'#24183a',emissiveIntensity:.5}))); lmesh.castShadow=true; lmesh.receiveShadow=true; g.add(lmesh);
   G.addCollider({x:x0+.3,z:z0,r:3.6});
   // soft warm-violet glow + motes
   treeLight=new THREE.PointLight(col('#c69bff'),2.2,34,1.6); treeLight.position.set(1.5,3.5,2); g.add(treeLight);
@@ -864,7 +945,7 @@ function buildMoorStructures(){
   // lone wind-bent trees on the moor and headland
   const lone=[[-40,-60],[-8,-22],[22,58],[55,8],[75,-48],[90,40],[-50,-8],[10,-58],[64,-20],[-2,64],[198,-32],[204,30],[142,-36],[132,-22]];
   for(const [x,z] of lone){const h=gh(x,z); if(h<2.5||pathDist(x,z)<3.5)continue;
-    W._addTree('oak',x,z,.95+r()*.35,.18+r()*.12,PI*.9+(r()-.5)*.6,col('#7a8a6c').multiplyScalar(1.6));}
+    W._addTree('oak',x,z,.95+r()*.35,.18+r()*.12,PI*.9+(r()-.5)*.6,col('#7a8a6c').multiplyScalar(1.45));}
 }
 
 /* =====================================================================
@@ -1579,6 +1660,9 @@ G.system('world',{order:0,modes:'always',
     { const ind=W.cottage.indoor||0;
       L.hemi.color.copy(HEMI0.c).lerp(HEMI0.ci,ind*.7); L.hemi.groundColor.copy(HEMI0.g).lerp(HEMI0.gi,ind*.7);
       L.hemi.intensity*=1-ind*.35; L.sun.intensity*=1-ind*.6; }
+    // landscape shading: sun direction in view space + warm rim / translucency tints that follow the sun's strength
+    SH.sunW.value.copy(L.sunDir); SH.sunV.value.copy(L.sunDir).transformDirection(cam.matrixWorldInverse);
+    { const si=L.sun.intensity; SH.rim.value.copy(RIM0).multiplyScalar(si*1.15); SH.sunCol.value.copy(SUNC0).multiplyScalar(si); }
     // grass
     if(grass)updateGrass(false);
     // mushrooms pulse, tree glow breathes
