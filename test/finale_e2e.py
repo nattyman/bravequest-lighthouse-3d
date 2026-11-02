@@ -33,7 +33,7 @@ HELP=r"""(()=>{ window.T={ev:[],bar:[]};
 
 STEPS=[
  ("boot", "[!!window.G, !!G.finaleBoss, !!G.devtools]"),
- ("setup", r"""(()=>{ G.devtools.start('stag'); G.step(1/30,30); const L=G.world.lighthouse;
+ ("setup", r"""(()=>{ G.devtools.start('finale'); G.step(1/30,30); const L=G.world.lighthouse;
    G.player.teleport(L.x-14,42,L.z-6,-2.3); const k=T.until(()=>T.ev.some(e=>e[0]==='finale:start'),200);
    const stag=T.suppressStag(); G.step(1/30,2); const B=T.B();
    return {ok:T.FB().active&&B.state==='intro'&&stag>=1,frames:k,stag,state:B.state,pos:[B.pos.x.toFixed(1),B.pos.z.toFixed(1)],bar:T.lastBar}; })()"""),
