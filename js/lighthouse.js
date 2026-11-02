@@ -78,6 +78,7 @@ G.items.storm=G.items.storm||{found:false,carried:false,inCradle:false,failed:fa
 G.world.lighthouse.stormHome=STORM_HOME.clone();
 
 /* ---------------------------------------------------------------- state */
+const LENS_EM=new THREE.Color('#c7b4ff'), LAMP_COL=new THREE.Color(0xd8c8ff);
 const S=G.lighthouse={curedDark:.5,cure:null,cured:false,said:{},blockT:-9,lastBlockSay:-99,wasInside:false,
   staffTaken:false,canEnter:null,startCure:null,veilOpacity:1,
   fail:null,swell:1,pulseK:0,pulseT:.6,pulseA:9,pulseDir:new THREE.Vector3(-1,0,0),stormNear:0,darkK:1};
@@ -515,10 +516,11 @@ function buildLamp(){
   // edges, motes drifting in toward the tower. Normal blending, dark colour: it reads as a bite out of the dusk.
   const darkTex=G.canvasTex(128,(g,s)=>{ const rr=U.rng(61);
     for(let x=0;x<s;x++){ const n=.35+.65*Math.pow(rr(),.6)*(.6+.4*Math.sin(x*.21)*Math.sin(x*.057+1));
-      const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(20,12,30,0)'); gr.addColorStop(.35,`rgba(20,12,30,${(.25*n).toFixed(3)})`);
-      gr.addColorStop(.85,`rgba(16,9,24,${(.8*n).toFixed(3)})`); gr.addColorStop(1,`rgba(10,6,16,${n.toFixed(3)})`); g.fillStyle=gr; g.fillRect(x,0,1,s); }
+      // canvas top = the apex at the lamp (dense), bottom = the far end (frays out to nothing)
+      const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,`rgba(8,5,12,${n.toFixed(3)})`); gr.addColorStop(.3,`rgba(12,7,18,${(.85*n).toFixed(3)})`);
+      gr.addColorStop(.7,`rgba(18,10,26,${(.4*n).toFixed(3)})`); gr.addColorStop(1,'rgba(20,12,30,0)'); g.fillStyle=gr; g.fillRect(x,0,1,s); }
     g.globalCompositeOperation='destination-out';
-    for(let i=0;i<40;i++){ const x=rr()*s, y=rr()*s*.8, rad=3+rr()*10; const gr=g.createRadialGradient(x,y,0,x,y,rad); gr.addColorStop(0,'rgba(0,0,0,.7)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.fillRect(x-rad,y-rad,rad*2,rad*2); }
+    for(let i=0;i<60;i++){ const x=rr()*s, y=s*.2+rr()*s*.8, rad=3+rr()*12; const gr=g.createRadialGradient(x,y,0,x,y,rad); gr.addColorStop(0,'rgba(0,0,0,.7)'); gr.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=gr; g.fillRect(x-rad,y-rad,rad*2,rad*2); }
   });
   darkTex.wrapS=THREE.RepeatWrapping; darkTex.repeat.set(2,1);
   darkBeamMat=new THREE.MeshBasicMaterial({map:darkTex,color:U.col('#ffffff'),transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide,fog:false});
@@ -619,7 +621,8 @@ function updateStorm(dt,t){
   else u.col.copy(U.col('#ffb860'));
   const fl=.88+Math.sin(t*13.1)*.06+Math.sin(t*7.3+1)*.04+Math.sin(t*23.7)*.02;
   const kk=k*fl; u.k=kk;
-  u.fs.visible=u.hs.visible=kk>.02; u.fs.scale.set(.13*Math.max(kk,.05),.2*Math.max(kk,.05),1); u.fm.color.copy(u.col).multiplyScalar(1.4);
+  const big=T.inCradle?1.8:1; // seen through the lens glass: a bigger flame
+  u.fs.visible=u.hs.visible=kk>.02; u.fs.scale.set(.13*big*Math.max(kk,.05),.2*big*Math.max(kk,.05),1); u.fm.color.copy(u.col).multiplyScalar(1.4);
   u.hm.color.copy(u.col); u.hm.opacity=.35*Math.min(1.4,kk); u.hs.scale.setScalar(1.3*(.6+.4*kk));
   u.light.intensity=base*kk*(1+.35*(G.atmo?G.atmo.dark:0)); u.light.color.copy(u.col);
   u.globeMat.color.copy(T.spent?U.col('#6a6260'):U.col('#ffd8a0')); u.globeMat.opacity=T.spent?.35:.24;
@@ -651,7 +654,7 @@ function buildSill(){
     const rr=U.rng(5); for(let y=14;y<s-10;y+=9){g.beginPath();g.moveTo(10,y);let x=10;while(x<s-12){x+=4+rr()*10;g.lineTo(Math.min(x,s-12),y+(rr()-.5)*1.2);} g.stroke();}});
   for(const sx of [-1,1]){const pg=add(new THREE.BoxGeometry(.21,.02,.29),G.toon('#efe6cf',{map:pageTex}),sx*.108,.034,0,book); pg.rotation.z=-sx*.08;}
   logInteract=G.interact.add({pos:()=>V(wx(LOG_A,GLASS_R-.75),TOP,wz(LOG_A,GLASS_R-.75)),radius:1.7,priority:4,
-    label:'Read the logbook',
+    label:'Read the logbook on the sill',
     enabled:()=>inRoom(G.player.pos)&&!S.fail,
     use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook');
       if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Under the sill the dead moths lie in drifts.'),400); }
@@ -812,10 +815,11 @@ G.system('lighthouse',{order:10,modes:'always',
     const shrink=S.cured?0:1-U.smooth(2,9.5,ct);
     blob.visible=shrink>.01;
     // the failure: the blob sags toward the cradle as it drinks; after it, it's swollen and surges at you
-    const ft=S.fail?S.fail.t:0, sag=S.fail?U.smooth(1,2.4,ft)*(1-U.smooth(3.6,4.6,ft)):0, gulp=S.fail?Math.sin(U.clamp((ft-1)/3.2,0,1)*PI*5)*.05*sag:0;
+    // (first it shrinks up off the cradle as the flame flares, so you see the flame; then it comes down over it)
+    const ft=S.fail?S.fail.t:0, lift=S.fail?U.smooth(0,.6,ft)*(1-U.smooth(1.3,2.3,ft)):0, sag=S.fail?U.smooth(1.6,2.6,ft)*(1-U.smooth(3.6,4.6,ft)):0, gulp=S.fail?Math.sin(U.clamp((ft-1.6)/2.6,0,1)*PI*5)*.05*sag:0;
     const pk=S.pulseK, sw=S.swell+(S.fail?U.smooth(3.8,4.8,ft)*.2:0);
-    blob.scale.setScalar(Math.max(.001,shrink*(sw+sag*.12+gulp+pk*.22)));
-    blob.position.set(lampCenter.x+S.pulseDir.x*pk*.55,lampCenter.y-sag*.45,lampCenter.z+S.pulseDir.z*pk*.55);
+    blob.scale.setScalar(Math.max(.001,shrink*(sw-lift*.3+sag*.12+gulp+pk*.22)));
+    blob.position.set(lampCenter.x+S.pulseDir.x*pk*.55,lampCenter.y+lift*.75-sag*.35,lampCenter.z+S.pulseDir.z*pk*.55);
     if(blobInk){ const near=Math.hypot(P.x-lampCenter.x,P.z-lampCenter.z)<60||G.state.mode==='title'; blobInk.intensity=(blob.visible&&near)?(.4+shrink*.6)*(S.cured?0:1)+(ct>0&&!S.cured?(1-shrink)*1.5:0):0; }
     blob.material.uniforms.uFade.value=U.clamp(.25+shrink*.75,0,1);
     if(blob.visible){
@@ -835,10 +839,16 @@ G.system('lighthouse',{order:10,modes:'always',
     glassMat.opacity=.5-lit*.2;
     lampLight.intensity=lit*2.2;
     lampGlow.material.opacity=lit*.4;
+    // the storm lantern in the cradle lights the lens from below while it lasts (amber, then violet, then nothing)
+    const fk=S.fail&&stormUD?stormUD.k:0;
+    lensMat.emissive.copy(fk>0?stormUD.col:LENS_EM); lensMat.emissiveIntensity+=fk*.8;
+    lampLight.color.copy(fk>0?stormUD.col:LAMP_COL); lampLight.intensity+=fk*1.8;
     beamMat.opacity=lit*.085; beam.visible=lit>.01; beam.rotation.y+=dt*.42;
     // anti-light: full until the lens catches, crossfading out as the warm beam comes in
-    S.darkK=1-lit; darkBeam.rotation.y=beam.rotation.y; darkBeam.visible=S.darkK>.01;
-    darkBeamMat.opacity=S.darkK*(.62+.06*Math.sin(t*.9)); updateDarkMotes(dt,S.darkK);
+    S.darkK=1-lit; darkBeam.rotation.y=beam.rotation.y;
+    const cp=G.camera.position, camIn=Math.hypot(cp.x-CX,cp.z-CZ)<GAL_R+.5&&cp.y>TOP-1&&cp.y<GLASS_Y1+1; // from inside the lamp room it would be a black fan across the view
+    darkBeam.visible=S.darkK>.01&&!camIn;
+    darkBeamMat.opacity=S.darkK*(.8+.08*Math.sin(t*.9)); updateDarkMotes(dt,S.darkK);
     updateStorm(dt,t);
     if(S.cure||S.cured) G.atmo.cured=S.cured?1:U.smooth(8,14,ct);
     // cradle hint
