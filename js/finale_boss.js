@@ -120,7 +120,7 @@ function music(on){ try{ const M=G.audio&&G.audio.music; if(M&&M.setOverride){ i
 /* ---------------------------------------------------------------- shaders */
 const SN=G.SNOISE||'vec3 _m(vec3 x){return x-floor(x*(1./289.))*289.;} float snoise(vec3 v){ return fract(sin(dot(_m(v),vec3(12.9898,78.233,37.719)))*43758.5453)*2.-1.; }';
 const FS_MIST=`uniform float uTime;uniform float uSolid;uniform float uWarn;uniform float uFlash;uniform float uFade;uniform float uAlpha;uniform float uDense;
-uniform vec3 uMist;uniform vec3 uInk;uniform vec3 uWarm;uniform vec3 uFogC;uniform vec3 uLamp;
+uniform vec3 uMist;uniform vec3 uInk;uniform vec3 uWarm;uniform vec3 uFogC;uniform vec3 uLamp;uniform float uSky;uniform vec3 uSkyC;
 varying vec3 vN;varying vec3 vV;varying vec3 vW;varying vec3 vWN;varying float vY;
 #include <fog_pars_fragment>
 ${SN}
@@ -134,10 +134,12 @@ void main(){
   vec3 col=mix(mist,uInk*(.55+.6*n2),uSolid*.82+uDense*.5);
   col+=uWarm*pow(f,2.6)*(uSolid*(.35+.65*side)+uWarn*side*.9)*(.5+.6*n);
   col+=uMist*pow(f,3.)*.18;
+  col+=uSkyC*pow(f,2.4)*uSky*(.55+.5*n);   // a cool silhouette rim so it reads against the dusk sky
   col+=uWarm*(uFade<.98?smoothstep(uFade-.25,uFade,dn)*1.6:0.);
   col+=vec3(1.,.93,.82)*uFlash*(.12+.5*f);
   float a=uAlpha*(.3+.7*smoothstep(.05,.85,f+(n-.5)*.7))*(.5+.5*dn);
   a=mix(a,min(1.,a*2.4+.25),max(uSolid*.85,uDense));
+  a=max(a,uSky*.5*smoothstep(.4,.95,f)*(.45+.55*dn)*uFade);
   a*=smoothstep(0.,.1,vY);
   gl_FragColor=vec4(col,clamp(a,0.,1.));
   #include <fog_fragment>
@@ -202,7 +204,7 @@ function mistMat(vs,extra,o={}){
   const u=THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{
     uSolid:{value:0},uWarn:{value:0},uFlash:{value:0},uFade:{value:1},uAlpha:{value:o.alpha||.5},uDense:{value:o.dense||0},
     uMist:{value:U.col(o.mist||'#a49cc0')},uInk:{value:U.col(o.ink||'#3a3150')},uWarm:{value:U.col(o.warm||'#ffdca6')},
-    uFogC:{value:U.col('#5a5a78')},uLamp:{value:V(180,67,0)},uAmp:{value:o.amp||.55},uLean:{value:0},uRise:{value:0},uGround:{value:42}},extra||{}]);
+    uFogC:{value:U.col('#5a5a78')},uSky:{value:0},uSkyC:{value:U.col('#dcd6f6')},uLamp:{value:V(180,67,0)},uAmp:{value:o.amp||.55},uLean:{value:0},uRise:{value:0},uGround:{value:42}},extra||{}]);
   u.uTime=G.negTime||{value:0};
   return new THREE.ShaderMaterial({uniforms:u,vertexShader:vs,fragmentShader:FS_MIST,fog:true,transparent:true,depthWrite:false,side:o.side||THREE.FrontSide});
 }
@@ -364,9 +366,78 @@ function start(force){
   ui('bossBar','The Gloaming',1); music(true); SND.rise(B.pos);
   ui('shake',.5);
   if(!B.said.intro){ B.said.intro=1; setTimeout(()=>{ if(active())ui('toast','The Gloaming','The fog answers the light'); },900); }
+  cineStart();
   later(2.2,()=>say('intro2','It is made of the fog itself. Your light goes straight through it — but where the great beam turns across it, it catches.',{priority:'high'}));
   return true;
 }
+/* ---------------------------------------------------------------- the rise: a short skippable intro shot
+   The first time it rises (per session) the camera cuts to a low three-quarter view from the arena side, framing it against
+   the sky as it drags itself over the edge, and eases in for ~4 s while the fog thins around it. Any button skips. Then
+   control comes back with the Traveler (and so the follow camera) turned to face it. */
+const CINE={on:false,seen:false,t:0,dur:4.2,skip:false,fogK:0,bars:null,cp:V(),lp:V(),side:-1,dk:1};
+function cineBars(){
+  if(CINE.bars||typeof document==='undefined')return CINE.bars;
+  const wrap=document.createElement('div'); wrap.id='gloamingCine'; wrap.setAttribute('aria-hidden','true');
+  wrap.style.cssText='position:fixed;inset:0;pointer-events:none;opacity:0;transition:opacity .35s';
+  const bar=top=>{ const b=document.createElement('div'); b.style.cssText='position:absolute;left:0;right:0;height:8vh;background:#05040a;'+(top?'top:0':'bottom:0'); return b; };
+  const hint=document.createElement('div'); hint.textContent='Press any button to skip';
+  hint.style.cssText='position:absolute;right:18px;bottom:calc(8vh + 10px);font:500 12px/1 system-ui,sans-serif;letter-spacing:.08em;color:#d8d0e8;opacity:.6;text-shadow:0 1px 3px #000';
+  wrap.append(bar(true),bar(false),hint);
+  const hud=document.getElementById('hud'); if(hud&&hud.parentNode)hud.parentNode.insertBefore(wrap,hud); else document.body.appendChild(wrap); // under the HUD (captions stay readable)
+  CINE.bars=wrap; return wrap;
+}
+const cineSkipKey=e=>{ if(CINE.on&&CINE.t>.25)CINE.skip=true; };
+/* pick the side/distance whose line of sight to the rise misses the trees (circle colliders; canopies are wider than trunks) */
+function cineFrame(){
+  const A=arena(), inw=V(A.x-edge.x,0,A.z-edge.z).normalize(), side=V(inw.z,0,-inw.x);
+  let best=null;
+  for(const sg of [-1,1])for(const dk of [1,.8,1.25]){ let hits=0;
+    for(const k of [0,1]){ const D=(14.5-3.5*k)*dk, S=(4.5-1.5*k)*sg, cx=edge.x+inw.x*D+side.x*S, cz=edge.z+inw.z*D+side.z*S;
+      for(let i=0;i<=16;i++){ const f=i/16, x=cx+(B.pos.x-cx)*f, z=cz+(B.pos.z-cz)*f; let near=G.collidersNear?G.collidersNear(x,z):[];
+        for(const c of near){ if(c.r>3)continue; if(Math.hypot(c.x-x,c.z-z)<c.r+2.8){ hits++; break; } } } }
+    const score=hits+(dk!==1?.5:0)+(sg>0?.2:0); if(!best||score<best.score)best={score,sg,dk}; }
+  CINE.side=best.sg; CINE.dk=best.dk;
+}
+function cineStart(){
+  if(CINE.seen||CINE.on)return; const p=P(); if(!p||!p.pos||G.state.mode!=='play')return;
+  try{ cineFrame(); }catch(e){ CINE.side=-1; CINE.dk=1; }
+  CINE.seen=true; CINE.on=true; CINE.t=0; CINE.skip=false;
+  try{ p.setControl&&p.setControl(false); }catch(e){}
+  const b=cineBars(); if(b)b.style.opacity='1';
+  addEventListener('keydown',cineSkipKey,true); addEventListener('pointerdown',cineSkipKey,true);
+  G.emit('gloaming:cine',{on:true});
+}
+function cineEnd(){
+  if(!CINE.on)return; CINE.on=false;
+  removeEventListener('keydown',cineSkipKey,true); removeEventListener('pointerdown',cineSkipKey,true);
+  if(CINE.bars)CINE.bars.style.opacity='0';
+  const p=P();
+  if(p&&p.pos&&G.state.mode==='play'){ // face it: the follow camera snaps in behind the Traveler, looking at the Gloaming
+    // still in the doorway? step out onto the apron so the camera behind isn't pressed against the tower wall
+    const L=tower(), rx=p.pos.x-L.x, rz=p.pos.z-L.z, rd=Math.hypot(rx,rz), want=(L.outerR||4.2)+7;
+    if(rd<want&&rd>.5&&!playerInTower()){ const nx=L.x+rx/rd*want, nz=L.z+rz/rd*want; if(onPlateau(nx,nz)){ p.pos.x=nx; p.pos.z=nz; p.pos.y=ground(nx,nz,plateauY()+2); } }
+    const yaw=Math.atan2(B.pos.x-p.pos.x,B.pos.z-p.pos.z); try{ p.teleport(p.pos.x,p.pos.y,p.pos.z,yaw); }catch(e){}
+    // and level the camera (it may still be pitched down from the stairwell) so the whole shape is in frame
+    try{ if(p.aimCamera)p.aimCamera(yaw,.04); }catch(e){} }
+  try{ p&&p.setControl&&p.setControl(true); }catch(e){}
+  G.emit('gloaming:cine',{on:false});
+}
+const SKIP_ACTS=['attack','jump','interact','roll','lock','sprint','shutter','potion','pause'];
+function cineCamera(dt){
+  if(!CINE.on)return;
+  if(G.state.mode!=='play'||B.state!=='intro'){ cineEnd(); return; }
+  CINE.t+=dt;
+  if(CINE.t>.25&&G.input&&G.input.pressed){ for(const a of SKIP_ACTS){ try{ if(G.input.pressed(a)){ CINE.skip=true; break; } }catch(e){} } }
+  if(CINE.skip||CINE.t>=CINE.dur){ cineEnd(); return; }
+  const A=arena(), inw=_u.set(A.x-edge.x,0,A.z-edge.z).normalize(), side=_s.set(inw.z,0,-inw.x);
+  const k=U.smooth(0,CINE.dur,CINE.t), y0=plateauY();
+  const D=(14.5-3.5*k)*CINE.dk, S=(4.5-1.5*k)*CINE.side;   // close and low, looking up: it towers against the sky (and no trees get between)
+  CINE.cp.set(edge.x+inw.x*D+side.x*S,y0+1.5+.8*k,edge.z+inw.z*D+side.z*S);
+  CINE.lp.set(B.pos.x,y0+2.5+4.5*B.rise,B.pos.z);
+  G.camera.position.copy(CINE.cp); G.camera.lookAt(CINE.lp); G.camera.updateMatrixWorld();
+}
+G.system('gloamingCam',{order:84,modes:['play','dead'],update:dt=>{ try{ cineCamera(dt); }catch(e){ CINE.on=true; cineEnd(); } }}); // after player.js's camera (80), before the HUD shake (90)
+
 function resetFight(quiet){
   B.hp=T.hp; B.phase=1; B.solidT=0; B.solidK=0; B.staggerT=0; B.gutterT=0; B.warn=0; B.flash=0; B.fade=1; B.atk=null; B.cool=2.2;
   B.lean=0; B.recoil=0; B.called=[false,false]; B.phase2T=0; B.lastCross=-99; B.dieBurst=false; B.bossDeadSent=false; B.withdraw=0; B.fogThin=0;
@@ -661,8 +732,10 @@ function render(dt){
   const up=1-B.rise, by=B.pos.y-up*16;
   bodyHB.pos.set(B.pos.x,by,B.pos.z);
   B.introK=U.damp(B.introK||0,B.state==='intro'?1:0,1.2,dt);
+  B.skyK=U.damp(B.skyK||0,(B.state==='intro'||CINE.on?1:.45)*(1-.6*B.solidK),2,dt);
   for(const m of [body,shell]){ m.position.set(B.pos.x,by,B.pos.z); m.rotation.y=B.facing; const u=m.material.uniforms;
     u.uAlpha.value=(m===shell?.26*(1-.75*B.solidK):.62)*(1+.9*B.introK);
+    u.uSky.value=B.skyK*(m===shell?.55:1);
     u.uSolid.value=B.solidK*(m===shell?.5:1); u.uWarn.value=B.warn; u.uFlash.value=B.flash*(m===shell?.4:1); u.uFade.value=B.fade; u.uLean.value=B.lean;
     u.uLamp.value.copy(lamp); if(G.scene.fog)u.uFogC.value.copy(G.scene.fog.color); }
   body.scale.set(1+B.recoil*.04,1-(B.staggerT>0?.12:0)+(B.state==='dying'?U.smooth(0,T.dieT,B.st)*.5:0),1+B.recoil*.04);
@@ -671,6 +744,7 @@ function render(dt){
   for(const ar of arms)armPose(ar,t,dt);
   const u=armMat.uniforms; for(const ar of arms){ for(let k=0;k<4;k++)u.uP.value[ar.i*4+k].copy(ar.P[k]); u.uR.value[ar.i]=ar.R*(ar.hardT>0?1.1:1); u.uHand.value[ar.i]=ar.hand; }
   const hard=arms.some(a=>a.hardT>0);
+  u.uSky.value=B.skyK*.8;
   u.uSolid.value=Math.max(B.solidK,hard?.75:0); u.uWarn.value=B.warn; u.uFlash.value=B.flash; u.uFade.value=B.fade; u.uGround.value=plateauY()-.4; u.uLamp.value.copy(lamp); if(G.scene.fog)u.uFogC.value.copy(G.scene.fog.color);
   if(tenMat){ const v=tenMat.uniforms; v.uSolid.value=.6+B.solidK*.3; v.uWarn.value=B.gutterT>0?.8:0; v.uLamp.value.copy(lamp); v.uFade.value=B.fade; if(G.scene.fog)v.uFogC.value.copy(G.scene.fog.color); }
   // heart, hood, eyes
@@ -759,7 +833,10 @@ function updateFog(dt){ // the fog thins over the island for a while after it di
   if(B.state==='dying')fogT=9; else fogT=Math.max(0,fogT-dt);
   const want=B.state==='dying'?B.fogThin:fogT>0?1:0;
   fogK=U.damp(fogK,want,want>fogK?2:.35,dt);
-  if(fogK>.002&&G.scene.fog&&G.scene.fog.density!=null)G.scene.fog.density*=1-.6*fogK;
+  // the rise: the fog draws back from it while it comes up, and settles again over a few seconds once the fight starts
+  CINE.fogK=U.damp(CINE.fogK,(B.state==='intro'||CINE.on)?1:0,(B.state==='intro'||CINE.on)?1.5:.5,dt);
+  const k=Math.max(fogK,CINE.fogK*.85);
+  if(k>.002&&G.scene.fog&&G.scene.fog.density!=null)G.scene.fog.density*=1-.6*k;
 }
 
 /* player death: withdraw now, reset when they rise, come again a few seconds later */
@@ -797,6 +874,7 @@ G.finaleBoss={
     setHp:h=>{ B.hp=h; if(B.phase===1&&B.hp<=T.hp*.5)enterPhase2(); if(B.hp<=0)startDying(); },
     attack:k=>{ const p=G.player.pos; B.atk=null; endAttackVisuals(); if(k==='sweep')startSweep(p); else if(k==='call'){ B.called[B.phase-1]=false; callHollows(); } else startSlam(p,k==='double'); },
     setVisible:v=>{ if(!B.built)return; if(v)showAll(); else hideAll(); },
-    skipIntro:()=>{ if(B.state==='intro'){ B.st=T.introT; } } }
+    skipIntro:()=>{ if(B.state==='intro'){ B.st=T.introT; } },
+    cine:CINE, skipCine:()=>{ if(CINE.on){ CINE.skip=true; CINE.t=Math.max(CINE.t,.3); } } }
 };
 })();

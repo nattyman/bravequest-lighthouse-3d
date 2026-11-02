@@ -585,6 +585,8 @@ Object.assign(P,{
     G.focus.copy(P.pos);
   },
   setControl(b){P.inputEnabled=!!b; if(!b){cancelCombat(); jumpBuf=0;}},
+  /** point the follow camera (cutscene hand-back): yaw like heading, pitch in rad (+ looks down); snaps */
+  aimCamera(yaw,pitch){ if(isFinite(yaw))cam.yaw=yaw; if(isFinite(pitch))cam.pitch=pitch; cam.snap=true; },
   facing(){return new V3(Math.sin(P.heading),0,Math.cos(P.heading));},
 });
 /* (getters via defineProperty: Object.assign would snapshot them) */
