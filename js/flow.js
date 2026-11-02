@@ -101,7 +101,7 @@ function halToTower(){ const C=G.creatures; if(!C||!C.halloranAt)return; const p
 function halHome(){ const C=G.creatures; if(halAway&&C&&C.halloranAt)C.halloranAt(null); halAway=false; }
 function halPos(){ const h=G.creatures&&G.creatures.halloran; return h&&h.pos?h.pos.clone():lmV('halloran',V(124,42,16)); }
 /* the Stag's clearing: rise point at its east edge (outside the arena, outside the 30 m trigger) */
-function stagEdge(){ const t=LM().resistingTree||{x:-165,z:5}, x=t.x+34, z=t.z+2; return V(x,G.world.height(x,z),z); }
+function stagEdge(){ const t=LM().resistingTree||{x:-165,z:5}, x=t.x+39, z=t.z+2; return V(x,G.world.height(x,z),z); }
 function begin(fromSave){
   $('title').hidden=true; $('hud').hidden=false; $('pauseBtn').hidden=false;
   const save=fromSave===true?readSave():(fromSave&&typeof fromSave==='object'?fromSave:null); // devtools.js passes a built save object
@@ -234,7 +234,7 @@ function onBossDead(e){
   if(who!=='gloaming')return; // only the Gloaming ends the act
   if(bossDead)return;
   bossDead=true; endingT=4.5; autosave();
-  G.ui.say('The great shape thins into the beam and the beam goes on turning. Out over the water, the fog is lifting.');
+  G.ui.say('Caught in the light, the fog giant comes loose from the bottom up and rises into the beam like breath into a lamp. Then there is only the beam, turning, and the fog lifting off the water.');
   setStep('done','The lamp burns','Explore the island freely',null,'');
 }
 function updateBeats(){

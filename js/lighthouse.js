@@ -81,7 +81,7 @@ G.world.lighthouse.stormHome=STORM_HOME.clone();
 const LENS_EM=new THREE.Color('#c7b4ff'), LAMP_COL=new THREE.Color(0xd8c8ff);
 const S=G.lighthouse={curedDark:.5,cure:null,cured:false,said:{},blockT:-9,lastBlockSay:-99,wasInside:false,
   staffTaken:false,canEnter:null,startCure:null,veilOpacity:1,
-  fail:null,swell:1,pulseK:0,pulseT:.6,pulseA:9,pulseDir:new THREE.Vector3(-1,0,0),stormNear:0,darkK:1};
+  fail:null,swell:1,gutterT:0,pulseK:0,pulseT:.6,pulseA:9,pulseDir:new THREE.Vector3(-1,0,0),stormNear:0,darkK:1};
 const say=(k,t,who)=>{ if(S.said[k])return; S.said[k]=true; G.ui.say(t,who); };
 const playing=()=>G.state.mode==='play'||G.state.mode==='dead';
 const lantern=()=>G.items.lantern;
@@ -761,10 +761,14 @@ function updatePulse(dt,P){
   S.pulseK=a<.25?U.smooth(0,.25,a):1-U.smooth(.25,1.1,a);
   if(S.stormNear>.55&&storm().carried) say('pulse','Too close. Every time the black swells toward you, your little flame nearly goes out.');
 }
-/* the beam, for the finale boss: yaw() = world angle atan2(dz,dx) of one arm (the other arm is yaw()+PI); lit once cured */
-S.beam={yaw:()=>{const y=darkBeam?darkBeam.rotation.y:beam?beam.rotation.y:0; return Math.atan2(-Math.sin(y),Math.cos(y));},
+/* the beam, for the finale boss. Heading convention (like G.player.heading): yaw() is the angle whose horizontal direction is
+   (sin yaw, 0, cos yaw) along one arm; the beam is double-ended, so yaw()+PI is the other arm. lit once cured.
+   gutter(s): the warm beam flickers and dims for s seconds (a tendril reached the top). */
+S.beam={yaw:()=>{const y=darkBeam?darkBeam.rotation.y:beam?beam.rotation.y:0; return Math.atan2(Math.cos(y),-Math.sin(y));},
   get lit(){return !!S.cured;}, arms:2, get origin(){return lampCenter;},
-  dir(out){const a=S.beam.yaw(); return (out||V()).set(Math.cos(a),0,Math.sin(a));}};
+  dir(out){const a=S.beam.yaw(); return (out||V()).set(Math.sin(a),0,Math.cos(a));},
+  gutter(sec){ S.gutterT=Math.max(S.gutterT||0,+sec||0); },
+  get guttering(){return (S.gutterT||0)>0;}};
 function cureK(){ if(S.cured)return 1; return S.cure?S.cure.t:0; }
 
 /* ---------------------------------------------------------------- triggers / captions */
@@ -843,7 +847,11 @@ G.system('lighthouse',{order:10,modes:'always',
     const fk=S.fail&&stormUD?stormUD.k:0;
     lensMat.emissive.copy(fk>0?stormUD.col:LENS_EM); lensMat.emissiveIntensity+=fk*.8;
     lampLight.color.copy(fk>0?stormUD.col:LAMP_COL); lampLight.intensity+=fk*1.8;
-    beamMat.opacity=lit*.085; beam.visible=lit>.01; beam.rotation.y+=dt*.42;
+    // gutter: the beam stutters and sinks low (the finale boss's tendril reached the lamp)
+    if(S.gutterT>0){ S.gutterT=Math.max(0,S.gutterT-dt); }
+    const gut=S.gutterT>0?Math.min(1,S.gutterT*2):0, stut=gut?(.15+.25*Math.max(0,Math.sin(t*31)*Math.sin(t*13.7+1))):1;
+    beamMat.opacity=lit*.085*(gut?stut:1); beam.visible=lit>.01&&!(gut&&stut<.2); beam.rotation.y+=dt*.42;
+    if(gut){ lampLight.intensity*=stut+.2; lampGlow.material.opacity*=stut; }
     // anti-light: full until the lens catches, crossfading out as the warm beam comes in
     S.darkK=1-lit; darkBeam.rotation.y=beam.rotation.y;
     const cp=G.camera.position, camIn=Math.hypot(cp.x-CX,cp.z-CZ)<GAL_R+.5&&cp.y>TOP-1&&cp.y<GLASS_Y1+1; // from inside the lamp room it would be a black fan across the view
