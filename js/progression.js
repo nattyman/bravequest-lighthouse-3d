@@ -522,7 +522,8 @@ const CSS=`
 /* the Journal */
 #journal .sheet{max-width:620px;width:100%;margin-block:auto;gap:14px}
 #journal h2{font-size:clamp(30px,5vw,44px)}
-.jr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px}
+.jr-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+@media (max-width:420px){.jr-grid{gap:7px}.jr-cell{padding:8px 10px}.jr-cell .v{font-size:22px}}
 .jr-cell{display:grid;gap:4px;padding:10px 12px;border-radius:3px;background:rgba(255,255,255,.26);box-shadow:inset 0 0 0 1px rgba(60,40,30,.16)}
 .jr-cell .k{font:600 11px var(--body);letter-spacing:.18em;text-transform:uppercase;color:#6c3f5f}
 .jr-cell .v{font-family:var(--display);font-size:26px;line-height:1;color:#21161f;display:flex;align-items:center;gap:8px;font-variant-numeric:tabular-nums}
