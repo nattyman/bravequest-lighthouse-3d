@@ -9,6 +9,7 @@ dev.html          generated for local tests: python3 test/build_dev.py   (never 
 js/core.js        engine + shared API (lead)           -> window.G
 js/world.js       island terrain, sea, sky, vegetation, buildings  (World agent)
 js/lighthouse.js  tower on the cliff, interior stairs, staff, lamp cure  (Lighthouse agent)
+js/combat.js      technique table, names/pause list, aim reticle + raycast, ether bursts (loaded before player.js)
 js/player.js      the Traveler, controller, camera, combat, lantern + staff models  (Player agent)
 js/creatures.js   moths, corruption patches, passive negatives, Halloran  (Creatures agent)
 js/monsters.js    hostile monsters + boss  (Creatures agent)
@@ -16,7 +17,7 @@ js/flow.js        quest beats, checkpoints, pickups, title/attract camera  (lead
 js/hud.js         HUD, menus, touch buttons  (lead)
 vendor/three      local Three.js r128 + examples/js (for dev.html only)
 ```
-Load order: three → postprocessing → core → world → lighthouse → player → creatures → monsters → flow → hud → `G.start()`.
+Load order: three → postprocessing → core → world → lighthouse → combat → player → creatures → monsters → flow → hud → `G.start()`.
 Every module is a plain script wrapped in an IIFE: `(function(){ 'use strict'; const G=window.G, THREE=G.THREE; ... })();`
 Three.js is **r128** (UMD global). No ES modules, no imports, no other libraries, no network assets. All textures are procedural (canvas) — see `G.canvasTex`.
 
@@ -77,6 +78,7 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 - UI calls (hud.js implements): `G.ui.say(text, who?)`, `G.ui.objective(text, sub?)`, `G.ui.toast(title, small?)`, `G.ui.bossBar(name|null, frac)`, `G.ui.flash()`, `G.ui.shake(amount)`.
 - Pickups (flow.js implements): `G.pickups.spawn('heart'|'mushroom', pos)`.
 - Input actions: `forward back left right jump sprint roll attack lock interact shutter pause`. `G.input.down(a)`, `G.input.pressed(a)`, `G.input.released(a)`, `G.input.move()` → {x,y,mag}, `G.input.look()` → pixel delta this frame, `G.input.wheel`, `G.input.locked`.
+- Techniques (`js/combat.js`, loaded before player.js): `G.moves.T` is the tuning table (lunge, sweep, slam, spin, plunge, dive, doubleJump, buffer, aim). `G.moves.performed(id)` names a technique on screen (toast the first time; remembered in localStorage `bq-combos`, listed in the pause menu). `G.moves.raycast(from,dir,max,{start})` → `{point,dist,hb,surface}` against floors, walls (constrainers), colliders, cave ceilings and enemy hurtboxes. `G.moves.burst(pos,{radius,color,life,lightI})` ether ring + flash. `G.moves.noDoubleJump.push(fn(pos)->bool)` forbids the double jump where it returns true. `G.player.move` → `{id, phase, doubleJumped, dived, aiming, aimK, aimPoint, cooldowns}`.
 - Models: `G.models.lantern()` and `G.models.staff()` are defined by player.js at script-evaluation time and return fresh Object3Ds (other modules may call them in init()).
 
 ## Events (names are fixed)
@@ -86,7 +88,10 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 | `mode` | {mode,prev} | core |
 | `player:hurt` | {hp,damage,info} | player |
 | `player:dead` / `player:respawn` | {pos} | player |
-| `player:attack` | {combo, charged} | player |
+| `player:attack` | {combo, charged} (combo is 1–3 for swings, or a technique id: 'lunge','sweep','slam','spin','plunge'; bolts add {bolt, great}) | player |
+| `player:combo` | {id, name, first} | combat (a technique was performed) |
+| `player:doublejump` / `player:dive` | {pos} | player |
+| `player:plunge` | {pos, damage, radius, hits, drop, high} | player (the plunge landed) |
 | `lantern:pickup` / `lantern:drop` | {pos} | player |
 | `staff:pickup` | — | lighthouse (player listens and equips) |
 | `door:blocked` | {reason:'dark'|'shut'} | lighthouse |

@@ -200,6 +200,8 @@ function applySave(d){
   if(d.lantern.pos)L.pos.set(d.lantern.pos[0],d.lantern.pos[1],d.lantern.pos[2]);
   if(d.staff){ if(G.lighthouse&&G.lighthouse.restoreStaff)G.lighthouse.restoreStaff(); else G.items.staff.owned=true; G.emit('staff:pickup',{restored:true}); }
   if(d.lampCured&&G.lighthouse&&G.lighthouse.restoreCured){ G.lighthouse.restoreCured(); G.emit('lamp:cured',{restored:true}); }
+  // restoreCured() puts the lantern back in the lamp's cradle; in the core loop the player may have taken it out (e.g. saved in the sea cave)
+  if(d.lampCured&&d.lantern&&d.lantern.carried&&!d.lantern.inCradle){ L.inCradle=false; L.carried=true; L.shut=!!d.lantern.shut; }
   bossDead=!!d.bossDead; if(bossDead){finaleArmed=false;}
   if(d.freed&&d.freed.length&&G.creatures&&G.creatures.restoreFreed){ G.creatures.restoreFreed(d.freed); G.state.freed=d.freed.length; }
   if(d.loop)startLoop(true);

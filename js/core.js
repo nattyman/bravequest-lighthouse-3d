@@ -458,7 +458,12 @@ G.world={
 };
 /** floor providers: fn(x,z,y) -> height or null. Return a height only when it is a surface a character standing at y could be on (<= y+0.9). */
 G.floorProviders=[];
-G.floorAt=(x,z,y=1e9)=>{let f=G.world.height(x,z); for(const p of G.floorProviders){const h=p(x,z,y); if(h!=null&&h>f)f=h;} return f;};
+/* INTERIOR HOOK (cave.js): G.interior = null | {id, contains(x,z,y)->bool}. Inside contains(), terrain is ignored
+   (floor providers only; -1e9 = a pit / open water) and walkable() is true. G.walkOverrides: fn(x,z)->true|false|null,
+   consulted by walkable() before world.js (the cave's low-tide causeway). */
+G.interior=null;
+G.walkOverrides=[];
+G.floorAt=(x,z,y=1e9)=>{let f=(G.interior&&G.interior.contains(x,z,y))?-1e9:G.world.height(x,z); for(const p of G.floorProviders){const h=p(x,z,y); if(h!=null&&h>f)f=h;} return f;};
 /** wall constrainers: fn(prev{x,z}, next{x,z} (mutate), y, radius, who) -> true if it blocked */
 G.constrainers=[];
 /** camera constrainers: fn(camPos:Vector3, targetPos:Vector3) mutate camPos */
@@ -658,6 +663,9 @@ G.systems=systems;
 let started=false;
 G.start=()=>{
   if(started)return; started=true;
+  { const w=G.world.walkable; // interior / override hook (see G.interior above); world.js has installed its walkable by now
+    G.world.walkable=(x,z)=>{ if(G.interior&&G.interior.contains(x,z))return true;
+      for(const o of G.walkOverrides){ const r=o(x,z); if(r!=null)return r; } return w(x,z); }; }
   for(const s of systems){ if(s.init){ try{s.init();}catch(e){console.error('init '+s.name,e);} } }
   G.emit('ready');
   let last=performance.now();

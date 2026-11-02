@@ -18,3 +18,4 @@ __pycache__/
 !/vendor/three/examples/js/postprocessing/RenderPass.js
 !/vendor/three/examples/js/postprocessing/ShaderPass.js
 !/vendor/three/examples/js/postprocessing/UnrealBloomPass.js
+.claude/

@@ -4,7 +4,9 @@
    lantern. Ichor in the satchel draws a few (the clue → Moth Bait); a *baited*
    lit lantern recruits a swarm again; the player herds it, protects it from
    monsters and carries it to the Blights, where it feeds and cures them.
-   API: G.moths  = {swarm, feeding, bait(seconds), baited, baitLeft, lost}
+   API: G.moths  = {swarm, feeding, bait(seconds), baited, baitLeft, lost,
+                    addSite(site), sites, kill(m), toLantern(m), release(m),          // shared feeding (cave seals)
+                    jar:{owned,count,capacity:60,give(),capture(),release()}, jarPos()} // the moth jar (cave reward)
         G.blights = [{id,name,pos,radius,needs,cured,reward,progress,feeding,stalled,hum}]
    Events: moths:bait {seconds,left} · moths:baitEnd · moths:lost {n,pos} · moths:noticed
            blight:seen {id} · blight:near / blight:far {id} · blight:feed {id} · blight:stall {id}
@@ -28,7 +30,7 @@ const FEED_TIME=10, STALL_BELOW=15, KILL_RATE=1.2, /* was 3: idle monsters alone
       BAIT_MAX=600, NEEDS=40, SPRING_R=1.35, SPRING_EVERY=2;
 
 /* ---------------------------------------------------------------- state (persisted) */
-const S={noticed:false,baitLeft:0,lost:0,seen:{},cured:{},baitedOnce:false,fedOnce:false};
+const S={noticed:false,baitLeft:0,lost:0,seen:{},cured:{},baitedOnce:false,fedOnce:false,jarLeft:0};
 let started=false;
 
 /* ---------------------------------------------------------------- geometry helpers */
@@ -408,15 +410,17 @@ let hudKey='', hudShowT=0;
 const mmss=s=>{s=Math.ceil(s); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 function updateHud(dt){
   if(!hudEl){ if(document.querySelector('#hud .vitals'))buildHud(); if(!hudEl)return; }
-  const fb=blights.find(b=>b.feeding);
-  const rel=started&&(S.baitLeft>0||API.swarm>0||!!fb);
+  const fb=blights.find(b=>b.feeding)||sites.find(b=>b.feeding&&!b.cured);
+  const rel=started&&(S.baitLeft>0||S.jarLeft>0||API.swarm>0||!!fb||JAR.count>0);
   hudShowT=rel?2:Math.max(0,hudShowT-dt);
   const show=hudShowT>0;
   if(hudEl.hidden===show){ hudEl.hidden=!show; if(show)requestAnimationFrame(()=>hudEl.classList.add('show')); else hudEl.classList.remove('show'); }
   if(!show)return;
   let k=`Moths with you <b>${API.swarm}</b>`;
   if(S.baitLeft>0)k+=` <span class="dot">·</span> <span class="bait">bait <b>${mmss(S.baitLeft)}</b></span>`;
+  else if(S.jarLeft>0)k+=` <span class="dot">·</span> <span class="bait">freed <b>${mmss(S.jarLeft)}</b></span>`;
   else if(API.swarm>0)k+=` <span class="dot">·</span> <span class="bait">bait gone</span>`;
+  if(JAR.owned&&JAR.count>0)k+=` <span class="dot">·</span> jar <b>${JAR.count}</b>`;
   if(k!==hudKey){hudKey=k; hudRow.innerHTML=k;}
   hudFeed.hidden=!fb;
   if(fb){ const n=API.feeding; hudFeed.classList.toggle('stall',fb.stalled);
@@ -430,7 +434,7 @@ function mothList(){ const c=CR(); return c&&c.moths||[]; }
 function release(m){ m.feedB=null; m._rel=0; const c=CR(); if(c&&c.toPatch)c.toPatch(m); else m.tgt='patch'; }
 function toLantern(m){ m.feedB=null; m._rel=0; m.tgt='lantern'; m.rad=.35+rnd()*1.4; m.hy=rnd()*1.4; m.prey=null; }
 function toFeed(m,b){
-  const p=P_[b.id]; const a=p&&p.anchors.length?p.anchors[(rnd()*p.anchors.length)|0]:b.pos;
+  const an=b.anchors&&b.anchors.length?b.anchors:(P_[b.id]&&P_[b.id].anchors)||[]; const a=an.length?an[(rnd()*an.length)|0]:b.pos;
   m.tgt='feed'; m.feedB=b; m._rel=0; m.delay=0; m.next=null; m.prey=null;
   m.feedC=(m.feedC||V()).set(a.x+(rnd()-.5)*.5,a.y+.12+rnd()*.45,a.z+(rnd()-.5)*.5); m.rad=.08+rnd()*.4;
 }
@@ -440,6 +444,7 @@ function kill(m,dust){
 }
 function revive(m){
   const c=CR(); const pats=(c&&c.patches)||[];
+  if(m.cave&&c&&c.roost&&c.roost.pts.length&&c.toRoost){ const r=c.roost.pts[(rnd()*c.roost.pts.length)|0]; m.p.copy(r.p).addScaledVector(r.n,.6); m.v.set(0,.3,0); c.toRoost(m); return; }
   const sites=pats.map(p=>({x:p.x,z:p.z,y:p.y})).concat(blights.filter(b=>b.cured).map(b=>({x:b.pos.x,z:b.pos.z,y:b.pos.y,blight:1})));
   const s=sites.length?sites[(rnd()*sites.length)|0]:{x:0,z:0,y:H(0,0)};
   m.p.set(s.x+(rnd()-.5)*2,(s.y||H(s.x,s.z))+.6,s.z+(rnd()-.5)*2); m.v.set(0,.8,0);
@@ -486,16 +491,16 @@ function bait(seconds){
 }
 function updateBait(dt){
   const L=lantern(), c=CR();
-  if(S.baitLeft>0&&isPlay()){
-    S.baitLeft=Math.max(0,S.baitLeft-dt);
-    if(S.baitLeft<=0){
+  if((S.baitLeft>0||S.jarLeft>0)&&isPlay()){
+    S.baitLeft=Math.max(0,S.baitLeft-dt); S.jarLeft=Math.max(0,S.jarLeft-dt);
+    if(S.baitLeft<=0&&S.jarLeft<=0){
       let n=0; for(const m of mothList()) if(m.tgt==='lantern'){release(m);n++;}
       G.emit('moths:baitEnd',{released:n});
       if(n>0)G.ui.say('The bait has gone cold. The moths lose the scent and drift back toward the patches.');
     }
   }
   // a shut (unlit) baited lantern loses its swarm after a moment
-  if(S.baitLeft>0&&L&&L.lit&&!L.lit()){ unlitT+=dt; if(unlitT>1.5){ for(const m of mothList()) if(m.tgt==='lantern')release(m); } } else unlitT=0;
+  if(API.baited&&L&&L.lit&&!L.lit()&&!(c&&c.clingR!=null)){ unlitT+=dt; if(unlitT>1.5){ for(const m of mothList()) if(m.tgt==='lantern')release(m); } } else unlitT=0;
   // ichor smoke curling off the baited lantern
   if(G.ink&&G.ink.emitter&&!baitEm)baitEm=G.ink.emitter(baitV,{rate:5,radius:.12,size:[.18,.6],life:[.8,1.5],rise:.35,drift:.12,trail:.9,alpha:.55,embers:1.5,color:'#120a1a',intensity:0});
   if(baitEm){ const lp=c&&c.lanternPos?c.lanternPos():null; if(lp)baitV.copy(lp);
@@ -514,6 +519,7 @@ function updateThreats(dt){
   if(!ML||!sw.length)return;
   for(const mo of ML){
     if(!mo.alive||mo.dying||mo.state==='intro'||mo.state==='dying')continue;
+    if(mo.eatsMoths)continue; // brinelings eat moths themselves (monsters.js), don't double-count
     const cx=mo.pos.x, cy=mo.pos.y+(mo.kind==='hound'?.6:1.2), cz=mo.pos.z;
     let best=null, bd=KILL_R*KILL_R;
     for(const m of sw){ if(m.tgt==='gone')continue; const dx=m.p.x-cx,dy=m.p.y-cy,dz=m.p.z-cz,d=dx*dx+dy*dy*.6+dz*dz; if(d<bd){bd=d;best=m;} }
@@ -538,6 +544,44 @@ let regrowT=REGROW_EVERY;
 function updateRegrow(dt){
   regrowT-=dt; if(regrowT>0)return; regrowT=REGROW_EVERY;
   for(const m of mothList()) if(m.tgt==='gone'){ revive(m); S.lost=Math.max(0,S.lost-1); G.emit('moths:regrow',{}); break; }
+}
+
+/* ---- shared feeding: blights and other sites (cave seals) ----
+   site: {id,name,pos:Vector3,radius,needs,cured,progress,feeding,stalled, anchors?:[Vector3], feedTime?, stallBelow?, yRange?,
+          onFeed?(s), onStall?(s,n), onStop?(s), onDone?(s)}   — moths on a baited lantern within radius+1 start feeding at `needs`. */
+const sites=[];
+function feedTick(b,dt,ms,o){
+  const R=b.radius+1, by=b.pos.y, yr=b.yRange||7, near=(m,r)=>m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<r&&Math.abs(m.p.y-by)<yr;
+  if(!b.feeding){
+    b.progress=Math.max(0,b.progress-dt*.01);
+    let n=0; for(const m of ms) if(near(m,R))n++;
+    b.near=n;
+    if(n>=b.needs){
+      b.feeding=true; b.stalled=false;
+      for(const m of ms) if(near(m,R+2))toFeed(m,b);
+      o.onFeed&&o.onFeed(b);
+    }
+    return 0;
+  }
+  for(const m of ms) if(near(m,R))toFeed(m,b);     // more moths arriving join in
+  let n=0; for(const m of ms) if(m.tgt==='feed'&&m.feedB===b&&!m._rel)n++;
+  b.near=n;
+  const stalled=n<(b.stallBelow!=null?b.stallBelow:STALL_BELOW);
+  if(stalled&&!b.stalled)o.onStall&&o.onStall(b,n);
+  b.stalled=stalled;
+  if(!stalled)b.progress=Math.min(1,b.progress+dt/(b.feedTime||FEED_TIME));
+  if(n===0){ b.feeding=false; b.stalled=false; o.onStop&&o.onStop(b); }
+  if(b.progress>=1)o.onDone&&o.onDone(b);
+  return n;
+}
+/** lift the fed moths off a finished site (they rejoin the lantern or go home) */
+function liftOff(b){ for(const m of mothList()) if(m.tgt==='feed'&&m.feedB===b){ m._rel=G.time+1.5+rnd()*2.5; if(m.feedC)m.feedC.y+=1.2+rnd()*1.5; } }
+function siteDone(s){ if(s.cured)return; s.cured=true; s.feeding=false; s.stalled=false; s.progress=1; liftOff(s); try{s.onDone&&s.onDone(s);}catch(e){console.error(e);} }
+function updateSites(dt,ms){
+  let n=0;
+  for(const s of sites){ if(s.cured||s.enabled&&!s.enabled())continue;
+    n+=feedTick(s,dt,ms,{onFeed:x=>x.onFeed&&x.onFeed(x),onStall:(x,k)=>x.onStall&&x.onStall(x,k),onStop:x=>x.onStop&&x.onStop(x),onDone:x=>siteDone(x)}); }
+  return n;
 }
 
 /* ---- blights: sighting, feeding, attackers, cure ---- */
@@ -592,35 +636,22 @@ function updateBlights(dt){
     if(b.cured)continue;
     if(p.pool){ const u=p.pool.material.uniforms; u.uProg.value=b.progress; u.uFeed.value=U.damp(u.uFeed.value,(b.feeding||b.progress>.01)?1:0,4,dt); }
     if(!play)continue;
-    const R=b.radius+1, by=b.pos.y;
-    if(!b.feeding){
-      b.progress=Math.max(0,b.progress-dt*.01);
-      let n=0; for(const m of ms) if(m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<R&&Math.abs(m.p.y-by)<7)n++;
-      if(n>=b.needs){
-        b.feeding=true; b.stalled=false; p.spawnPlan=2+((rnd()*3)|0); p.spawnT=1.8; p.flash=1;
-        for(const m of ms) if(m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<R+2&&Math.abs(m.p.y-by)<7)toFeed(m,b);
+    const was=b.feeding;
+    feedN+=feedTick(b,dt,ms,{
+      onFeed(){ p.spawnPlan=2+((rnd()*3)|0); p.spawnT=1.8; p.flash=1;
         G.emit('blight:feed',{id:b.id});
         if(!S.fedOnce){S.fedOnce=true; G.ui.say('The moths pour down onto the black and begin to eat. Something out in the fog has noticed. Keep them alive.');}
-        else G.ui.toast(b.name,'The moths descend — keep them alive');
-      }
-    }else{
-      // more moths arriving join in
-      for(const m of ms) if(m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<R&&Math.abs(m.p.y-by)<7)toFeed(m,b);
-      let n=0; for(const m of ms) if(m.tgt==='feed'&&m.feedB===b&&!m._rel)n++;
-      feedN+=n;
-      const stalled=n<STALL_BELOW;
-      if(stalled&&!b.stalled)G.emit('blight:stall',{id:b.id,n});
-      b.stalled=stalled;
-      if(!stalled)b.progress=Math.min(1,b.progress+dt/FEED_TIME);
-      p.spawnT-=dt; if(p.spawnPlan>0&&p.spawnT<=0){ p.spawnPlan--; p.spawnT=2.2+rnd()*1.8; spawnAttacker(b); }
-      if(n===0){ b.feeding=false; b.stalled=false; G.emit('blight:feedStop',{id:b.id}); }
-      if(b.progress>=1)cure(b,false);
-    }
+        else G.ui.toast(b.name,'The moths descend — keep them alive'); },
+      onStall(x,n){ G.emit('blight:stall',{id:b.id,n}); },
+      onStop(){ G.emit('blight:feedStop',{id:b.id}); },
+      onDone(){ cure(b,false); }});
+    if(was&&b.feeding){ p.spawnT-=dt; if(p.spawnPlan>0&&p.spawnT<=0){ p.spawnPlan--; p.spawnT=2.2+rnd()*1.8; spawnAttacker(b); } }
   }
+  feedN+=updateSites(dt,ms);
   API.feeding=feedN;
   // fed moths rise off a cured blight and go home (or back to the baited lantern)
-  for(const m of ms) if(m.tgt==='feed'&&m._rel&&G.time>=m._rel){ if(S.baitLeft>0)toLantern(m); else release(m); }
-  for(const m of ms) if(m.tgt==='feed'&&m.feedB&&!m.feedB.feeding&&!m.feedB.cured&&!m._rel){ if(S.baitLeft>0)toLantern(m); else release(m); }
+  for(const m of ms) if(m.tgt==='feed'&&m._rel&&G.time>=m._rel){ if(API.baited)toLantern(m); else release(m); }
+  for(const m of ms) if(m.tgt==='feed'&&m.feedB&&!m.feedB.feeding&&!m.feedB.cured&&!m._rel){ if(API.baited)toLantern(m); else release(m); }
 }
 function reward(b,restored){
   const p=P_[b.id];
@@ -648,8 +679,7 @@ function cure(b,restored){
     const d=def(b.id);
     G.ui.toast(b.name.replace(/^The /,'')+' · cured',d.toast);
     setTimeout(()=>G.ui.say(d.curedLine),1800);
-    // the fed moths lift off together, then go
-    for(const m of mothList()) if(m.tgt==='feed'&&m.feedB===b){ m._rel=G.time+1.5+rnd()*2.5; if(m.feedC)m.feedC.y+=1.2+rnd()*1.5; }
+    liftOff(b); // the fed moths lift off together, then go
   }
   if(p.pool)p.pool.material.uniforms.uFeed.value=0;
   G.emit('blight:cured',{id:b.id,name:b.name,pos:b.pos.clone(),restored:!!restored});
@@ -671,9 +701,93 @@ function updateSpring(dt){
     if(G.ink&&G.ink.burst)G.ink.burst(V(P.pos.x,P.pos.y+.8,P.pos.z),{n:0,embers:10,speed:1}); }
 }
 
+/* ---------------------------------------------------------------- the moth jar (cave reward; works everywhere) */
+const JAR_CAP=60, JAR_FREE=60, JAR_R=7;
+let jarObj=null, jarGlow=null, jarNear=0, jarCount=0, jarSaid={};
+const _jw=V();
+function jarWorld(){ if(jarObj&&jarObj.parent){ jarObj.updateMatrixWorld(true); return jarObj.getWorldPosition(_jw).add(V(0,.04,0)); } return null; }
+function buildJar(){
+  const P=G.player; if(jarObj||!P||!P.model)return;
+  const g=new THREE.Group(); g.name='mothJar';
+  const glass=new THREE.Mesh(new THREE.CylinderGeometry(.075,.07,.17,14,1,true),G.toon('#cfe6e2',{transparent:true,opacity:.42,side:THREE.DoubleSide,emissive:'#b8d8d4',emissiveIntensity:.15}));
+  const base=new THREE.Mesh(new THREE.CylinderGeometry(.07,.066,.012,14),G.toon('#a9c3bf',{transparent:true,opacity:.6}));
+  base.position.y=-.085;
+  const neck=new THREE.Mesh(new THREE.CylinderGeometry(.05,.075,.03,14),G.toon('#cfe6e2',{transparent:true,opacity:.45})); neck.position.y=.1;
+  const cork=new THREE.Mesh(new THREE.CylinderGeometry(.046,.04,.045,10),G.toon('#8a6a46')); cork.position.y=.13;
+  const strap=new THREE.Mesh(new THREE.TorusGeometry(.078,.009,5,16),G.toon('#5c4532')); strap.rotation.x=PI/2; strap.position.y=.06;
+  jarGlow=glowSprite('#fff0c8',.32,0); jarGlow.position.y=-.01;
+  g.add(glass,base,neck,cork,strap,jarGlow);
+  g.position.set(-.22,.9,-.14); g.rotation.z=.18;          // right hip, toward the back (model faces +z; the lantern hangs on the left)
+  P.model.add(g); jarObj=g; g.visible=JAR.owned;
+}
+function jarMoths(){ const o=[]; for(const m of mothList()) if(m.tgt==='jar')o.push(m); return o; }
+function nearSwarm(r){ const P=G.player; if(!P||!P.pos)return []; const o=[];
+  // the swarm proper (not the few moths nosing at the ichor in the satchel: they'd make "Release" unreachable while you carry ichor)
+  for(const m of mothList()) if((m.tgt==='lantern'||m.tgt==='hunt')&&m.p.distanceToSquared(P.pos)<r*r)o.push(m); return o; }
+const JAR={capacity:JAR_CAP, owned:false,
+  get count(){ return jarCount; },
+  get freedLeft(){ return S.jarLeft; },
+  give(o={}){
+    if(JAR.owned)return false; JAR.owned=true; buildJar(); if(jarObj)jarObj.visible=true;
+    if(!o.silent){ G.ui.toast('The moth jar','Capture a swarm · carry it anywhere · release it');
+      setTimeout(()=>G.ui.say('A keeper’s jar, the glass gone milky with salt. Moths settle in it as if it were a lantern that never goes out.'),900); }
+    G.emit('cave:jar',{action:'give',count:jarCount}); return true; },
+  capture(){
+    if(!JAR.owned)return 0;
+    const room=JAR_CAP-jarCount; if(room<=0)return 0;
+    const list=nearSwarm(JAR_R).slice(0,room);
+    for(const m of list){ m.tgt='jar'; m.inJar=false; m.prey=null; m.feedB=null; m._rel=0; m.next=null; m.delay=0; }
+    jarCount+=list.length;
+    if(list.length){ G.emit('cave:jar',{action:'capture',count:jarCount,n:list.length});
+      if(!jarSaid.c){ jarSaid.c=1; G.ui.say('The swarm pours into the jar and settles, wings folded, glowing faintly against the glass. They don’t need the bait to stay.'); }
+      else G.ui.toast('Moths captured',jarCount+' in the jar'); }
+    return list.length; },
+  release(){
+    const list=jarMoths(); if(!list.length)return 0;
+    const from=jarWorld()||(CR()&&CR().satchelPos())||(G.player&&G.player.pos);
+    for(const m of list){ toLantern(m); m.inJar=false; m.p.copy(from).add(V((rnd()-.5)*.2,(rnd()-.2)*.2,(rnd()-.5)*.2));
+      m.v.set((rnd()-.5)*5,1.5+rnd()*2.5,(rnd()-.5)*5); }
+    jarCount=0; S.jarLeft=JAR_FREE;
+    G.emit('cave:jar',{action:'release',count:0,n:list.length});
+    if(!jarSaid.r){ jarSaid.r=1; G.ui.say('You pull the cork. The moths spill out in a pale rush and wheel round you, hungry, looking for the dark.'); }
+    else G.ui.toast('Moths released',list.length+' · they follow you for a minute');
+    return list.length; },
+  _save(){ return {owned:JAR.owned,count:jarCount,left:+S.jarLeft.toFixed(1),said:jarSaid}; },
+  _load(d){
+    if(!d)return;
+    if(d.owned&&!JAR.owned)JAR.give({silent:true});
+    for(const m of jarMoths())toLantern(m);
+    jarCount=0; const want=Math.min(JAR_CAP,Math.max(0,d.count|0));
+    for(const m of mothList()){ if(jarCount>=want)break; if(m.tgt==='patch'||m.tgt==='wander'||m.tgt==='roost'){ m.tgt='jar'; m.inJar=true; jarCount++; } }
+    S.jarLeft=Math.max(0,Math.min(JAR_FREE,+d.left||0)); jarSaid=Object.assign({},d.said||{});
+  }
+};
+let jarInteract=null;
+/* one button: capture a real swarm; a few stragglers a baited lantern picks up mustn't stop you uncorking a full jar */
+const wantCapture=()=>jarCount<JAR_CAP&&jarNear>=3&&(jarCount===0||jarNear>=8);
+function updateJar(dt){
+  if(!JAR.owned)return;
+  if(!jarObj)buildJar();
+  jarCount=0; for(const m of mothList()) if(m.tgt==='jar')jarCount++;
+  jarNear=nearSwarm(JAR_R).length;
+  if(jarObj){ jarObj.visible=true; const k=jarCount/JAR_CAP;
+    jarGlow.material.opacity=k>0?.25+.6*k+.08*Math.sin(G.time*3.1):0; jarGlow.scale.setScalar(.22+.25*k); }
+  if(!jarInteract&&G.interact){
+    jarInteract=G.interact.add({pos:()=>G.player&&G.player.pos,radius:1,priority:-3,
+      label:()=>wantCapture()?'Capture moths · '+Math.min(jarNear,JAR_CAP-jarCount)+' into the jar':'Release moths · '+jarCount,
+      enabled:()=>JAR.owned&&isPlay()&&G.player&&G.player.alive!==false&&(wantCapture()||jarCount>0),
+      use(){ if(wantCapture())JAR.capture(); else JAR.release(); }});
+  }
+}
+let lostKill=0, lostKillPos=V();
+function killOne(m,dust){ if(!m||m.tgt==='gone')return false; lostKillPos.copy(m.p); kill(m,dust); S.lost++; lostKill++; return true; }
+
 /* ---------------------------------------------------------------- API */
 const API=G.moths={swarm:0,feeding:0,bait,
-  get baited(){return S.baitLeft>0;}, get baitLeft(){return S.baitLeft;}, get lost(){return S.lost;},
+  get baited(){return S.baitLeft>0||S.jarLeft>0;},
+  addSite(s){ s.progress=s.progress||0; s.feeding=false; s.stalled=false; s.cured=!!s.cured; s.near=0; if(sites.indexOf(s)<0)sites.push(s); return s; },
+  sites, kill:(m,dust=true)=>killOne(m,dust), eat:(m)=>killOne(m,true), toLantern:m=>toLantern(m), release:m=>release(m),
+  jar:JAR, jarPos:()=>jarWorld(), get baitLeft(){return S.baitLeft;}, get lost(){return S.lost;},
   get noticed(){return S.noticed;}, get active(){return started;},
   blight:id=>blights.find(b=>b.id===id)||null};
 if(G.debug)API._debug={S,P_,save:()=>save(),load:d=>load(d),cure:id=>{const b=API.blight(id); if(b)cure(b,false);},
@@ -717,7 +831,9 @@ G.system('moths',{order:32,modes:'always',
       updateBait(dt);
       updateBlights(dt);
       updateSpring(dt);
-      let n=0; for(const m of mothList()) if(m.tgt==='lantern')n++; API.swarm=n;
+      updateJar(dt);
+      if(lostKill>0){ G.emit('moths:lost',{n:lostKill,pos:lostKillPos.clone()}); lostKill=0; }
+      let n=0; for(const m of mothList()) if(m.tgt==='lantern'||m.tgt==='hunt')n++; API.swarm=n; // hunting moths (e.g. on the Undertow) are still the player's swarm
       updateHud(dt);
     }catch(e){ console.error('moths',e); }
   }

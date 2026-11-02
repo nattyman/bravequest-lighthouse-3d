@@ -20,8 +20,10 @@ STEPS=[
  ("bait", """(()=>{ G.player.teleport(G.world.landmarks.patches[0].x+3,G.floorAt(G.world.landmarks.patches[0].x+3,G.world.landmarks.patches[0].z),G.world.landmarks.patches[0].z,0); G.step(1/30,240);
     const learned=G.alchemy.known.has('bait'); if(!learned)G.alchemy.learn('bait');
     G.items.lantern.carried=true; G.items.lantern.inCradle=false; G.items.lantern.shut=false; G.moths.bait(300);
-    const st=[]; for(const p of G.world.landmarks.patches.slice(0,4)){ G.player.teleport(p.x+3,G.floorAt(p.x+3,p.z),p.z,0); for(let i=0;i<10;i++){ G.step(1/30,30); G.player.hp=G.player.maxHp; } st.push(G.state.mode+'/'+G.moths.swarm+'/d'+Math.round(G.fog.depth(G.player.pos))); }
-    return [G.moths.noticed, learned, G.moths.baited, G.moths.swarm, st.join(' ')]; })()"""),
+    // keep visiting patches until the swarm has a margin over the 40 the tide pool needs (monsters nibble at it on the way, and
+    // a patch's moths may be off wandering: 4 fixed patches left it at 36-46, which flaked the cure step)
+    const st=[], lost0=G.moths.lost; for(const p of G.world.landmarks.patches){ if(st.length>=4&&G.moths.swarm>=46)break; G.player.teleport(p.x+3,G.floorAt(p.x+3,p.z),p.z,0); for(let i=0;i<10;i++){ G.step(1/30,30); G.player.hp=G.player.maxHp; } st.push(G.state.mode+'/'+G.moths.swarm+'/d'+Math.round(G.fog.depth(G.player.pos))); }
+    return [G.moths.noticed, learned, G.moths.baited, G.moths.swarm, st.join(' '), 'lost '+(G.moths.lost-lost0)]; })()"""),
  ("cure", """(()=>{ const b=G.blights.find(x=>x.id==='tidepool'); G.moths.bait(300);
     const tp=(x,z)=>G.player.teleport(x,G.floorAt(x,z,(b.pos.y||0)+5),z,0);
     const sx=G.player.pos.x, sz=G.player.pos.z; for(let k=1;k<=10;k++){ tp(sx+(b.pos.x-sx)*k/10, sz+(b.pos.z-sz)*k/10); G.step(1/30,45); G.player.hp=G.player.maxHp; }
