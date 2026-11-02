@@ -403,14 +403,14 @@ function cineStart(){
   try{ cineFrame(); }catch(e){ CINE.side=-1; CINE.dk=1; }
   CINE.seen=true; CINE.on=true; CINE.t=0; CINE.skip=false;
   try{ p.setControl&&p.setControl(false); }catch(e){}
-  const b=cineBars(); if(b)b.style.opacity='1';
+  const b=cineBars(); if(b){ b.style.visibility='visible'; b.style.opacity='1'; }
   addEventListener('keydown',cineSkipKey,true); addEventListener('pointerdown',cineSkipKey,true);
   G.emit('gloaming:cine',{on:true});
 }
 function cineEnd(){
   if(!CINE.on)return; CINE.on=false;
   removeEventListener('keydown',cineSkipKey,true); removeEventListener('pointerdown',cineSkipKey,true);
-  if(CINE.bars)CINE.bars.style.opacity='0';
+  if(CINE.bars){ const w=CINE.bars; w.style.opacity='0'; setTimeout(()=>{ if(!CINE.on)w.style.visibility='hidden'; },420); } // (hidden outright once faded: no lingering bars where frames are throttled)
   const p=P();
   if(p&&p.pos&&G.state.mode==='play'){ // face it: the follow camera snaps in behind the Traveler, looking at the Gloaming
     // still in the doorway? step out onto the apron so the camera behind isn't pressed against the tower wall
