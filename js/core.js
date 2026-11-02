@@ -10,7 +10,12 @@ const THREE=window.THREE;
 const G=window.G={THREE};
 const PI=Math.PI, TAU=PI*2;
 G.PI=PI; G.TAU=TAU;
-G.debug=/[?&]debug/.test(location.search);
+/* DEVTOOLS: the one switch for the "Test tools" panel (js/devtools.js). false hides it, unless the URL has ?debug.
+   While it's on, the test helpers other modules expose under G.debug (G.debugStartLoop, G.debugEnterCave, …) exist too. */
+G.DEVTOOLS=true;
+G.debugUrl=/[?&]debug/.test(location.search);
+G.debug=G.debugUrl||G.DEVTOOLS;
+G.timeScale=1; // devtools time speed: whole-number substeps per frame while playing
 
 /* ---------- utilities ---------- */
 const U=G.U={
@@ -359,6 +364,7 @@ function padMenu(btn,lx,ly,dt){
   if(edge(0)){ const el=cur||primaryOf(list); if(el&&el.type!=='range'){ padFocus(el); el.click(); } return; }
   if(paused&&(edge(1)||edge(9)||edge(8))){ const r=document.getElementById('resume'); if(r&&shown(r))r.click(); return; }
   if(card.id==='title'&&edge(9)){ const el=primaryOf(list); if(el)el.click(); return; }
+  if(card.dataset.padBack&&(edge(1)||edge(9))){ const b=document.getElementById(card.dataset.padBack); if(b&&shown(b)){ b.click(); return; } } // B / Menu closes cards that name a back button
   const dir=(btn[12]||ly<-.5)?'up':(btn[13]||ly>.5)?'down':(btn[14]||lx<-.5)?'left':(btn[15]||lx>.5)?'right':'';
   if(dir!==pad.navDir){ pad.navDir=dir; pad.navT=PAD.navDelay; if(dir)navigate(dir,list); }
   else if(dir){ pad.navT-=dt; if(pad.navT<=0){ pad.navT=PAD.navRepeat; navigate(dir,list); } }
@@ -678,6 +684,9 @@ G.start=()=>{
     if(G.quality.cap&&now-last<1000/G.quality.cap-2){requestAnimationFrame(frame);return;}
     const dt=Math.min(.05,(now-last)/1000); last=now; G.dt=dt;
     G.input.poll(dt);
+    const steps=G.state.mode==='play'?Math.max(1,Math.min(8,G.timeScale|0)):1; // devtools time speed: n whole substeps
+    for(let k=0;k<steps;k++){
+    if(k>0)G.input.endFrame(); // presses and look count once
     const mode=G.state.mode;
     if(mode!=='paused')G.time+=dt;
     G.hints.length=0;
@@ -687,6 +696,7 @@ G.start=()=>{
       try{s.update(mode==='paused'?0:dt);}catch(e){ if(!s._err){console.error('update '+s.name,e);s._err=1;} }
     }
     G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt);
+    }
     const H=G.headless;
     if(!H||H.dirty||H.force>0||now-H.lastDraw>500){
       if(composer)composer.render(); else renderer.render(scene,camera);

@@ -13,6 +13,7 @@ python3 -m http.server 8800
 - `http://localhost:8800/dev.html` uses the bundled copy of Three.js in `vendor/` (works offline)
 - `http://localhost:8800/index.html` loads Three.js from public CDNs (this is the page that gets published)
 - add `?debug` to either for test helpers (`G.step`, `G.debugStartLoop`, …)
+- **Test tools (God Mode)**: the small "Test tools" link on the title card or in the pause menu, or the backquote key (`` ` ``). Start points (story, lighthouse lit, before the Hollow Stag, the sandbar, every cave room, after the Undertow), cheats, items, tide, time speed, teleports, monsters. Anything used there sends that session's saves to a separate test slot (`bq-save-test-v1`), never the real one. `js/devtools.js`; hide it with `G.DEVTOOLS=false` in `core.js`. Test: `python3 test/devtools_e2e.py`
 
 `dev.html` is generated: run `python3 test/build_dev.py` after changing `index.html` or adding a module.
 
