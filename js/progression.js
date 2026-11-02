@@ -37,7 +37,8 @@ const marksHeld=()=>Math.max(0,marksEarned()-S.spent);
 const shardN=()=>count(S.shards);
 const heartN=()=>count(S.hearts)+Math.floor(shardN()/SHARDS_PER_HEART);
 const wingN=()=>Math.min(4,Math.floor(S.freed/WING_EVERY));
-const maxHp=()=>Math.min(20,BASE_HP+2*heartN());
+let heldHp=0; // a heart being lifted overhead fills in when the moment ends, not when it is picked up
+const maxHp=()=>Math.min(20,BASE_HP+2*heartN())-heldHp;
 
 /* ---------------------------------------------------------------- upgrades (the Temper tab) */
 const UPGRADES=[
@@ -296,10 +297,11 @@ function collectShard(s,o={}){
   const n=shardN(), into=((n-1)%SHARDS_PER_HEART)+1, full=into===SHARDS_PER_HEART;
   G.emit('progress:shard',{id:s.id,n,total:SPOTS.length});
   if(o.silent){ apply(); return; }
+  if(full)heldHp+=2;
   sparkleAt(s.pos,'#c4a0ff',22);
   rewardFn({id:'shard',icon:'shard',name:full?'A new heart':'Heart Shard',eyebrow:full?'Heart Shard · 4 of 4':'Heart Shard · '+into+' of 4',
     desc:full?'Four slivers of the old lamp’s glass fit together, warm as a hand. Your heart grows.':'A sliver of the old lamp’s glass, still warm. '+(SHARDS_PER_HEART-into)+' more and it will be a heart.',
-    pips:into,onLift:()=>{ apply(); if(full)G.emit('progress:heart',{src:'shards'}); },sub:n+' of '+SPOTS.length+' shards found'});
+    pips:into,onLift:()=>{ if(full){ heldHp=Math.max(0,heldHp-2); G.emit('progress:heart',{src:'shards'}); } apply(); },sub:n+' of '+SPOTS.length+' shards found'});
 }
 function openCache(c){
   if(S.caches[c.id])return; S.caches[c.id]=1; S.marks['cache:'+c.id]=1;
@@ -320,8 +322,8 @@ function grantCharm(){ if(S.upgrades.charm)return false; S.upgrades.charm='gift'
 function onBoss(e){
   const who=e&&e.who;
   if(who==='stag'){
-    const h=grantHeart('stag'), m=grantMarks('stag',1); if(!h&&!m)return;
-    later(3.2,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Hollow Stag',desc:'Where the Stag fell, something red and warm was left in the roots. Your heart grows by one.',onLift:()=>apply(),sub:'+1 Keeper’s Mark'}));
+    const h=grantHeart('stag'), m=grantMarks('stag',1); if(!h&&!m)return; if(h)heldHp+=2;
+    later(3.2,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Hollow Stag',desc:'Where the Stag fell, something red and warm was left in the roots. Your heart grows by one.',onLift:()=>{ if(h)heldHp=Math.max(0,heldHp-2); apply(); },sub:'+1 Keeper’s Mark'}));
     autosave();
   }else if(who==='gloaming'){
     const m=grantMarks('gloaming',2), c=grantCharm(); if(!m&&!c)return; apply();
@@ -330,8 +332,8 @@ function onBoss(e){
   }
 }
 function onUndertow(){
-  const h=grantHeart('undertow'), m=grantMarks('undertow',2); if(!h&&!m)return;
-  later(4,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Undertow',desc:'The drowned lens gives up one last warm thing. Your heart grows by one.',onLift:()=>apply(),sub:'+2 Keeper’s Marks'}));
+  const h=grantHeart('undertow'), m=grantMarks('undertow',2); if(!h&&!m)return; if(h)heldHp+=2;
+  later(4,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Undertow',desc:'The drowned lens gives up one last warm thing. Your heart grows by one.',onLift:()=>{ if(h)heldHp=Math.max(0,heldHp-2); apply(); },sub:'+2 Keeper’s Marks'}));
   autosave();
 }
 function onFreed(e){
@@ -369,7 +371,7 @@ const pend=[];
 function rewardFn(o){ if(!o)return; queue.push(Object.assign({t0:0},o)); G.emit('progress:reward',{id:o.id}); }
 function canStart(){ const p=P(); return isPlay()&&p&&p.alive&&p.grounded!==false&&!(G.cave&&G.cave._debug&&G.cave._debug.S&&G.cave._debug.S.trans); }
 function startReward(o){
-  reward.active=o; reward.t=0;
+  reward.active=o; reward.t=0; reward.lifted=false;
   const p=P();
   if(p.setControl)p.setControl(false);
   p.camPull={yaw:(p.heading||0)+PI,pitch:.1,dist:3.4,rate:4};
@@ -377,6 +379,7 @@ function startReward(o){
   showCard(o); sting(o.icon==='heart'||o.icon==='shard'&&o.pips===4);
 }
 function endLift(){
+  if(reward.lifted)return; reward.lifted=true;
   const p=P(), o=reward.active;
   if(p){ if(p.setControl)p.setControl(true); p.camPull=null; }
   if(liftObj){ root.remove(liftObj); liftObj=null; }
@@ -389,18 +392,17 @@ function updateReward(dt){
   if(!isPlay()){ if(reward.t<LIFT){ /* paused/menu/dead mid-lift: hold */ if(G.state.mode==='dead'){ endLift(); hideCard(); reward.active=null; } return; } }
   const prev=reward.t; reward.t+=dt;
   const p=P();
-  if(liftObj&&p&&p.pos){ const k=U.smooth(0,.35,reward.t); liftObj.position.set(p.pos.x,p.pos.y+1.55+.62*k+Math.sin(reward.t*3)*.03,p.pos.z); liftObj.rotation.y+=dt*1.6;
+  if(liftObj&&p&&p.pos){ const k=U.smooth(0,.35,reward.t); liftObj.position.set(p.pos.x,p.pos.y+1.45+.5*k+Math.sin(reward.t*3)*.03,p.pos.z); liftObj.rotation.y+=dt*1.6;
     liftObj.scale.setScalar(1.15*(.6+.4*k)); }
-  if(prev<LIFT&&reward.t>=LIFT)endLift();
+  if(reward.t>=LIFT)endLift();
   if(reward.t>=CARD){ hideCard(); reward.active=null; }
 }
 // the Traveler lifts the item overhead (blended over the current pose)
+const LIFT_POSE={shRX:-.35,shLX:-.35,shRZ:-2.65,shLZ:2.65,elR:-.45,elL:-.45,hdX:-.32,spX:-.08}; // both arms straight up (Z raises them sideways in this rig)
 function liftPose(T){
   const o=reward.active; if(!o||reward.t>=LIFT)return;
   const k=U.smooth(0,.28,reward.t)*(1-U.smooth(LIFT-.25,LIFT,reward.t));
-  const L=(a,b)=>a+(b-a)*k;
-  T.shRX=L(T.shRX,-2.75); T.shLX=L(T.shLX,-2.75); T.shRZ=L(T.shRZ,.28); T.shLZ=L(T.shLZ,-.28);
-  T.elR=L(T.elR,-.35); T.elL=L(T.elL,-.35); T.hdX=L(T.hdX,-.32); T.spX=L(T.spX,-.08);
+  const Q=LIFT_POSE; for(const key in Q)T[key]=T[key]+(Q[key]-T[key])*k;
   return 14;
 }
 function sting(big){
@@ -476,8 +478,8 @@ function buildBeams(){
 
 /* ---------------------------------------------------------------- DOM: reward card, Temper tab, Journal */
 const CSS=`
-#rewardCard{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(18% + env(safe-area-inset-bottom,0px));transform:translate(0,14px);z-index:7;pointer-events:none;opacity:0;
-  transition:opacity .45s,transform .55s cubic-bezier(.2,.8,.2,1);width:min(440px,calc(100% - 32px));display:grid;grid-template-columns:64px 1fr;gap:4px 16px;align-items:center;
+#rewardCard{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(25% + env(safe-area-inset-bottom,0px));transform:translate(0,14px);z-index:7;pointer-events:none;opacity:0;
+  transition:opacity .45s,transform .55s cubic-bezier(.2,.8,.2,1);width:min(410px,calc(100% - 32px));display:grid;grid-template-columns:64px 1fr;gap:4px 16px;align-items:center;
   color:var(--ink);background:linear-gradient(180deg,var(--parch),var(--parch-2));padding:16px 20px 15px;border-radius:3px;
   box-shadow:0 18px 50px rgba(0,0,0,.55),inset 0 0 0 1px rgba(60,40,30,.25),inset 0 0 0 5px rgba(239,228,204,1),inset 0 0 0 6px rgba(60,40,30,.35)}
 #rewardCard.show{opacity:1;transform:translate(0,0)}
@@ -684,7 +686,7 @@ G.persist.register('progress',{
     S.spent=Math.max(0,d.spent|0); S.freed=Math.max(0,d.freed|0);
     for(const s of SPOTS)if(s.mesh)s.mesh.visible=!S.shards[s.id];
     for(const c of CACHES)c.open=S.caches[c.id]?1:null;
-    apply({noHeal:true}); reconcileT=.3;
+    heldHp=0; apply({noHeal:true}); reconcileT=.3;
   }
 });
 
@@ -713,9 +715,9 @@ const API=G.progress={
     return o;
   },
   summary(){ const p=P(); return {hp:p.hp,maxHp:p.maxHp,shards:shardN(),marks:marksHeld(),wings:wingN(),upgrades:Object.keys(S.upgrades),caches:count(S.caches)}; },
-  perches, endReward(){ while(reward.active||queue.length){ if(!reward.active&&queue.length)startReward(queue.shift()); reward.t=Math.max(reward.t,LIFT-.001); updateReward(.01); reward.t=CARD; updateReward(.01); } pend.length=0; },
+  liftPose:LIFT_POSE, perches, endReward(){ let n=0; while((reward.active||queue.length)&&n++<64){ if(!reward.active)startReward(queue.shift()); endLift(); hideCard(); reward.active=null; } }, // tests: finish every queued moment now
   debug:{collect:id=>{ const s=SPOTS.find(x=>x.id===id); if(s)collectShard(s); }, open:id=>{ const c=CACHES.find(x=>x.id===id); if(c)openCache(c); },
-    reset(){ for(const k of ['shards','caches','hearts','marks','upgrades','said'])S[k]={}; S.spent=0; S.freed=0; for(const c of CACHES)c.open=null; apply(); },
+    reset(){ for(const k of ['shards','caches','hearts','marks','upgrades','said'])S[k]={}; S.spent=0; S.freed=0; heldHp=0; queue.length=0; pend.length=0; for(const c of CACHES)c.open=null; apply(); },
     get queue(){ return queue; }, get pend(){ return pend; }, reward}
 };
 
@@ -743,12 +745,13 @@ G.system('progress',{order:62,modes:'always',
     const mode=G.state.mode;
     if(mode==='title')return;
     updatePanel();
-    if(reconcileT>0){ reconcileT-=dt; if(reconcileT<=0)reconcile(true); }
+    const sweep=!API.debug.noSweep; // tests that build a state by hand switch the automatic grants off
+    if(reconcileT>0){ reconcileT-=dt; if(reconcileT<=0&&sweep)reconcile(true); }
     if(mode==='play'||mode==='dead'){ updateWorld(dt); updateFx(dt); }
     updateReward(mode==='play'?dt:0);
     if(card){ const vis=mode==='play'?'':'hidden'; if(card.style.visibility!==vis)card.style.visibility=vis; }
     // a cheap periodic sweep catches anything an old save already earned (or an event this module missed)
-    if(mode==='play'){ sweepT-=dt; if(sweepT<=0){ sweepT=2; reconcile(false); } }
+    if(mode==='play'&&sweep){ sweepT-=dt; if(sweepT<=0){ sweepT=2; reconcile(false); } }
     if(G.player&&G.player.maxHp!==maxHp())apply();
   }
 });
