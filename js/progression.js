@@ -276,11 +276,11 @@ function buildSpots(){
   cache('stones','Behind the standing stones',33,-48,{yaw:1.2,loot:{pearl:1},how:'Just outside the stone circle, on its far (north) side.'});
   cache('north','On the north shore',-20,-80,{yaw:2.6,loot:{kelp:2,brine:1},how:'On the moor’s north shore, above the shingle.'});
   { const g=caveAnchor('gallery','roost',V(8,63,770)); cache('gallery','Among the keepers’ statues',g.x-3.2,g.z+3.2,{y:G.floorAt(g.x-3.2,g.z+3.2,g.y+2),cave:true,yaw:PI,loot:{pearl:1,ichor:1},how:'In the sea cave’s Gallery of Keepers, near the moth roost.'}); }
-  cache('sandbar','On the sandbar',166.5,58.6,{y:-.95,loot:{pearl:1,kelp:1},tide:true,when:()=>!!(G.loop&&G.loop.active),yaw:PI,how:'On the sandbar under the headland, near the sea cave — low tide only.'});
+  cache('sandbar','On the sandbar',146,56.6,{y:-.95,loot:{pearl:1,kelp:1},tide:true,when:()=>!!(G.loop&&G.loop.active),yaw:PI,how:'On the sandbar under the headland, near the sea cave — low tide only.'});
   for(const c of CACHES){
     c.mesh=cacheMesh(); c.mesh.position.copy(c.pos); c.mesh.rotation.y=c.yaw; root.add(c.mesh);
     G.addCollider({x:c.pos.x,z:c.pos.z,r:.45,y0:c.pos.y-1,y1:c.pos.y+.45});
-    c.ia=G.interact.add({pos:()=>c.pos,radius:1.9,priority:4,label:'Open the keeper’s cache',enabled:()=>!S.caches[c.id]&&isPlay()&&!reward.active&&(!c.when||c.when()),use(){ openCache(c); }});
+    c.ia=G.interact.add({pos:()=>c.pos,radius:1.9,priority:6,label:'Open the keeper’s cache',enabled:()=>!S.caches[c.id]&&isPlay()&&!reward.active&&(!c.when||c.when()),use(){ openCache(c); }});
   }
 }
 /* the actual top of a world mesh at (x,z) (raycast straight down; used for the standing stone) */

@@ -57,3 +57,44 @@ caches found (x/8), shards found (x/12), negatives freed (x/8), blights cured, b
   on freeing negatives, boss hearts, journal counts, save/reload/Continue, retroactive grants from an old save.
 - Balance check: the Hollow Stag must stay "challenging, but not too hard" for a player who arrives with 5–6 hearts and no
   upgrades — don't make the game need upgrades to finish Act 1.
+
+## 8. Placement (as built — `js/progression.js`, verified by script)
+Movement kit measured in-game (30 fps steps): **jump peak 1.15 m**, **double jump peak ≈1.8 m** (needs the cloak),
+**glide ≈ 1 m of height lost per metre flown** (≈7 m/s forward), **max step 0.65 m**. Perches (built rock tops, the stone crown,
+the loft) only catch a jump from above: you have to clear the top to within 0.35 m, and walking never steps up onto one.
+Sea-facing cliffs (headland N/E/S) are walls you can't leave; the headland's **west** face is a steep slope you can run off.
+Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar under the south cliff only exists in the core loop).
+"Route check" = what the placement script proves with real inputs (`G.input.setVirtual` + `G.step`).
+
+### Heart Shards (12; 4 = +1 heart)
+| # | id | where (x, y, z) — y = the footing | how you reach it | route check |
+|---|---|---|---|---|
+| 1 | `stones` | crown of the shortest standing stone, NE side of the circle (45.3, 14.40, −28.4); ground 11.9 | jump onto the broken-off chunk at its foot (top 12.75), then **double jump** | ground→DJ fails · chunk→single fails · chunk→DJ ✓ |
+| 2 | `spire` | top of an 11 m stone spire by the foot of the cliff path (101.5, 28.1, 10) | from the headland top run west off the steep edge at (118, 40.6, 10), **glide** straight at it, let go over it | glide ✓ · ground DJ fails |
+| 3 | `stack` | shelf at the foot of a sea stack off the south beach (46, −0.54, 84.75); sand −1.79 | **low tide only**: wade out across the sand, single jump up | high tide: sand + shelf not walkable · low: ✓ |
+| 4 | `attic` | loft floorboards in the NW hamlet ruin (−29.4, 16.11, 42.5); ruin floor 13.5 | jump onto the heap of fallen slates (−27.6, 14.46, 40.2), then **double jump** | ground DJ fails · heap single fails · heap DJ ✓ |
+| 5 | `roots` | in the Resisting Tree's roots, far (west) side (−171.2, 10.35, 2.4) | walk round the trunk (the Stag's clearing) | walk ✓ |
+| 6 | `hounds` | ring of stones in the moor hound pack's range (58, 12.75, −12) | fight or slip past the hounds | walk ✓ |
+| 7 | `grove` | where the Blighted Grove's black was (−124.5, ·, −28.5) | appears when the grove is cured (core loop) | after cure: walk ✓ |
+| 8 | `cave` | Flooding Stair's upper ledge in the sea cave, local (8.2, 2.61, −66) = world (8.2, 62.61, 734) | at high tide ride the floating crates up (no double jump in that room) | shard sits on the ledge floor ✓ (cave_e2e covers the crates) |
+| 9 | `outcrop` | rock jutting from the drop beside the cliff path's long northward run (112.8, 37.0, −6); path 35.4 | **double jump** from the path | single fails · DJ ✓ |
+| 10 | `tidepool` | rock pool on the sandbar under the south cliff (131, −0.95, 56.35) | **low tide only**, core loop: walk the bar from the beach or the cave mouth | high: not walkable · low: walk ✓ |
+| 11 | `west` | rock at the far west tip, past the forest (−231, 11.0, −4); ground 10.5 | single jump | ✓ |
+| 12 | `needle` | stone needle on the headland's north side (150, 43.85, −30); ground 42 | **double jump** from the grass | single fails · DJ ✓ |
+Each shard glints (violet sprite + twinkle, glow grows with distance so it reads from far off) and chimes softly within 12 m.
+The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lighthouse.js), so it isn't reachable.
+
+### Keeper's Caches (8; each = 1 Mark + materials)
+| id | where (x, y, z) | loot | note |
+|---|---|---|---|
+| `tower` | seaward side of the lighthouse (188.5, 42, 5) | 3 glowcap | |
+| `hamlet` | inside the SE hamlet ruin (−7.5, 13.76, 19.8) | 2 ichor | |
+| `ramp` | beside the foot of the cliff path (96, 14.1, 20) | 2 brine | |
+| `forest` | southern forest, among fallen trunks (−120, 7.64, 32) | 2 glowcap, 1 ichor | |
+| `stones` | just outside the stone circle, north side (33, 12.19, −48) | 1 pearl | |
+| `north` | moor's north shore (−20, 10.85, −80) | 2 kelp, 1 brine | |
+| `gallery` | sea cave, Gallery of Keepers near the roost, world (4.8, 63.0, 773.2) | 1 pearl, 1 ichor | cave |
+| `sandbar` | on the sandbar under the south cliff (146, −0.95, 56.6) | 1 pearl, 1 kelp | low tide, core loop |
+Marks: 8 caches + Stag 1 + Undertow 2 + Gloaming 2 + first cure of each blight 1×3 = **16**. Temper costs 12 Marks for all seven
+(Lantern Charm is the Gloaming's gift, so 9 in practice). The Temper tab only exists at the benches, which only work in the
+core loop — Act 1 (and the Hollow Stag) is untouched by upgrades; only shards and Moth Wings can add up before it.
