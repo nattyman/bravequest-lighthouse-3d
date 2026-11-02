@@ -1058,7 +1058,7 @@ function updateBrineling(m,dt){
       m.speedNow=0;
       if(prey)faceTo(m,prey.p.x,prey.p.z,8,dt);
       if((angry||m.crowd>1.2)&&canPinch()){setState(m,'windup');break;}
-      m.eatAcc=(m.eatAcc||0)+dt*p.eatRate;
+      m.eatAcc=(m.eatAcc||0)+dt*p.eatRate*(m.onRaft?.5:1); // a rocking raft makes for slow, nervous eating: the run is a defence, not a coin toss
       while(m.eatAcc>=1){ m.eatAcc-=1; const mo=nearestMoth(m.pos,p.eatR,2.6); if(!mo){m.eatAcc=0;break;} eatMoth(mo,m); m.ate=(m.ate||0)+1; }
       if(!prey||Math.hypot(prey.p.x-m.pos.x,prey.p.z-m.pos.z)>p.eatR){ m.prey=nearestMoth(m.pos,p.eatR,2.6); if(!m.prey)setState(m,'hunt'); }
       break;}

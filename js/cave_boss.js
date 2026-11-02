@@ -114,11 +114,11 @@ let surfaceT=6;
 function updateRaftRaiders(dt){
   const cp=G.cavePuzzles, r=cp&&cp.raft; if(!r||!r.lantern||!r.pos||curRoom!=='channel')return;
   if(r.state==='done'||r.state==='arrived')return;
-  surfaceT-=dt; if(surfaceT>0)return; surfaceT=9+rnd()*5;
+  surfaceT-=dt; if(surfaceT>0)return; surfaceT=12+rnd()*5;
   const C=G.creatures; let n=0; for(const mo of (C&&C.moths)||[]){ if(mo.tgt!=='lantern')continue; if(Math.hypot(mo.p.x-r.pos.x,mo.p.z-r.pos.z)<2.6)n++; }
   if(n<4)return;
   let alive=0; for(const m of mine) if(m.alive&&!m.dying&&m.kind==='brineling'&&m.cave==='channel')alive++;
-  if(alive>=4||!G.monsters)return;
+  if(alive>=3||!G.monsters)return;
   const s=rnd()<.5?1:-1, x=r.pos.x+(rnd()-.5)*3, z=r.pos.z+s*(3+rnd()*1.2);
   const c=roomCentre('channel');
   try{ const m=G.monsters.spawn('brineling',{x,y:waterY()-.6,z},{zone:{name:'cave-channel',x:c.x,z:c.z,r:24},cave:'channel',board:true}); mine.push(m);
