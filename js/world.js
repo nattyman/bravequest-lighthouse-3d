@@ -534,7 +534,7 @@ SH.wind={value:new THREE.Vector4(.87,.49,1,0)};
 SH.sunV={value:new THREE.Vector3(0,1,0)}; SH.sunW={value:new THREE.Vector3(0,1,0)};
 SH.rim={value:new THREE.Color()}; SH.sunCol={value:new THREE.Color()};
 SH.push={value:Array.from({length:PUSHN},()=>new THREE.Vector4(0,0,1,0))};
-const RIM0=col('#ffc290'), SUNC0=col('#ffcf96');
+const RIM0=col('#ffc290'), SUNC0=col('#e6dc96');
 const WIND_GLSL=`uniform float uTime;uniform vec4 uWind;
 float bqGust(vec2 p){ // travelling gust crests along the wind
   float a=dot(p,uWind.xy)*.085-uTime*1.35+sin(dot(p,vec2(-uWind.y,uWind.x))*.045+uTime*.21)*1.7;
@@ -1513,10 +1513,12 @@ function buildMushrooms(){
 }
 
 /* ---------- grass that follows the focus ---------- */
-const GR={C:8,N:11,K:190,R:40,slots:[],fx:1e9,fz:1e9,queue:[]};
-function buildGrass(){
-  // tuft of 3 bent blades
-  const pos=[],colA=[],idx=[]; const base=col('#3a4a2c'),mid=col('#71834a'),tip=col('#c4c088');
+const GR={C:8,N:11,K:190,R:40,slots:[],fx:1e9,fz:1e9,queue:[],geo:null,mat:null,level:null};
+/* per quality: tufts per 8 m cell (ring radius stays 40 m), parting, wind detail */
+const GRQ={saver:{K:100,push:false,lq:true},balanced:{K:190,push:true,lq:false},high:{K:290,push:true,lq:false}};
+function buildGrassGeo(){
+  // tuft of 3 bent blades. Vertex colour is a shade factor (dark roots -> bright tips); the instance colour is the ground's.
+  const pos=[],colA=[],idx=[]; const base=new THREE.Color(.36,.4,.34),mid=new THREE.Color(.86,.9,.8),tip=new THREE.Color(1.22,1.24,.98);
   for(let b=0;b<3;b++){const a=b/3*TAU+.4,ca=Math.cos(a),sa=Math.sin(a),off=.07,w=.045,h=.5+b*.09,lean=.2;
     const o=pos.length/3,ox=ca*off,oz=sa*off,px=-sa*w,pz=ca*w;
     pos.push(ox-px,0,oz-pz, ox+px,0,oz+pz, ox-px*.6+ca*lean*.5,h*.5,oz-pz*.6+sa*lean*.5, ox+px*.6+ca*lean*.5,h*.5,oz+pz*.6+sa*lean*.5, ox+ca*lean,h,oz+sa*lean);
@@ -1526,32 +1528,94 @@ function buildGrass(){
   g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));
   g.setAttribute('normal',new THREE.Float32BufferAttribute(new Array(pos.length).fill(0).map((_,i)=>i%3===1?1:0),3));
   g.setAttribute('color',new THREE.Float32BufferAttribute(colA,3)); g.setIndex(idx);
+  return g;
+}
+function grassMaterial(){
   const mat=G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide});
-  mat.onBeforeCompile=sh=>{sh.uniforms.uTime=SH.time; sh.uniforms.uFocus=SH.focus;
-    sh.vertexShader='uniform float uTime;uniform vec3 uFocus;\n'+sh.vertexShader
+  mat.onBeforeCompile=sh=>{Object.assign(sh.uniforms,{uTime:SH.time,uFocus:SH.focus,uWind:SH.wind,uPush:SH.push,uSunW:SH.sunW,uSunCol:SH.sunCol});
+    sh.vertexShader=WIND_GLSL+`
+uniform vec3 uFocus;uniform vec3 uSunW;uniform vec4 uPush[${PUSHN}];
+varying vec4 vGr; // x tip height 0..1, y gust brightening, z sun-through, w far (blend to ground)
+`+sh.vertexShader
       .replace('#include <begin_vertex>',`#include <begin_vertex>
   vec2 ip0=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);
   float fd=length(ip0-uFocus.xz); transformed*=1.-smoothstep(${(GR.R-12).toFixed(1)},${GR.R.toFixed(1)},fd);`)
       .replace('#include <project_vertex>',`vec4 mvPosition=vec4(transformed,1.);
-  #ifdef USE_INSTANCING
   mvPosition=instanceMatrix*mvPosition;
-  #endif
   vec2 ip=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);
-  float k=transformed.y*transformed.y*1.6;
-  float gust=sin(uTime*.35+ip.x*.02)*.5+.5;
-  float w=sin(uTime*1.7+ip.x*.23+ip.y*.17)*.55+sin(uTime*2.9+ip.x*.61-ip.y*.43)*.22+gust*.5;
-  mvPosition.x+=w*k*.32; mvPosition.z+=w*k*.18;
+  float hh=transformed.y, k=hh*hh*1.6;
+  #ifdef BQ_LQ
+  float gust=0.;
+  float w=sin(uTime*1.7+ip.x*.23+ip.y*.17)*.5+.35;
+  vec2 bend=uWind.xy*w*k*.38;
+  #else
+  float gust=bqGust(ip);
+  float w=sin(uTime*1.7+ip.x*.23+ip.y*.17)*.38+sin(uTime*2.9+ip.x*.61-ip.y*.43)*.16+.22+gust*1.15;
+  vec2 bend=uWind.xy*w*k*.42;
+  #endif
+  float press=0.;
+  #ifdef BQ_PUSH
+  for(int i=0;i<${PUSHN};i++){ vec4 P=uPush[i]; vec2 d=ip-P.xy; float L=length(d);
+    float f=(1.-smoothstep(P.z*.3,P.z,L))*P.w; bend+=d/max(L,.05)*f*k*2.2; press=max(press,f); }
+  #endif
+  mvPosition.xz+=bend; mvPosition.y-=dot(bend,bend)*.9+press*k*.25;
+  // look: world colour patches, ground-matched far ring, gusts brighten, sun shining through the blades
+  float fr=smoothstep(${(GR.R-22).toFixed(1)},${(GR.R-6).toFixed(1)},fd);
+  float pa=sin(ip.x*.083+sin(ip.y*.061)*2.2)*sin(ip.y*.071+sin(ip.x*.047)*2.)*.5+.5;
+  vec3 patchT=mix(vec3(.74,1.,.72),vec3(1.04,1.03,.76),smoothstep(.3,.85,pa));
+  #ifdef USE_INSTANCING_COLOR
+  vColor.rgb=mix(vColor.rgb*patchT,instanceColor,fr);
+  #endif
+  vec3 wp=(modelMatrix*mvPosition).xyz;
+  float th=clamp(hh/.62,0.,1.);
+  float back=pow(max(dot(normalize(wp-cameraPosition),uSunW),0.),3.);
+  vGr=vec4(th,gust*th,th*(back*.85+.12),fr);
   mvPosition=modelViewMatrix*mvPosition;
-  gl_Position=projectionMatrix*mvPosition;`);};
-  mat.customProgramCacheKey=()=>'worldGrass';
+  gl_Position=projectionMatrix*mvPosition;`);
+    sh.fragmentShader='uniform vec3 uSunCol;\nvarying vec4 vGr;\n'+sh.fragmentShader.replace('#include <emissivemap_fragment>',`#include <emissivemap_fragment>
+  totalEmissiveRadiance+=diffuseColor.rgb*(uSunCol*vGr.z*.5+vec3(.26,.28,.18)*vGr.y)*(1.-vGr.w);`);
+  };
+  return mat;
+}
+function applyGrassQuality(){
+  const q=GRQ[G.quality.level]||GRQ.balanced, m=GR.mat;
+  const d={}; if(q.lq)d.BQ_LQ=''; if(q.push)d.BQ_PUSH='';
+  m.defines=d; m.customProgramCacheKey=()=>'bqGrass'+(q.lq?'q':'')+(q.push?'p':''); m.needsUpdate=true;
+  for(const fm of FOL.mats){ fm.defines=q.lq?{BQ_LQ:''}:{}; fm.needsUpdate=true; }
+  GR.push=q.push;
+  if(grass&&GR.K===q.K)return;
+  GR.K=q.K;
+  if(grass){ root.remove(grass); grass.dispose(); }
   const total=GR.N*GR.N*GR.K;
-  grass=new THREE.InstancedMesh(g,mat,total);
+  grass=new THREE.InstancedMesh(GR.geo,m,total);
   grass.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   grass.setColorAt(0,_c.setRGB(1,1,1)); grass.instanceColor.setUsage(THREE.DynamicDrawUsage);
   grass.frustumCulled=false; grass.receiveShadow=true; grass.castShadow=false; grass.name='grass';
-  const arr=grass.instanceMatrix.array; arr.fill(0);
-  for(let i=0;i<GR.N*GR.N;i++)GR.slots.push({cx:1e9,cz:1e9});
+  grass.instanceMatrix.array.fill(0);
+  GR.slots.length=0; for(let i=0;i<GR.N*GR.N;i++)GR.slots.push({cx:1e9,cz:1e9});
+  GR.fx=GR.fz=1e9; GR.queue.length=0;
   root.add(grass);
+  W.stats.grassTufts=total;
+}
+function buildGrass(){
+  GR.geo=buildGrassGeo(); GR.mat=grassMaterial();
+  applyGrassQuality();
+  G.on('quality',()=>{ applyGrassQuality(); updateGrass(true); });
+}
+/* grass parting: the Traveler + the nearest live monsters */
+const _pm=[];
+function updatePushers(){
+  const P=SH.push.value; let n=0;
+  if(GR.push){
+    const pl=G.player, f=G.focus;
+    if(pl&&pl.pos){ P[n++].set(pl.pos.x,pl.pos.z,1.15,1); }
+    const ms=G.monsters&&G.monsters.list;
+    if(ms){ _pm.length=0;
+      for(const m of ms){ if(!m||!m.alive||m.dying||!m.pos||m.cave)continue; const d=(m.pos.x-f.x)**2+(m.pos.z-f.z)**2; if(d<38*38)_pm.push([d,m]); }
+      _pm.sort((a,b)=>a[0]-b[0]);
+      for(const [,m] of _pm){ if(n>=PUSHN)break; const r=(m.hb&&m.hb.radius)||.6; P[n++].set(m.pos.x,m.pos.z,r*1.8+.7,1); } }
+  }
+  for(;n<PUSHN;n++)P[n].w=0;
 }
 function fillGrassSlot(si,cx,cz){
   const s=GR.slots[si]; s.cx=cx; s.cz=cz;
@@ -1573,7 +1637,7 @@ function fillGrassSlot(si,cx,cz){
       else if(x>140&&inFoot(x,z,.2))ok=false;
       else if(x<0&&x>-40&&inFoot(x,z,0))ok=false;
       if(ok){const gi=Math.round(fx),gj=Math.round(fz),a=(gj*GNX+gi)*3;
-        _c.setRGB(HC[a],HC[a+1],HC[a+2]); _c.lerp(C.grass,.3).multiplyScalar(1.15+sc*.35);
+        _c.setRGB(HC[a],HC[a+1],HC[a+2]).multiplyScalar(.92+sc*.2);
         carr[(si*K+k)*3]=_c.r;carr[(si*K+k)*3+1]=_c.g;carr[(si*K+k)*3+2]=_c.b;}
     }
     if(!ok){for(let q=0;q<16;q++)arr[o+q]=0;continue;}
@@ -1664,7 +1728,7 @@ G.system('world',{order:0,modes:'always',
     SH.sunW.value.copy(L.sunDir); SH.sunV.value.copy(L.sunDir).transformDirection(cam.matrixWorldInverse);
     { const si=L.sun.intensity; SH.rim.value.copy(RIM0).multiplyScalar(si*1.15); SH.sunCol.value.copy(SUNC0).multiplyScalar(si); }
     // grass
-    if(grass)updateGrass(false);
+    if(grass){ updateGrass(false); updatePushers(); }
     // mushrooms pulse, tree glow breathes
     if(capMat){const p=.85+Math.sin(t*1.6)*.15; capMat.color.setRGB(p,p,p);}
     if(treeLight)treeLight.intensity=2+Math.sin(t*.9)*.35;
