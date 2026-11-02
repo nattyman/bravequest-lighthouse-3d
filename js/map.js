@@ -1016,7 +1016,6 @@ function updateOpen(dt){
   if(caveArch)caveArch.visible=!!(G.caveBoss&&G.caveBoss.discovered);
   updateMarkers(dt);
   if(tapT>0){ tapT-=dt; if(tapT<=0)tapXY=null; }
-  if(G.headless)G.headless.draw(1);
 }
 function updateMarkers(){
   const zs=clamp(view.dist/30,.8,1.9);          // pins grow as you zoom out so they stay readable
