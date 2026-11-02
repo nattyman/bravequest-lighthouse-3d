@@ -55,8 +55,11 @@ STEPS=[
  ("wings", "(()=>{ const N=G.creatures.negatives; const s0=G.player.mods.stamMax; for(let i=0;i<4;i++){ const n=N[i]; T.at(n.pos.x+3,null,n.pos.z); n.dying=true; G.step(1/30,90); } T.settle(); return {wings:G.progress.wings, stamMax:G.player.mods.stamMax, freed:G.state.freed, roll:T.roll(), s0}; })()",
    lambda r: r['wings']==2 and abs(r['stamMax']-1.4)<1e-6 and abs(r['roll']-0.075/1.4)<.002),
  # boss hearts: the Stag and the Undertow each give a Keeper's Heart (+1 heart) and Marks
- ("bosses", "(()=>{ const m0=G.player.maxHp, k0=G.progress.marks; G.emit('boss:dead',{who:'stag'}); G.emit('cave:bossDead',{pos:G.player.pos.clone()}); G.step(1/30,20); const mid=G.player.maxHp; for(let i=0;i<14;i++)G.step(1/30,30); T.settle(); return {m0,mid,m1:G.player.maxHp,marks:G.progress.marks-k0}; })()",
-   lambda r: r['m1']==r['m0']+4 and r['marks']==3),
+ ("bosses", "(()=>{ const m0=G.player.maxHp, k0=G.progress.marks; G.emit('boss:dead',{who:'stag'}); G.emit('cave:bossDead',{pos:G.player.pos.clone()}); G.step(1/30,10); const D=G.progress.drops, has=[!!D.stag,!!D.undertow], mid=G.player.maxHp;"
+   " const s=D.stag.pos; T.at(s.x,s.y,s.z); G.step(1/30,10); const lifting=G.progress.rewarding; T.settle();"
+   " G.debugEnterCave('arena'); G.step(1/30,60); const u=G.progress.drops.undertow.pos; T.at(u.x,u.y,u.z); G.step(1/30,10); T.settle(); G.cave.exit&&G.cave.exit({instant:true}); G.step(1/30,30); T.settle();"
+   " return {has,m0,mid,lifting,m1:G.player.maxHp,marks:G.progress.marks-k0,left:Object.keys(G.progress.drops)}; })()",
+   lambda r: r['has']==[True,True] and r['mid']==r['m0'] and r['lifting']=='heart' and r['m1']==r['m0']+4 and r['marks']==3 and r['left']==[]),
  ("journal", "(()=>{ G.setMode('paused'); document.getElementById('pause').hidden=false; document.getElementById('journalBtn').click(); const t=document.getElementById('journalBody').innerText; const d=G.progress.journal.data();"
    " document.getElementById('journalClose').click(); const back=!document.getElementById('pause').hidden; document.getElementById('resume').click(); G.step(1/30,2); return {d, back, hasText:/hearts/i.test(t)&&/keeper/i.test(t)}; })()",
    lambda r: r['back'] and r['hasText'] and r['d']['shards']==4 and r['d']['caches']==1 and r['d']['wings']==2 and len(r['d']['upgrades'])==7 and r['d']['freed']>=4),

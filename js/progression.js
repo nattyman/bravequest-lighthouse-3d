@@ -319,12 +319,28 @@ function grantHeart(src){ if(S.hearts[src])return false; S.hearts[src]=1; G.emit
 function grantCharm(){ if(S.upgrades.charm)return false; S.upgrades.charm='gift'; return true; }
 
 /* ---------------------------------------------------------------- live events */
+/* a boss leaves its Keeper's Heart lying where it fell: you walk into it (the moment never takes your hands mid-stride) */
+const drops={};   // src -> {mesh,pos,t}
+function dropHeart(src,pos,o){
+  if(S.hearts[src]||drops[src])return;
+  const mesh=heartRelic(); mesh.scale.setScalar(1.25); mesh.position.copy(pos).add(V(0,.75,0)); root.add(mesh);
+  drops[src]={mesh,pos:pos.clone(),t:0,o,cave:!!o.cave};
+  sparkleAt(mesh.position,'#ff9ab0',20);
+}
+function updateDrops(dt,p){
+  for(const src in drops){ const d=drops[src]; d.t+=dt; d.mesh.rotation.y+=dt*1.4; d.mesh.position.y=d.pos.y+.75+Math.sin(d.t*2.2)*.1;
+    d.mesh.visible=(!!d.cave)===!!(G.cave&&G.cave.inside);
+    if(isPlay()&&p.alive&&d.mesh.visible&&Math.hypot(d.pos.x-p.pos.x,d.pos.z-p.pos.z)<1.3&&Math.abs(d.pos.y-p.pos.y)<1.8){
+      root.remove(d.mesh); delete drops[src]; const o=d.o;
+      const h=grantHeart(src), m=grantMarks(src,o.marks); if(h)heldHp+=2;
+      rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:o.eyebrow,desc:o.desc,onLift:()=>{ if(h)heldHp=Math.max(0,heldHp-2); apply(); },sub:'+'+o.marks+' Keeper’s '+(o.marks>1?'Marks':'Mark')});
+      autosave(); } }
+}
 function onBoss(e){
   const who=e&&e.who;
   if(who==='stag'){
-    const h=grantHeart('stag'), m=grantMarks('stag',1); if(!h&&!m)return; if(h)heldHp+=2;
-    later(3.2,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Hollow Stag',desc:'Where the Stag fell, something red and warm was left in the roots. Your heart grows by one.',onLift:()=>{ if(h)heldHp=Math.max(0,heldHp-2); apply(); },sub:'+1 Keeper’s Mark'}));
-    autosave();
+    const sp=LM().lanternSpot||{x:-160,y:9,z:9}, x=sp.x-3.2, z=sp.z+2.6;
+    dropHeart('stag',V(x,G.floorAt(x,z,H(x,z)+2),z),{marks:1,eyebrow:'The Hollow Stag',desc:'Where the Stag fell, something red and warm was left in the roots. Your heart grows by one.'});
   }else if(who==='gloaming'){
     const m=grantMarks('gloaming',2), c=grantCharm(); if(!m&&!c)return; apply();
     // the ending card follows the Gloaming within a few seconds; the moment waits for play to resume (Keep exploring)
@@ -332,9 +348,9 @@ function onBoss(e){
   }
 }
 function onUndertow(){
-  const h=grantHeart('undertow'), m=grantMarks('undertow',2); if(!h&&!m)return; if(h)heldHp+=2;
-  later(4,()=>rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'The Undertow',desc:'The drowned lens gives up one last warm thing. Your heart grows by one.',onLift:()=>{ if(h)heldHp=Math.max(0,heldHp-2); apply(); },sub:'+2 Keeper’s Marks'}));
-  autosave();
+  const pd=caveAnchor('arena','pedestal',V(60,61.4,785)), dr=caveAnchor('arena','door',V(60,61.7,766));
+  const dir=dr.clone().sub(pd).setY(0).normalize(), x=pd.x+dir.x*3.5, z=pd.z+dir.z*3.5; let y=G.floorAt(x,z,pd.y+2); if(!(y>pd.y-2))y=pd.y;
+  dropHeart('undertow',V(x,y,z),{marks:2,cave:true,eyebrow:'The Undertow',desc:'The drowned lens gives up one last warm thing. Your heart grows by one.'});
 }
 function onFreed(e){
   const before=wingN(); S.freed=Math.max(S.freed+1,(e&&e.freed)|0,G.state.freed|0); const n=wingN();
@@ -352,9 +368,9 @@ function onBlight(e){
 function reconcile(quiet){
   const got=[];
   const F=G.flow||{};
-  if(F.stagDead||G.flag('stagDead')){ if(grantHeart('stag'))got.push('a Keeper’s Heart'); if(grantMarks('stag',1))got.push('a Mark'); }
+  if((F.stagDead||G.flag('stagDead'))&&!drops.stag){ if(grantHeart('stag'))got.push('a Keeper’s Heart'); if(grantMarks('stag',1))got.push('a Mark'); }
   if(F.bossDead){ if(grantMarks('gloaming',2))got.push('2 Marks'); if(grantCharm())got.push('the Lantern Charm'); }
-  const CB=G.caveBoss; if((CB&&CB.defeated)||G.flag('undertowDead')){ if(grantHeart('undertow'))got.push('a Keeper’s Heart'); if(grantMarks('undertow',2))got.push('2 Marks'); }
+  const CB=G.caveBoss; if(((CB&&CB.defeated)||G.flag('undertowDead'))&&!drops.undertow){ if(grantHeart('undertow'))got.push('a Keeper’s Heart'); if(grantMarks('undertow',2))got.push('2 Marks'); }
   const fr=G.state.freed|0; if(fr>S.freed){ const w0=wingN(); S.freed=fr; if(wingN()>w0)got.push((wingN()-w0)+' Moth '+(wingN()-w0>1?'Wings':'Wing')); }
   for(const b of (G.blights||[])) if(b&&b.cured&&grantMarks('blight:'+b.id,1))got.push('a Mark');
   apply();
@@ -716,9 +732,9 @@ const API=G.progress={
     return o;
   },
   summary(){ const p=P(); return {hp:p.hp,maxHp:p.maxHp,shards:shardN(),marks:marksHeld(),wings:wingN(),upgrades:Object.keys(S.upgrades),caches:count(S.caches)}; },
-  liftPose:LIFT_POSE, perches, endReward(){ let n=0; while((reward.active||queue.length)&&n++<64){ if(!reward.active)startReward(queue.shift()); endLift(); hideCard(); reward.active=null; } }, // tests: finish every queued moment now
+  liftPose:LIFT_POSE, perches, get drops(){ return drops; }, endReward(){ let n=0; while((reward.active||queue.length)&&n++<64){ if(!reward.active)startReward(queue.shift()); endLift(); hideCard(); reward.active=null; } }, // tests: finish every queued moment now
   debug:{collect:id=>{ const s=SPOTS.find(x=>x.id===id); if(s)collectShard(s); }, open:id=>{ const c=CACHES.find(x=>x.id===id); if(c)openCache(c); },
-    reset(){ for(const k of ['shards','caches','hearts','marks','upgrades','said'])S[k]={}; S.spent=0; S.freed=0; heldHp=0; queue.length=0; pend.length=0; for(const c of CACHES)c.open=null; apply(); },
+    reset(){ for(const k of ['shards','caches','hearts','marks','upgrades','said'])S[k]={}; S.spent=0; S.freed=0; heldHp=0; queue.length=0; pend.length=0; for(const k in drops){ root.remove(drops[k].mesh); delete drops[k]; } for(const c of CACHES)c.open=null; apply(); },
     get queue(){ return queue; }, get pend(){ return pend; }, reward}
 };
 
@@ -748,7 +764,7 @@ G.system('progress',{order:62,modes:'always',
     updatePanel();
     const sweep=!API.debug.noSweep; // tests that build a state by hand switch the automatic grants off
     if(reconcileT>0){ reconcileT-=dt; if(reconcileT<=0&&sweep)reconcile(true); }
-    if(mode==='play'||mode==='dead'){ updateWorld(dt); updateFx(dt); }
+    if(mode==='play'||mode==='dead'){ updateWorld(dt); updateFx(dt); if(G.player&&G.player.pos)updateDrops(dt,G.player); }
     updateReward(mode==='play'?dt:0);
     if(card){ const vis=mode==='play'?'':'hidden'; if(card.style.visibility!==vis)card.style.visibility=vis; }
     // a cheap periodic sweep catches anything an old save already earned (or an event this module missed)
