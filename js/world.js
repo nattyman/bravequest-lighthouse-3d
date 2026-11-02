@@ -383,6 +383,22 @@ function buildGrids(){
 }
 
 /* ---------- terrain ---------- */
+const TCH=[]; // terrain chunks (for re-colouring after contact shading)
+/* contact shading: soft dark pools under every tree baked into the terrain vertex colours (and so the grass tint) — no draw calls */
+function bakeTreeAO(){
+  const T=FOL.trees, L=LM.resistingTree; if(L)T.push(L.x,L.z,8);
+  const AO=new Map(); // cell -> darkest factor (overlaps take the min, so dense woods don't go black)
+  for(let t=0;t<T.length;t+=3){const x=T[t],z=T[t+1],R=T[t+2];
+    for(let j=Math.floor(z-R-GZ0);j<=Math.ceil(z+R-GZ0);j++)for(let i=Math.floor(x-R-GX0);i<=Math.ceil(x+R-GX0);i++){
+      if(i<0||j<0||i>=GNX||j>=GNZ)continue; const d=Math.hypot(GX0+i-x,GZ0+j-z)/R; if(d>=1)continue;
+      const f=1-.45*Math.pow(1-d,1.6), c=j*GNX+i, o=AO.get(c); AO.set(c,o===undefined?f:Math.min(o,f)*(.5+.5*Math.max(o,f)/1));}}
+  const touched=AO;
+  for(const [c,f] of AO){const a=c*3; HC[a]*=f;HC[a+1]*=f;HC[a+2]*=f;}
+  for(const ch of TCH){const cl=ch.g.attributes.color.array; let any=false;
+    for(let j=0;j<ch.nz;j++)for(let i=0;i<ch.nx;i++){const a=(ch.j0+j)*GNX+ch.i0+i; if(!touched.has(a))continue; any=true;
+      const k=(j*ch.nx+i)*3; cl[k]=HC[a*3];cl[k+1]=HC[a*3+1];cl[k+2]=HC[a*3+2];}
+    if(any)ch.g.attributes.color.needsUpdate=true;}
+}
 function buildTerrain(){
   const mat=G.toon('#ffffff',{vertexColors:true});
   const CW=61,CD=60;
@@ -420,6 +436,7 @@ function buildTerrain(){
     g.setAttribute('color',new THREE.BufferAttribute(cl,3));
     g.setIndex(idx); g.computeBoundingSphere();
     const m=new THREE.Mesh(g,mat); m.receiveShadow=true; m.name='terrain'; root.add(m); tris+=idx.length/3;
+    TCH.push({g,i0,j0,nx,nz});
   }
   W.stats.terrainTris=tris;
 }
@@ -1696,7 +1713,7 @@ G.system('world',{order:0,modes:'always',
     buildTerrain();
     buildSky(); const stacks=buildStacks(); buildSea(stacks); setupLights();
     buildForest(); buildRocks(); buildResistingTree();
-    buildFlowers(); buildMoorStructures(); buildTreeTiles(); buildHeadland(); buildMushrooms();
+    buildFlowers(); buildMoorStructures(); buildTreeTiles(); bakeTreeAO(); buildHeadland(); buildMushrooms();
     buildGrass(); updateGrass(true); buildMist();
     HEMI0.c.copy(G.lights.hemi.color); HEMI0.g.copy(G.lights.hemi.groundColor);
     W.stats.buildMs=Math.round(performance.now()-t0);
