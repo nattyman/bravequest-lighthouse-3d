@@ -426,7 +426,7 @@ async def main():
             print(('PASS ' if ok else 'FAIL ')+name,':',json.dumps(r)[:900])
         if not SOFT_ONLY: await run(STEPS)
         # the soft-lock guards, in a fresh session (see SOFTLOCK)
-        await pg.goto(URL); await pg.wait_for_timeout(5000); await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await boot()
+        await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000); await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await boot()
         await run(SOFTLOCK)
         errs=[e for e in errs if '404' not in e and 'favicon' not in e]
         if errs: print('console errors:\n  '+'\n  '.join(errs[:12]))
