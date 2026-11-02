@@ -101,7 +101,8 @@ G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:
 G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); };
 
 /* ---------- hearts ---------- */
-const heartsEl=$('hearts'); let lastHearts='';
+const heartsEl=$('hearts'); let lastHearts='', lastMax=0;
+heartsEl.style.maxWidth='272px'; // ten hearts in one row before wrapping (Heart Shards / Keeper's Hearts raise maxHp to 20)
 const HEART='M12 21s-8.5-5.4-10.4-10.6C.3 6.7 2.6 3 6.3 3c2.4 0 4 1.3 5.7 3.4C13.7 4.3 15.3 3 17.7 3c3.7 0 6 3.7 4.7 7.4C20.5 15.6 12 21 12 21z';
 function heartSVG(fill){ // fill 0, 1 (half), 2 (full)
   const id='h'+Math.random().toString(36).slice(2,7);
@@ -112,7 +113,8 @@ function heartSVG(fill){ // fill 0, 1 (half), 2 (full)
 function updateHearts(){
   const P=G.player; const hp=Math.max(0,Math.round(P.hp||0)), max=Math.max(2,Math.round(P.maxHp||10));
   const key=hp+'/'+max; if(key===lastHearts)return; lastHearts=key;
-  let h=''; for(let i=0;i<max/2;i++){const v=hp-i*2; h+=`<div class="heart">${heartSVG(v>=2?2:v===1?1:0)}</div>`;}
+  const grew=lastMax>0&&max>lastMax, from=lastMax/2; lastMax=max; // a new heart (progression.js) grows in with a glow
+  let h=''; for(let i=0;i<max/2;i++){const v=hp-i*2; h+=`<div class="heart${grew&&i>=from?' born':''}">${heartSVG(v>=2?2:v===1?1:0)}</div>`;}
   heartsEl.innerHTML=h; heartsEl.setAttribute('aria-label',`Health ${hp/2} of ${max/2} hearts`);
 }
 
@@ -142,7 +144,8 @@ function updateWorldUI(dt){
   if(stamVis>.02&&P.pos){
     v3.set(P.pos.x,P.pos.y+1.25,P.pos.z); project(v3,pt);
     stam.hidden=pt.behind; stam.style.opacity=stamVis.toFixed(2);
-    stam.style.transform=`translate(${pt.x+46}px,${pt.y-10}px)`;
+    const big=1+((P.mods&&P.mods.stamMax)||1)*.75-.75; // Moth Wings: the ring grows with the pool (+15% per wing)
+    stam.style.transform=`translate(${pt.x+46}px,${pt.y-10}px) scale(${big.toFixed(2)})`;
     stamArc.setAttribute('stroke-dashoffset',(81.7*(1-s)).toFixed(1));
     stamArc.setAttribute('stroke',P.exhausted?'#e0634f':s<.3?'#e3c04a':'#9fdc8a');
   }else stam.hidden=true;

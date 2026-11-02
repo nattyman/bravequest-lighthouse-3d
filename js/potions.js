@@ -201,7 +201,7 @@ function takeStarter(){
 const PERSIST={
   save:()=>({v:1,n:S.n,starter:S.starter,ever:S.ever,taught:S.taught}),
   load:d=>{ if(!d)return; stop(); healLeft=0; bufT=0;
-    S.n=clamp(d.n|0,0,N.max); S.starter=!!d.starter; S.ever=!!d.ever||S.n>0; S.taught=d.taught|0;
+    S.n=clamp(d.n|0,0,Math.max(N.max,5)); // up to 5 with the Wide Bandolier (progression.js raises N.max) S.starter=!!d.starter; S.ever=!!d.ever||S.n>0; S.taught=d.taught|0;
     if(chestB)chestB.visible=false; changed(0); }
 };
 if(G.persist&&G.persist.register)G.persist.register('potions',PERSIST);

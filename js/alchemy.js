@@ -668,7 +668,7 @@ function refreshPanel(isBrewing){
   let html='';
   for(const id of RORDER){ if(!A.known.has(id))continue; const r=RECIPES[id], ok=A.canBrew(id);
     const noMoths=r.bait&&!(G.moths&&G.moths.bait);
-    const yieldTxt=r.bait?'lures moths · '+r.bait+' s':r.potion?'mends 3 hearts':r.units+' ether';
+    const yieldTxt=r.bait?'lures moths · '+r.bait+' s':r.potion?'mends '+((G.potions&&G.potions.heal||6)/2)+' hearts':r.units+' ether';
     const full=r.potion&&potionsFull();
     const tidal=r.needs.kelp||r.needs.brine;
     html+=`<div class="alch-rec${ok&&!noMoths?' ready':''}"><div><span class="nm">${esc(r.name)}</span><span class="yield">${yieldTxt}</span>

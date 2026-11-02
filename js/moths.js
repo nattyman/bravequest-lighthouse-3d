@@ -480,7 +480,7 @@ function updateSatchel(dt){
 /* ---- bait ---- */
 const baitV=V(); let baitEm=null, unlitT=0;
 function bait(seconds){
-  seconds=+seconds||120;
+  seconds=(+seconds||120)*((G.player&&G.player.mods&&G.player.mods.baitTime)||1); // Lantern Charm (progression.js)
   const was=S.baitLeft>0;
   S.baitLeft=Math.min(BAIT_MAX,Math.max(0,S.baitLeft)+seconds);
   G.emit('moths:bait',{seconds,left:S.baitLeft});
@@ -724,7 +724,7 @@ function jarMoths(){ const o=[]; for(const m of mothList()) if(m.tgt==='jar')o.p
 function nearSwarm(r){ const P=G.player; if(!P||!P.pos)return []; const o=[];
   // the swarm proper (not the few moths nosing at the ichor in the satchel: they'd make "Release" unreachable while you carry ichor)
   for(const m of mothList()) if((m.tgt==='lantern'||m.tgt==='hunt')&&m.p.distanceToSquared(P.pos)<r*r)o.push(m); return o; }
-const JAR={capacity:JAR_CAP, owned:false,
+const JAR={capacity:JAR_CAP, owned:false, // capacity: 60, or 100 with the Deep Jar (progression.js sets it)
   get count(){ return jarCount; },
   get freedLeft(){ return S.jarLeft; },
   give(o={}){
@@ -734,7 +734,7 @@ const JAR={capacity:JAR_CAP, owned:false,
     G.emit('cave:jar',{action:'give',count:jarCount}); return true; },
   capture(){
     if(!JAR.owned)return 0;
-    const room=JAR_CAP-jarCount; if(room<=0)return 0;
+    const room=JAR.capacity-jarCount; if(room<=0)return 0;
     const list=nearSwarm(JAR_R).slice(0,room);
     for(const m of list){ m.tgt='jar'; m.inJar=false; m.prey=null; m.feedB=null; m._rel=0; m.next=null; m.delay=0; }
     jarCount+=list.length;
@@ -757,24 +757,24 @@ const JAR={capacity:JAR_CAP, owned:false,
     if(!d)return;
     if(d.owned&&!JAR.owned)JAR.give({silent:true});
     for(const m of jarMoths())toLantern(m);
-    jarCount=0; const want=Math.min(JAR_CAP,Math.max(0,d.count|0));
+    jarCount=0; const want=Math.min(Math.max(JAR.capacity,100),Math.max(0,d.count|0));
     for(const m of mothList()){ if(jarCount>=want)break; if(m.tgt==='patch'||m.tgt==='wander'||m.tgt==='roost'){ m.tgt='jar'; m.inJar=true; jarCount++; } }
     S.jarLeft=Math.max(0,Math.min(JAR_FREE,+d.left||0)); jarSaid=Object.assign({},d.said||{});
   }
 };
 let jarInteract=null;
 /* one button: capture a real swarm; a few stragglers a baited lantern picks up mustn't stop you uncorking a full jar */
-const wantCapture=()=>jarCount<JAR_CAP&&jarNear>=3&&(jarCount===0||jarNear>=8);
+const wantCapture=()=>jarCount<JAR.capacity&&jarNear>=3&&(jarCount===0||jarNear>=8);
 function updateJar(dt){
   if(!JAR.owned)return;
   if(!jarObj)buildJar();
   jarCount=0; for(const m of mothList()) if(m.tgt==='jar')jarCount++;
   jarNear=nearSwarm(JAR_R).length;
-  if(jarObj){ jarObj.visible=true; const k=jarCount/JAR_CAP;
+  if(jarObj){ jarObj.visible=true; const k=Math.min(1,jarCount/JAR.capacity);
     jarGlow.material.opacity=k>0?.25+.6*k+.08*Math.sin(G.time*3.1):0; jarGlow.scale.setScalar(.22+.25*k); }
   if(!jarInteract&&G.interact){
     jarInteract=G.interact.add({pos:()=>G.player&&G.player.pos,radius:1,priority:-3,
-      label:()=>wantCapture()?'Capture moths · '+Math.min(jarNear,JAR_CAP-jarCount)+' into the jar':'Release moths · '+jarCount,
+      label:()=>wantCapture()?'Capture moths · '+Math.min(jarNear,JAR.capacity-jarCount)+' into the jar':'Release moths · '+jarCount,
       enabled:()=>JAR.owned&&isPlay()&&G.player&&G.player.alive!==false&&(wantCapture()||jarCount>0),
       use(){ if(wantCapture())JAR.capture(); else JAR.release(); }});
   }
