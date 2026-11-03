@@ -1282,6 +1282,10 @@ function talkHalloran(){
   const found=(L&&L.found)||G.flag('lanternFound');
   const failed=!!((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'));
   let line, index;
+  // one-time lines other modules hand him (the Undercroft: the hamlet, and Wren): API.halloranHooks = [fn() -> line|null]
+  for(const h of API.halloranHooks||[]){ let l=null; try{ l=h(); }catch(e){ console.error('halloran hook',e); } if(l){
+    hal.met=true; if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
+    hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3; G.ui.say(l,'Halloran'); G.emit('talk',{who:'Halloran',line:l,index:-1,phase:'hook'}); return; } }
   if(isCured){index=Math.min(hal.post,HAL_POST.length-1);line=HAL_POST[index];hal.post++;}
   else if(found){index=Math.min(hal.mid,HAL_MID.length-1);line=HAL_MID[index];hal.mid++;}
   else if(failed){index=Math.min(hal.fail,HAL_FAIL.length-1);line=HAL_FAIL[index];hal.fail++;}
