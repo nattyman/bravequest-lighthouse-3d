@@ -875,6 +875,8 @@ function wirePointer(){
   ui.addEventListener('wheel',e=>{ e.preventDefault(); const k=Math.exp(clamp(e.deltaY,-120,120)*.0022); view.tdist*=k; clampView(); },{passive:false});
   ui.addEventListener('contextmenu',e=>e.preventDefault());
 }
+/* the input binding (G.input.pressed('map') works for anyone who wants it; the map itself listens in the capture phase) */
+if(G.input&&G.input.BIND&&!G.input.BIND.map)G.input.BIND.map=['KeyM'];
 /* keyboard (capture phase, so the game never sees M / Esc while the map handles them) */
 addEventListener('keydown',e=>{
   if(e.repeat)return;

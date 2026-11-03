@@ -97,7 +97,7 @@ AFTER_RELOAD=[
  ("drawCallsMid", "CALLS"),
  ("shot:full", "SHOT full 'G.map.revealAll(); G.map.view.tdist=58; G.map.view.tx=0; G.map.view.tz=0; G.step(1/30,60)'"),
  ("drawCallsFull", "CALLS"),
- ("shot:lighthouse", "SHOT lighthouse 'const lh=G.world.lighthouse; G.player.teleport(lh.doorOut.x-2.5,42,lh.doorOut.z+1,-Math.PI/2); G.map.view.tx=lh.x*.1-1.6; G.map.view.tz=lh.z*.1+1.4; G.map.view.tdist=17; G.map.view.tpitch=.66; G.step(1/30,80)'"),
+ ("shot:lighthouse", "SHOT lighthouse 'const lh=G.world.lighthouse; G.player.teleport(lh.doorOut.x-2.5,42,lh.doorOut.z+1,-Math.PI/2); G.map.view.tx=lh.x*.1-1.6; G.map.view.tz=lh.z*.1+1.4; G.map.view.tdist=17; G.map.view.tpitch=.66; G.step(1/30,80)' 3000"),
  ("legend", r"""(()=>{ const b=document.querySelector('#mapUI [data-mp=legend]'); b.click(); const on=!document.querySelector('#mapUI .mp-legend').hidden; b.click();
    return {ok:on&&document.querySelector('#mapUI .mp-legend').hidden,on}; })()"""),
  ("hook", r"""(()=>{ let vis=false; const r=G.map.addMarker({id:'testShard',kind:'heart',label:'Heart Shard',pos:{x:-20,z:30},visible:()=>vis}); G.step(1/30,2); const a=T.st('testShard').shown;
