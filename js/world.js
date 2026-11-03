@@ -184,6 +184,10 @@ G.floorProviders.push((x,z,y)=>{const lx=x-COT.x-COT.doorX,lz=z-COT.z; if(Math.a
 const FOOT=[{x:158,z:24,hw:5,hd:3.8,yaw:0},{x:150,z:33,hw:2.6,hd:2.1,yaw:.15}];
 const HAMLET=[{x:-31,z:21,yaw:.2},{x:-9,z:19,yaw:-.12},{x:-28,z:41,yaw:.35},{x:-7,z:39,yaw:-.28}];
 for(const h of HAMLET)FOOT.push({x:h.x,z:h.z,hw:4,hd:3,yaw:h.yaw});
+/* UNDERCROFT hook (undercroft.js, Place agent): the cellar trapdoor in the floor of the hamlet ruin nearest the well
+   (HAMLET[3]), on its well side, clear of the fallen roof. yaw = the ruin's. */
+{ const h=HAMLET[3], px=-1.9, pz=-1.05, cs=Math.cos(h.yaw), sn=Math.sin(h.yaw), x=h.x+px*cs+pz*sn, z=h.z-px*sn+pz*cs;
+  LM.undercroftDoor={x,y:height(x,z),z,yaw:h.yaw}; }
 function inFoot(x,z,pad=0){
   for(const f of FOOT){const cs=Math.cos(f.yaw),sn=Math.sin(f.yaw),dx=x-f.x,dz=z-f.z;
     const lx=dx*cs-dz*sn, lz=dx*sn+dz*cs; if(Math.abs(lx)<f.hw+pad&&Math.abs(lz)<f.hd+pad)return true;}
@@ -911,9 +915,12 @@ function ruinCottage(kit,cx,cz,yaw,r,idx){
   const side=idx%2?-1:1; kit.box('stone',1,3.4+r()*1.6,1,side*(Wd/2+.15),1.6,(r()-.5)*1.5,0,0,0,col('#8d8a84'));
   // collapsed roof slabs + fallen rafters
   const tilt=.55+r()*.25;
-  kit.box('slate',Wd*.8,.14,3.1,(r()-.5)*.8,1.15,-.6*side,0,side*tilt,(r()-.5)*.1);
+  // UNDERCROFT hook: the ruin with the cellar trapdoor (idx 3) keeps its fallen roof against the far wall and its rafters on
+  // the east half, so the trapdoor's corner of the floor is clear (same random draws: the rest of the island is unchanged)
+  const ucR=idx===3;
+  kit.box('slate',Wd*.8,.14,ucR?2.0:3.1,(r()-.5)*.8,1.15,ucR?1.25:-.6*side,0,side*tilt,(r()-.5)*.1);
   if(idx===2)kit.box('slate',Wd*.95,.14,3.2,0,3.4,1.2,0,-.62,0);
-  for(let k=0;k<3;k++)kit.box('timber',.18,.18,4.4,(r()-.5)*5,.5+r()*.8,(r()-.5)*1.5,r()*.6-.3,r()*.8-.4,r()*.3);
+  for(let k=0;k<3;k++){ const v=r(); kit.box('timber',.18,.18,ucR?3.2:4.4,ucR?.5+v*2.4:(v-.5)*5,.5+r()*.8,(r()-.5)*1.5,r()*.6-.3,r()*.8-.4,r()*.3); }
   // rubble
   for(let k=0;k<6;k++){const a=r()*TAU,d=Wd*.6+r()*1.5;kit.box('stone',.45+r()*.4,.3+r()*.25,.4+r()*.3,Math.cos(a)*d,.05,Math.sin(a)*d*.7,r()*3,r(),r(),col('#8a857c'));}
   kit.frame=new THREE.Matrix4();

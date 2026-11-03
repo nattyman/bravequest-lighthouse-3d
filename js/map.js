@@ -11,7 +11,7 @@
    - Clouds: instanced billboard puffs in two layers, anchored to a coarse grid; their cover comes from
      the discovery field (a small DataTexture, blurred for a soft edge). Newly charted areas roll back
      over ~1.4 s the next time the map opens.
-   - Fast travel (section 11): seven waypoints (WAYPOINTS below). Each unlocks the first time you walk within a few metres
+   - Fast travel (section 11): eight waypoints (WAYPOINTS below). Each unlocks the first time you walk within a few metres
      of it (a caption + a pulsing waystone on the chart); the lighthouse is home and known from the start. In the open map
      an unlocked waypoint is chosen by click / tap, Tab (Shift+Tab) + Enter, or the controller's LB/RB (D-pad ◀ ▶) + A;
      a confirm card asks "Travel to X?" (Enter/A travel, Esc/B stay). Travel fades to black (a near-cut with reduced motion),
@@ -728,7 +728,8 @@ function defaultMarkers(){
   addMarker({id:'player',kind:'player',label:'You',always:true,pos:()=>playerMapPos()});
 }
 function playerMapPos(){ const P=G.player; if(!P||!P.pos)return null;
-  if(G.cave&&G.cave.inside){ const m=LM().caveMouth; return m?{x:m.x,z:m.z+1}:P.pos; } return P.pos; }
+  if(G.cave&&G.cave.inside){ const m=LM().caveMouth; return m?{x:m.x,z:m.z+1}:P.pos; }
+  if(ucInside()){ const d=LM().undercroftDoor; return d?{x:d.x,z:d.z}:P.pos; } return P.pos; }
 /* benches + blights are picked up as they appear (alchemy tables are added at init; blights exist from load) */
 function syncDynamic(){
   const T=(G.alchemy&&G.alchemy.tables)||[];
@@ -1191,17 +1192,20 @@ const WAYPOINTS=[
     stand:[30,-42,.96],r:12,blurb:'Just outside the old ring of stones.'},
   {id:'hamlet',name:'The Hamlet Road',anchor:()=>({x:6,z:16}),stand:[6,16,-1.08],r:8,blurb:'The trail into the ruined hamlet, short of its broken walls.'},
   {id:'tree',name:'The Resisting Tree',anchor:()=>({x:-150,z:7}),stand:[-149,7,-1.69],r:9,blurb:'The edge of the old tree’s clearing.'},
-  {id:'cave',name:'The Sea Cave',cave:true,anchor:()=>LM().caveMouth||{x:181.2,z:52.4},r:0,blurb:'Just inside the cave’s mouth, above the tide.'}
+  {id:'cave',name:'The Sea Cave',cave:true,anchor:()=>LM().caveMouth||{x:181.2,z:52.4},r:0,blurb:'Just inside the cave’s mouth, above the tide.'},
+  // UNDERCROFT hook (Place agent): unlocks on first entry; travels via undercroft.js's own way in (G.undercroft.enter)
+  {id:'undercroft',name:'The Undercroft',undercroft:true,anchor:()=>LM().undercroftDoor||{x:-8.6,z:37.6},r:0,blurb:'The foot of the trapdoor stair, under the hamlet.'}
 ];
 const WP_BY=Object.fromEntries(WAYPOINTS.map(w=>[w.id,w]));
 const wpOn={}, wpNew={};
 let wpRetroPending=false, selWp=null, confirmW=null, firstTaught=false;
 const loopOn=()=>!!(G.loop&&G.loop.active);
 /** a waystone is on the chart: unlocked (and the cave only while the cave exists: the core loop) */
-const wpShown=w=>!!wpOn[w.id]&&(!w.cave||(loopOn()&&!!G.cave));
+const wpShown=w=>!!wpOn[w.id]&&(!w.cave||(loopOn()&&!!G.cave))&&(!w.undercroft||(!!G.undercroft&&G.undercroft.open));
+const ucInside=()=>!!(G.undercroft&&G.undercroft.inside);
 function addWaypointMarkers(){
   for(const w of WAYPOINTS){
-    const pos=w.cave?(()=>{ const m=LM().caveMouth; return m?{x:m.x,z:m.z+4.2}:null; }):(()=>{ const a=w.anchor(); return {x:a.x,z:a.z}; })();
+    const pos=w.cave?(()=>{ const m=LM().caveMouth; return m?{x:m.x,z:m.z+4.2}:null; }):w.undercroft?(()=>{ const a=w.anchor(); return {x:a.x+2.4,z:a.z-1.4}; }):(()=>{ const a=w.anchor(); return {x:a.x,z:a.z}; })();
     addMarker({id:'wp:'+w.id,kind:'waypoint',label:w.name,pos,travel:true,wp:w,visible:()=>wpShown(w)});
   }
 }
@@ -1226,8 +1230,9 @@ function unlockWp(w,o={}){
 function visitWaypoints(){
   const P=G.player; if(!P||!P.pos||!P.alive||G.state.mode!=='play')return;
   if(G.cave&&G.cave.inside){ if(loopOn()&&WP_BY.cave)unlockWp(WP_BY.cave); return; }
+  if(ucInside()){ if(WP_BY.undercroft)unlockWp(WP_BY.undercroft); return; }
   if(bossFight())return;
-  for(const w of WAYPOINTS){ if(wpOn[w.id]||w.cave)continue;
+  for(const w of WAYPOINTS){ if(wpOn[w.id]||w.cave||w.undercroft)continue;
     const a=w.anchor(); if(Math.hypot(P.pos.x-a.x,P.pos.z-a.z)<w.r&&Math.abs(P.pos.y-G.world.height(a.x,a.z))<6)unlockWp(w,{quiet:!!w.home}); }
 }
 /* what a save already shows you've stood at (old saves, devtools start points): silent, additive */
@@ -1241,6 +1246,7 @@ function retroWaypoints(){
   if(L.found||stag)g('tree');                                                              // you stood in its roots
   if(ps.shards.stones||ps.caches.stones)g('stones');
   if(loop&&G.cave&&(G.cave.inside||(G.caveBoss&&G.caveBoss.defeated)||G.flag('undertowDead')||(G.cave.litRooms&&G.cave.litRooms.length)))g('cave');
+  const UC=G.undercroft; if(UC&&UC.open&&(UC.inside||(UC.litRooms&&UC.litRooms.length)||(UC.reached&&UC.reached().length)))g('undercroft');
   // a shard you took or a cache you opened: you've certainly seen it
   for(const id in ps.shards)seenC['shard:'+id]=1; for(const id in ps.caches)seenC['cache:'+id]=1;
 }
@@ -1252,6 +1258,7 @@ function bossFight(){
   if(B&&B.alive!==false&&!B.dying&&B.pos&&P&&P.pos&&dist2D(B.pos,P.pos)<90)return 'stag';
   if(G.finaleBoss&&G.finaleBoss.active)return 'gloaming';
   const CB=G.caveBoss; if(CB&&!CB.defeated&&CB.state&&CB.state!=='sunk'&&CB.state!=='dead')return 'undertow';
+  if(ucBoss&&ucInside())return 'crane';
   return null;
 }
 const HUNT=new Set(['chase','windup','attack','recover','hurt','hunt','sweep','stomp','charge','summon']);
@@ -1274,6 +1281,7 @@ function departBlock(){
   if(boss==='stag')return 'The Hollow Stag won’t let you slip away. Not while it stands.';
   if(boss==='gloaming')return 'The Gloaming is at the lighthouse. You can’t leave the light now.';
   if(boss==='undertow')return 'The Undertow has you. There’s no slipping away mid-fight.';
+  if(boss==='crane')return 'Aldous Crane is reciting your name. There’s no slipping away mid-fight.';
   if(['cure','descend','finale'].includes(q)&&!(G.flow&&G.flow.bossDead))return 'Not now. Something is climbing the cliff toward the lighthouse.';
   const R=G.cavePuzzles&&G.cavePuzzles.raft;
   if(R&&R.lantern&&R.state!=='done')return R.state==='arrived'?'Maren’s lantern is still on the raft. Take it off first.':'Maren’s lantern is riding the raft. See it down the channel first.';
@@ -1283,12 +1291,13 @@ function departBlock(){
   if(sw>=5){ const jar=!!(G.moths.jar&&G.moths.jar.owned); return 'The swarm is following your light, and moths can’t follow you through a map. '+(jar?'Gather them into the jar, or walk them there.':'Walk them there.'); }
   if(hunted())return 'Something is hunting you. Shake it off first.';
   if(G.progress&&G.progress.busy)return 'Not just now.';
-  const ct=G.cave&&G.cave._debug&&G.cave._debug.S&&G.cave._debug.S.trans;
+  const ct=(G.cave&&G.cave._debug&&G.cave._debug.S&&G.cave._debug.S.trans)||(G.undercroft&&G.undercroft._debug&&G.undercroft._debug.S.trans);
   if(P.inputEnabled===false||ct)return 'Not just now.';
   if(P.grounded===false||P.gliding)return 'Find your feet first.';
   return null;
 }
 const HERE='You’re already here.';
+let ucBoss=false;   // the Tithe-Keeper's fight is on (undercroft:bossStart .. bossDead / your death / leaving)
 /** why you can't travel to w right now (null: you can): departure first, then the destination */
 function travelBlock(w){
   if(typeof w==='string')w=WP_BY[w];
@@ -1301,11 +1310,16 @@ function travelBlock(w){
     if(G.cave.inside&&G.cave.room&&G.cave.room(P.pos)==='mouth')return HERE;
     return null;
   }
+  if(w.undercroft){
+    if(!G.undercroft||!G.undercroft.open||!G.undercroft.enter)return 'The Undercroft can’t be reached now.';
+    if(ucInside()&&G.undercroft.room(P.pos)==='stair')return HERE;
+    return null;
+  }
   if(w.id==='tree'&&!(G.flow&&G.flow.stagDead)&&!loopOn())return 'The Hollow Stag stands over the old tree. You’ll have to walk in.';
   const s=standFor(w);
   if(!s)return 'There’s nowhere safe to stand there right now.';
   if(fogged(s))return `The fog has closed over ${w.name}. Feed the light to win it back.`;
-  if(!(G.cave&&G.cave.inside)&&dist2D(s,P.pos)<14)return HERE;
+  if(!(G.cave&&G.cave.inside)&&!ucInside()&&dist2D(s,P.pos)<14)return HERE;
   return null;
 }
 
@@ -1325,7 +1339,7 @@ function standOK(x,z){
   }catch(e){ return null; }
 }
 function standFor(w){
-  if(!w||w.cave)return null;
+  if(!w||w.cave||w.undercroft)return null;
   const [sx,sz,yaw]=w.stand;
   for(let rr=0;rr<=7;rr+=.75){ const n=rr?Math.max(6,Math.round(rr*5)):1;
     for(let k=0;k<n;k++){ const a=k/n*TAU, x=sx+Math.cos(a)*rr, z=sz+Math.sin(a)*rr, f=standOK(x,z); if(f!=null)return {x,y:f,z,yaw}; } }
@@ -1414,7 +1428,11 @@ function startTravel(w,o={}){
 }
 function arrive(w){
   const P=G.player;
-  if(w.cave){
+  if(w.undercroft){
+    G.undercroft.enter('stair',{instant:true});              // undercroft.js's own way in (leaves the sea cave first if you're in it)
+  }
+  else if(w.cave){
+    if(ucInside()&&G.undercroft.exit)G.undercroft.exit({instant:true});
     G.cave.enter('mouth',{instant:true});                    // cave.js's own way in: checkpoint, swarm, darkness
     // cave.js lands you at the seaward edge of the mouth (knee-deep at high tide); travel sets you down on dry sand further in
     const C=G.cave, O=C.origin, wl=C.water();
@@ -1423,12 +1441,13 @@ function arrive(w){
   }
   else{
     if(G.cave&&G.cave.inside&&G.cave.exit)G.cave.exit({instant:true}); // cave.js's own way out (restores the island checkpoint)
+    if(ucInside()&&G.undercroft.exit)G.undercroft.exit({instant:true}); // likewise the Undercroft's
     const s=standFor(w)||{x:w.stand[0],y:G.floorAt(w.stand[0],w.stand[1]),z:w.stand[1],yaw:w.stand[2]};
     P.teleport(s.x,s.y,s.z,s.yaw);
   }
   if(P.aimCamera)P.aimCamera(P.heading,.26);                 // settle the follow camera behind you
   if(G.focus&&P.pos)G.focus.copy(P.pos);
-  if(!w.cave)reveal(P.pos.x,P.pos.z,revealRadius(P.pos));
+  if(!w.cave&&!w.undercroft)reveal(P.pos.x,P.pos.z,revealRadius(P.pos));
   if(!wpOn[w.id])unlockWp(w,{quiet:true});
   G.emit('map:travel',{id:w.id,phase:'arrive'});
 }
@@ -1493,7 +1512,7 @@ function updatePlay(dt){
   padPlay();
   discT-=dt; if(discT>0)return; discT=.25;
   try{ visitWaypoints(); spotCollectibles(); }catch(e){ console.error('map waypoints',e); }
-  const P=G.player; if(!P||!P.pos||(G.cave&&G.cave.inside))return;
+  const P=G.player; if(!P||!P.pos||(G.cave&&G.cave.inside)||ucInside())return;
   const n=reveal(P.pos.x,P.pos.z,revealRadius(P.pos));
   if(n){ const pct=percent(); if(pct!==lastPct){ lastPct=pct; G.emit('map:discover',{cells:n,percent:pct}); } }
 }
@@ -1503,6 +1522,9 @@ G.system('map',{order:58,modes:'always',
     landN=Math.max(1,land.reduce((a,b)=>a+b,0));
     defaultMarkers(); addWaypointMarkers(); buildUI();
     G.on('cave:enter',()=>{ const w=WP_BY.cave; if(w&&!wpOn.cave&&G.loop&&G.loop.active)unlockWp(w); });
+    G.on('undercroft:enter',()=>{ const w=WP_BY.undercroft; if(w&&!wpOn.undercroft)unlockWp(w); });
+    G.on('undercroft:bossStart',()=>{ ucBoss=true; });
+    for(const ev of ['undercroft:bossDead','undercroft:exit','player:dead'])G.on(ev,()=>{ ucBoss=false; });
     G.on('progress:shard',e=>{ if(e&&e.id)seenC['shard:'+e.id]=1; });
     G.on('progress:cache',e=>{ if(e&&e.id)seenC['cache:'+e.id]=1; });
   },

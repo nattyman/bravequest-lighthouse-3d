@@ -212,6 +212,8 @@ G.ui.captionConfig=()=>JSON.parse(JSON.stringify(CAP,(k,v)=>v===Infinity?'hold':
 /** the message log, oldest first: [{t, w (who), p (0 low,1 normal,2 high), a (place), at (ms), n (repeats), m (missed)}] */
 G.ui.messages=()=>msgLog.map(e=>({text:e.t,who:e.w,pri:e.p,place:e.a,at:e.at,n:e.n||1,missed:!!e.m}));
 G.ui.clearMessages=()=>{ msgLog=[]; logDirty=true; };
+/** put a line straight into the message log without showing a caption (talk.js: the conversation card shows its own lines) */
+G.ui.logLine=(text,who)=>{ if(!text)return; const e=logLine({t:String(text),who:who||'',pri:1}); e.seen=true; e.m=0; };
 
 /* ---------- pause menu: reading-time setting, tabs (Paused / Messages) and the message log ---------- */
 const CAP_NOTES={
@@ -433,9 +435,10 @@ function updatePotionsUI(dt){
 }
 
 /* ---------- controller legend + notices ---------- */
-const keysEl=$('keys'), keysHTML=keysEl?keysEl.innerHTML:'';
+const keysEl=$('keys'); let keysHTML=keysEl?keysEl.innerHTML:'';
 const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['Menu','pause']];
-const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(t)}</span>`).join('');
+const glassOwned=()=>!!(G.glass&&G.glass.owned);
+const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(g==='Y'&&glassOwned()?'use · hold: the Glass':t)}</span>`).join('');
 const BLOCKED_MSG='Your browser blocked controller access in this view. Open the game on its own page, or run the local copy.';
 let keysFade=0, padHint=false;
 function refreshPadUI(){
@@ -460,6 +463,41 @@ G.on('input:padblocked',()=>{ refreshPadUI();
   // one-time notice for players already past the title card
   if(!padHint&&G.state.mode!=='title'){ padHint=true; G.ui.toast('Controller unavailable','Open the game on its own page'); toastT=6; } });
 refreshPadUI();
+
+/* ---------- the Remembering Glass (glass.js owns the tool): touch button beside the lantern's, legend rows once it's yours ---------- */
+const GLASS_CSS=`
+.touch [data-act=glass]{--s:50px;--x:-158px;--y:-118px;display:grid;place-items:center;border-color:rgba(214,188,255,.65);background:rgba(40,24,64,.55)}
+.touch [data-act=glass][hidden]{display:none}
+.touch [data-act=glass] svg{width:24px;height:24px;pointer-events:none}
+.touch [data-act=glass].up{background:rgba(145,80,255,.5);box-shadow:0 0 14px rgba(170,120,255,.6)}
+@media (orientation:landscape){ .touch [data-act=glass]{--x:-150px;--y:-168px} }   /* beside the lantern shutter */
+`;
+const GLASS_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="rgba(214,188,255,.18)" stroke="#f1e9d8" stroke-width="1.8"/><circle cx="10" cy="10" r="8.6" fill="none" stroke="#c8a24c" stroke-width="1"/><path d="M15.2 15.2L21 21" stroke="#c8a24c" stroke-width="2.4" stroke-linecap="round"/><path d="M7 6.5l3 2-1.4 3.2M10 8.5l3.4-.6" fill="none" stroke="#f1e9d8" stroke-width=".9" opacity=".75"/></svg>';
+let glassBtn=null, glassLegend=false;
+(function mountGlass(){
+  const st=document.createElement('style'); st.textContent=GLASS_CSS; document.head.appendChild(st);
+  const t=$('touch'); if(!t)return;
+  glassBtn=document.createElement('button'); glassBtn.type='button'; glassBtn.dataset.act='glass'; glassBtn.hidden=true;
+  glassBtn.setAttribute('aria-label','Raise the Remembering Glass'); glassBtn.innerHTML=GLASS_SVG;
+  const sh=t.querySelector('[data-act=shutter]'); t.insertBefore(glassBtn,sh?sh.nextSibling:t.firstChild);
+})();
+function glassRows(){
+  if(glassLegend||!glassOwned())return; glassLegend=true;
+  const row=short=>{ const s=document.createElement('span'); s.innerHTML='<kbd>G</kbd> '+(short?'the Glass':'raise the Remembering Glass'); return s; };
+  if(keysEl){ const kb=keysEl.dataset.mode!=='pad'; if(kb){ const esc_=[...keysEl.children].find(c=>/pause/.test(c.textContent)); keysEl.insertBefore(row(true),esc_||null); } }
+  // the stored keyboard legend (restored when the controller goes quiet) gets the row too
+  try{ const tmp=document.createElement('div'); tmp.innerHTML=keysHTML; const esc_=[...tmp.children].find(c=>/pause/.test(c.textContent)); tmp.insertBefore(row(true),esc_||null); keysHTML=tmp.innerHTML; }catch(_){}
+  document.querySelectorAll('[data-kb-legend]').forEach(el=>el.appendChild(row(false)));
+  document.querySelectorAll('[data-pad-legend]').forEach(el=>{ el.dataset.filled=''; });
+  refreshPadUI();
+}
+let glassT=0;
+function updateGlassUI(dt){
+  glassT-=dt||0; if(glassT>0)return; glassT=.25;
+  const own=glassOwned();
+  if(own)glassRows();
+  if(glassBtn){ const usable=own&&!!(G.input.BIND&&G.input.BIND.glass); glassBtn.hidden=!usable; glassBtn.classList.toggle('up',!!(G.glass&&G.glass.raised)); }
+}
 
 /* ---------- touch buttons ---------- */
 document.querySelectorAll('#touch button').forEach(b=>{
@@ -499,7 +537,7 @@ G.system('hud',{order:90,modes:'always',
     if(toastT>0){toastT-=(dt||G.dt||0); if(toastT<=0)toastEl.classList.remove('show');}
     if(G.state.mode!=='play'&&stickId!==null){stickId=null;stick.classList.remove('on');}
     if(G.state.mode==='title')return;
-    updateHearts(); updateWorldUI(dt); updatePrompt(); placeBoss(); updatePotionsUI(dt||0);
+    updateHearts(); updateWorldUI(dt); updatePrompt(); placeBoss(); updatePotionsUI(dt||0); updateGlassUI(dt||G.dt||0);
     if(G.state.mode==='play'){ keysFade+=dt; const k=$('keys'); if(k){k.style.opacity=keysFade>50?'0':'1'; k.hidden=keysFade>52;} } // once faded, free its row so captions sit low, clear of the prompts
     // camera shake (applied after the camera system has placed the camera)
     if(shakeAmt>.001&&dt>0){

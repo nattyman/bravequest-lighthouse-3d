@@ -130,9 +130,33 @@ const STARTS=[
   {id:'cave:drafts',name:'Hall of Drafts',sub:'Sluice open · page 2 read',group:'The cave'},
   {id:'cave:arena',name:'The Undertow',sub:'Door seal eaten · the boss in the pool',group:'The cave'},
   {id:'cave:after',name:'After the Undertow',sub:'Boss down, jar owned, the Wound revealed',group:'The cave'},
+  {id:'undercroft',name:'The Undercroft',sub:'Well cured, trapdoor open · at the foot of the stair, nothing lit, 40 moths',group:'The Undercroft'},
+  {id:'undercroft-chapel',name:'The Crypt Chapel',sub:'Stair and cellars lit · the bell-ropes and the sexton’s niche ahead',group:'The Undercroft'},
+  {id:'undercroft-boss',name:'Before the Tithe-Keeper',sub:'Glass owned, sluice set, portcullis up · at the store door',group:'The Undercroft'},
   {id:'testsave',name:'Continue test save',sub:'',group:'Saves',test:true}
 ];
 DT.starts=STARTS;
+/* the Undercroft (undercroft.js / glass.js). Other Undercroft modules can add their own state to these saves:
+   G.devtools.undercroftHooks.push((save,id)=>{ save.mods.myKey={...}; })  — id is 'undercroft' | 'undercroft-chapel' | 'undercroft-boss' */
+DT.undercroftHooks=[];
+const UC_ORDER=['stair','cellars','chapel','mill','store'];
+function undercroftSave(id){
+  const room=id==='undercroft-boss'?'store':id==='undercroft-chapel'?'chapel':'stair', idx=UC_ORDER.indexOf(room);
+  const s=loopSave({lantern:true});
+  s.mods.moths.cured=['well'];
+  const lit=UC_ORDER.slice(0,Math.max(0,idx)).filter(r=>r!=='mill'||room==='store');
+  const reached=UC_ORDER.slice(1,idx+1);
+  s.mods.undercroft={v:1,open:true,lit,reached,gates:{portcullis:room==='store',strongroom:false,exit:false},trap:false,freeUsed:lit.length>0,mill:room==='store',prevCp:null};
+  s.mods.glass={v:1,owned:room==='store',seen:room==='store'?['tithe','supper','bargain','register']:[],niche:room==='store'};
+  const d=LM().undercroftDoor||{x:-8.6,y:13,z:37.6}; s.pos=[d.x+1.7,d.y,d.z]; s.yaw=PI/2;
+  for(const fn of DT.undercroftHooks){ try{ fn(s,id); }catch(e){ console.error('undercroft start hook',e); } }
+  return s;
+}
+function undercroftEnter(id){
+  const room=id==='undercroft-boss'?'store':id==='undercroft-chapel'?'chapel':'stair';
+  if(G.undercroft&&G.undercroft.enter){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.enter(room,{instant:true}); }
+  giveSwarm(40); setTimeout(()=>{ giveSwarm(40); render(); },60);
+}
 function caveSwarmAndEnter(room){
   setTide('low');
   giveSwarm(60);
@@ -145,7 +169,7 @@ function caveSwarmAndEnter(room){
    and the west tip. 'late' keeps progression.js's lateGame() (everything). */
 const ROUTE_ACT1=['needle','outcrop','attic','hounds'], ROUTE_LOOP=ROUTE_ACT1.concat(['stones','spire','roots','west']);
 function progressFor(id){
-  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id))?ROUTE_LOOP:null;
+  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id))?ROUTE_LOOP:null;
   if(!shards)return null;
   const o={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};
   for(const k of shards)o.shards[k]=1;
@@ -206,6 +230,7 @@ function runStart0(id){
     return;
   }
   if(/^cave:/.test(id)){ const room=id.slice(5); F.begin(caveSave(room)); caveSwarmAndEnter(room); return; }
+  if(/^undercroft/.test(id)){ F.begin(undercroftSave(id)); undercroftEnter(id); return; }
 }
 function chooseStart(id){
   if(G.state.mode==='title'){ runStart(id); return; }
@@ -226,7 +251,8 @@ const SPOTS=[
   {id:'well',name:'Choked Well',blight:'well'},
   {id:'hamlet',name:'Hamlet',at:()=>{ const h=LM().hamlet; return h&&[h.x+12,null,h.z,-PI/2]; }},
   {id:'resisting',name:'Resisting Tree',at:()=>{ const t=LM().resistingTree; return t&&[t.x+8,null,t.z+6,-PI/2]; }},
-  {id:'mouthOut',name:'Cave mouth',at:()=>{ const m=LM().caveMouth; return m&&[m.x,m.y,m.z+2.2,PI]; }}
+  {id:'mouthOut',name:'Cave mouth',at:()=>{ const m=LM().caveMouth; return m&&[m.x,m.y,m.z+2.2,PI]; }},
+  {id:'trapdoor',name:'Undercroft trapdoor',at:()=>{ const d=LM().undercroftDoor; return d&&[d.x+1.7,null,d.z,PI/2]; }}
 ];
 function teleport(id){
   const P=G.player; testMode();
@@ -241,6 +267,7 @@ function teleport(id){
   else a=s.at();
   if(!a)return 'That place isn’t built.';
   if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
+  if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
   if(id==='mouthOut')setTide('low');
   teleportWithSwarm(a[0],a[1],a[2],a[3]); closePanel(); return 'Teleported to '+s.name;
 }

@@ -60,6 +60,11 @@ STEPS=[
    " G.debugEnterCave('arena'); G.step(1/30,60); const u=G.progress.drops.undertow.pos; T.at(u.x,u.y,u.z); G.step(1/30,10); T.settle(); G.cave.exit&&G.cave.exit({instant:true}); G.step(1/30,30); T.settle();"
    " return {has,m0,mid,lifting,m1:G.player.maxHp,marks:G.progress.marks-k0,left:Object.keys(G.progress.drops)}; })()",
    lambda r: r['has']==[True,True] and r['mid']==r['m0'] and r['lifting']=='heart' and r['m1']==r['m0']+4 and r['marks']==3 and r['left']==[]),
+ # the 8th heart (UNDERCROFT.md): Aldous Crane, the Tithe-Keeper leaves a Keeper's Heart where he falls (+2 Marks); it only shows in the Undercroft
+ ("keeperHeart", "(()=>{ const m0=G.player.maxHp, k0=G.progress.marks; G.undercroft.enter('store',{instant:true}); G.step(1/30,30); T.settle();"
+   " G.emit('undercroft:bossDead',{pos:G.player.pos.clone()}); G.step(1/30,4); const d=G.progress.drops.crane, vis=!!(d&&d.mesh.visible), p=d.pos; T.at(p.x,p.y,p.z); G.step(1/30,10); const lifting=G.progress.rewarding; T.settle();"
+   " G.undercroft.exit({instant:true}); G.step(1/30,30); T.settle(); return {vis,lifting,dmax:G.player.maxHp-m0,marks:G.progress.marks-k0,maxHp:G.player.maxHp,left:Object.keys(G.progress.drops)}; })()",
+   lambda r: r['vis'] and r['lifting']=='heart' and r['dmax']==2 and r['marks']==2 and r['left']==[]),
  ("journal", "(()=>{ G.setMode('paused'); document.getElementById('pause').hidden=false; document.getElementById('journalBtn').click(); const t=document.getElementById('journalBody').innerText; const d=G.progress.journal.data();"
    " document.getElementById('journalClose').click(); const back=!document.getElementById('pause').hidden; document.getElementById('resume').click(); G.step(1/30,2); return {d, back, hasText:/hearts/i.test(t)&&/keeper/i.test(t)}; })()",
    lambda r: r['back'] and r['hasText'] and r['d']['shards']==4 and r['d']['caches']==1 and r['d']['wings']==2 and len(r['d']['upgrades'])==7 and r['d']['freed']>=4),
@@ -93,14 +98,14 @@ async def main():
                   lambda r: r['a']['maxHp']==before['maxHp'] and r['a']['shards']==before['shards'] and r['a']['marks']==before['marks'] and r['a']['wings']==before['wings']
                             and sorted(r['a']['upgrades'])==sorted(before['upgrades']) and r['a']['caches']==before['caches'] and r['potions']==5 and r['jar']==100 and r['dmg']==1, fails)
         print('   before:',json.dumps(before))
-        # an old save (before progression existed): Stag + Gloaming + Undertow dead, 4 negatives freed, a blight cured -> granted on load
+        # an old save (before progression existed): Stag + Gloaming + Undertow + the Tithe-Keeper dead, 4 negatives freed, a blight cured -> granted on load
         await pg.evaluate("""(()=>{ G.setMode('paused'); const d=JSON.parse(localStorage.getItem('bq-save-v1')); delete d.mods.progress; d.stagDead=true; d.bossDead=true; d.flags.undertowDead=true;
             d.freed=[0,1,2,3]; d.hp=10; d.maxHp=10; if(d.mods.caveBoss)d.mods.caveBoss.defeated=true; else d.mods.caveBoss={v:1,pages:[1,2,3],defeated:true,discovered:true,hal:false,entered:true,bossSeen:true,said:[]};
-            if(d.mods.moths){ d.mods.moths.cured=['tidepool']; } localStorage.setItem('bq-save-v1',JSON.stringify(d)); })()""")
+            d.mods.undercroftBoss={v:1,defeated:true,ledger:true,pageRead:true,bossSeen:true,said:[]}; if(d.mods.moths){ d.mods.moths.cured=['tidepool']; } localStorage.setItem('bq-save-v1',JSON.stringify(d)); })()""")
         await pg.reload(); await pg.wait_for_timeout(5000); await pg.evaluate(HELP)
         await pg.click('#continue'); await pg.wait_for_timeout(2500)
         await run(pg,'retro',"(()=>{ G.step(1/30,90); T.settle(); return G.progress.summary(); })()",
-                  lambda r: r['maxHp']==8 and r['wings']==2 and r['marks']==6 and 'charm' in r['upgrades'] and r['shards']==0, fails)
+                  lambda r: r['maxHp']==10 and r['wings']==2 and r['marks']==8 and 'charm' in r['upgrades'] and r['shards']==0, fails)
         await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250)
         await pg.screenshot(path='/tmp/claude-0/progress/e2e_end.png',timeout=120000)
         real=[e for e in errs if '404' not in e]
