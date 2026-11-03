@@ -947,6 +947,7 @@ function open(from){
   if(M.isOpen)return false;
   const mode=G.state.mode;
   if(from==='pause'){ if(mode!=='paused')return false; }
+  else if(from==='bare'){ if(mode!=='paused')return false; from='play'; } // paused with no card up (e.g. the test tools just closed): closing resumes play
   else{ if(mode!=='play')return false; from='play'; }
   if(G.devtools&&G.devtools.open)return false;
   if(!built){ try{ build(); }catch(e){ console.error('map build',e); return false; } }
@@ -983,7 +984,7 @@ function close(silent){
   G.emit('map:close',{});
   return true;
 }
-M.open=()=>open(G.state.mode==='paused'&&!$('pause').hidden?'pause':undefined);
+M.open=()=>{ const pc=$('pause'); return open(G.state.mode==='paused'?(pc&&!pc.hidden?'pause':'bare'):undefined); };
 M.close=()=>close(); M.toggle=()=>M.isOpen?close():M.open();
 
 /* while open, the main renderer draws the map scene instead of the world */

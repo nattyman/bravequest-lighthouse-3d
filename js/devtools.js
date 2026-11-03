@@ -413,7 +413,7 @@ function onClick(e){
     else if(d.act==='kill')msg=killNearby();
     else if(d.act==='mapReveal'){ testMode(); G.map.revealAll(); msg='The whole island is charted'; }
     else if(d.act==='mapCover'){ testMode(); G.map.reset(); msg='Clouds over everything again (they clear as you walk)'; }
-    else if(d.act==='mapOpen'){ closePanel(); G.map.open(); return; }
+    else if(d.act==='mapOpen'){ const from=opener; closePanel(from==='play'); G.map.open(); return; } // from play: stay paused under the map (it resumes on close)
   }catch(err){ console.error('devtools',err); msg='That failed: '+(err&&err.message); }
   note(msg); render();
 }
