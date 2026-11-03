@@ -77,9 +77,15 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 - Interaction: `G.interact.add({pos|()=>pos, radius, label|()=>label, priority, enabled:()=>bool, use()})`. player.js calls `G.interact.pick(playerPos)` each frame and `use()`s the current one on the interact action. HUD shows `G.interact.current`. Extra per-frame prompt rows: `G.hint('F','Close the shutter')`.
 - Combat: hurtbox `{team:'player'|'enemy'|'neutral', pos:Vector3 (feet), radius, height, alive:()=>bool, hit(info), targetable, name, corrupt:bool, lockOffset}` registered with `G.combat.add(hb)`. `G.combat.strike({x,y,z,radius,team,damage,knockback,kind,source,exclude:Set})`, `G.combat.nearestTarget(from,maxDist,dirVec)`, `G.combat.spawnProjectile({pos,vel,radius,team,damage,life,kind,mesh,knockback,gravity,onHit,onEnd})`.
   - `info = {damage, dir (unit Vector3 from attacker to target, horizontal), knockback, kind:'melee'|'bolt'|'swarm'|'charge'|'bite', source}`
-  - **Damage units are half-hearts.** Player starts with maxHp 10 (5 hearts).
+  - **Damage units are half-hearts.** Player starts with maxHp 4 (2 hearts); progression.js derives maxHp (max 14, 7 hearts).
 - UI calls (hud.js implements): `G.ui.say(text, who?, {priority:'high'|'normal'|'low', key})` (every line is also kept in the message log, pause menu > Messages; reading time is the player's choice: `G.ui.captionSpeed` 'relaxed'|'standard'|'hold'; `G.ui.advance()` = Enter / D-pad down / a tap on the caption), `G.ui.objective(text, sub?)`, `G.ui.toast(title, small?)`, `G.ui.bossBar(name|null, frac)`, `G.ui.flash()`, `G.ui.shake(amount)`.
 - Pickups (flow.js implements): `G.pickups.spawn('heart'|'mushroom', pos)`.
+- Map + fast travel (js/map.js): `G.map.open()/close()`, `G.map.addMarker({...})`, `G.map.waypoints`, `G.map.travelBlock(id)` → reason
+  string or null, `G.map.travel(id)`. Seven waystones (lighthouse, cottage, cliff-path foot, standing stones, hamlet road, Resisting
+  Tree, sea cave) unlock when first visited; travel is chosen in the open map (click/tap, Tab+Enter, LB/RB+A) through a confirm card.
+  Travel uses `G.player.teleport` and, for the sea cave, `G.cave.enter('mouth',{instant:true})` / `G.cave.exit({instant:true})`.
+  It refuses during boss fights, the Act 1 finale, while Maren's corrupted lantern or a swarm follows you, while the lantern rides
+  the cave raft, with monsters hunting you within 30 m, mid-air, and to a destination under the fog.
 - Input actions: `forward back left right jump sprint roll attack lock interact shutter potion pause advance` (advance = Enter or controller D-pad down: next caption). `G.input.down(a)`, `G.input.pressed(a)`, `G.input.released(a)`, `G.input.move()` → {x,y,mag}, `G.input.look()` → pixel delta this frame, `G.input.wheel`, `G.input.locked`.
 - Techniques (`js/combat.js`, loaded before player.js): `G.moves.T` is the tuning table (lunge, sweep, slam, spin, plunge, dive, doubleJump, buffer, aim). `G.moves.performed(id)` names a technique on screen (toast the first time; remembered in localStorage `bq-combos`, listed in the pause menu). `G.moves.raycast(from,dir,max,{start})` → `{point,dist,hb,surface}` against floors, walls (constrainers), colliders, cave ceilings and enemy hurtboxes. `G.moves.burst(pos,{radius,color,life,lightI})` ether ring + flash. `G.moves.noDoubleJump.push(fn(pos)->bool)` forbids the double jump where it returns true. `G.player.move` → `{id, phase, doubleJumped, dived, aiming, aimK, aimPoint, cooldowns}`.
 - Models: `G.models.lantern()` and `G.models.staff()` are defined by player.js at script-evaluation time and return fresh Object3Ds (other modules may call them in init()).
@@ -110,6 +116,8 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 | `stag:engage` | — | monsters (the Hollow Stag leaves its guard over Maren's lantern) |
 | `finale:start` | — | flow (when you step outside after lamp:cured); finale_boss.js answers it — the Stag no longer does |
 | `boss:dead` | {who:'stag'\|'gloaming'} | monsters (stag) / finale_boss (gloaming). Only `who:'gloaming'` ends Act 1 |
+| `map:waypoint` | {id, quiet} | map (a waystone unlocked; quiet = granted from an old save / home) |
+| `map:travel` | {id, phase:'start'\|'arrive'\|'done'} | map (fast travel: fade out → moved → faded back in) |
 
 ## Module briefs (who owns what)
 **world.js** — `G.world.height/walkable/landmarks` (synchronous), terrain mesh(es) with vertex colours (cel-shaded), sea (animated), sky dome (dusk gradient + moon + stars faint), fog, sea stacks, forest (instanced trunks/canopies; colliders for trunks), moor heath + wildflowers, local grass that follows `G.focus` for density, rocks, ruined hamlet, standing stones, stone walls, keeper's cottage + shed with warm windows, the cliff-path ramp, the Resisting Tree, path rendering, mushrooms visuals, atmosphere application (reads `G.atmo`), hemi/sun colours. Registers colliders for trees, rocks, buildings.

@@ -25,7 +25,9 @@ const P={
     // snatches a moth every `snatch` s (the first after `snatch0`) within `reach` m. Any hit knocks a raider off the raft.
     grip:1.5,climb:.5,snatch0:.8,snatch:1.05,reach:3.4},
   stag:{hp:48,radius:2.0,height:4.8,speed:3.2,chargeWind:1.0,chargeSpeed:17,chargeLen:30,stagger:2.0,sweepWind:.75,stompWind:.95,
-    chargeDmg:3,sweepDmg:2,stompDmg:2,ringSpeed:11,ringMax:14}
+    // chargeDmg was 3: with the 2-heart start (progression.js BASE_HP) a charge took a fresh player to half a heart. Every Stag blow
+    // now costs exactly one heart.
+    chargeDmg:2,sweepDmg:2,stompDmg:2,ringSpeed:11,ringMax:14}
 };
 const MAX_TOKENS=2, LEASH=30;
 

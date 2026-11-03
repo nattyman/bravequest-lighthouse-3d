@@ -11,9 +11,21 @@
    - Clouds: instanced billboard puffs in two layers, anchored to a coarse grid; their cover comes from
      the discovery field (a small DataTexture, blurred for a soft edge). Newly charted areas roll back
      over ~1.4 s the next time the map opens.
+   - Fast travel (section 11): seven waypoints (WAYPOINTS below). Each unlocks the first time you walk within a few metres
+     of it (a caption + a pulsing waystone on the chart); the lighthouse is home and known from the start. In the open map
+     an unlocked waypoint is chosen by click / tap, Tab (Shift+Tab) + Enter, or the controller's LB/RB (D-pad ◀ ▶) + A;
+     a confirm card asks "Travel to X?" (Enter/A travel, Esc/B stay). Travel fades to black (a near-cut with reduced motion),
+     moves you to a checked standing spot beside the waypoint (the sea cave through cave.js's own entry/exit paths), closes
+     the map and settles the camera behind you. travelBlock(w) says why not (bosses, escorts, a following swarm, hunters
+     nearby, the finale, fog over the destination ...): the card shows that reason and nothing moves.
+   - Collectibles (section 12): Heart Shards and Keeper's Caches get a small crystal / chest pin once you've been near one or
+     had it in view (never before), faded once taken. Under cloud nothing shows.
+   - Persist 'map' v2: + wp (unlocked waypoints), wpNew (unlocked, chart not opened since), seen (collectibles spotted).
+     v1 saves load fine; their waypoints come from quest progress (retroWaypoints) and taken collectibles count as seen.
    API: G.map = {open(), close(), toggle(), isOpen, addMarker({id,pos,kind,label,visible,color,travel}),
-                 removeMarker(id), markers, discovered(x,z), reveal(x,z,r), revealAll(), reset(), percent(), debug}
-   Fast travel is not implemented: markers may carry kind:'waypoint' / travel:true for later.
+                 removeMarker(id), markers, discovered(x,z), reveal(x,z,r), revealAll(), reset(), percent(),
+                 waypoints, travelTargets(), travelBlock(id), travel(id,{force}), traveling, debug}
+   Events: map:open {from} · map:close · map:discover {cells,percent} · map:waypoint {id,quiet} · map:travel {id,phase:'start'|'arrive'|'done'}
    ===================================================================== */
 (function(){
 'use strict';
@@ -91,9 +103,15 @@ function retro(){
   return n;
 }
 const PERSIST={
-  save:()=>({v:1,nx:NX,nz:NZ,bits:pack(bits),blights:Object.keys(blightSeen)}),
+  save:()=>({v:2,nx:NX,nz:NZ,bits:pack(bits),blights:Object.keys(blightSeen),wp:Object.keys(wpOn),wpNew:Object.keys(wpNew),seen:Object.keys(seenC)}),
   load:(j)=>{
-    if(!j||j.nx!==NX||j.nz!==NZ||typeof j.bits!=='string')return;
+    if(!j)return;
+    // waypoints + spotted collectibles (v2). A v1 save has none: quest progress grants them (retroWaypoints, next frame)
+    for(const k in wpOn)delete wpOn[k]; for(const k in wpNew)delete wpNew[k]; for(const k in seenC)delete seenC[k];
+    if(Array.isArray(j.wp)){ for(const id of j.wp)if(WP_BY[id])wpOn[id]=1; for(const id of j.wpNew||[])if(wpOn[id])wpNew[id]=1; }
+    for(const k of j.seen||[])seenC[k]=1;
+    wpRetroPending=true;   // additive: also fills in anything an older save (or a save from before a waypoint existed) implies
+    if(j.nx!==NX||j.nz!==NZ||typeof j.bits!=='string')return;
     try{ unpack(j.bits,bits); }catch(e){ console.error('map load',e); return; }
     recount(); loadedMap=true; for(const id of j.blights||[])blightSeen[id]=true;
     seen.set(bits); revealT=-1; dirtyTex=true;
@@ -102,7 +120,7 @@ const PERSIST={
 if(G.persist&&G.persist.register)G.persist.register('map',PERSIST);
 else G.on('ready',()=>{ if(G.persist&&G.persist.register)G.persist.register('map',PERSIST); });
 G.on('mode',e=>{
-  if(e.prev==='title'&&e.mode==='play'){ pendingRetro=true; }
+  if(e.prev==='title'&&e.mode==='play'){ pendingRetro=true; wpRetroPending=true; }
   if(M.isOpen&&e.mode!=='paused')close(true);    // something else resumed / ended the game under the map
 });
 G.on('blight:seen',e=>{ if(e&&e.id)blightSeen[e.id]=true; });
@@ -618,7 +636,8 @@ function uploadField(force){
 /* ================================================================ 6. MARKERS */
 const markers=[]; const byId={};
 let pinMat=null, pinGeo={};
-const MARKER_COL={player:'#d9ae54',objective:'#a56cff',landmark:'#c79a4a',bench:'#e7a24b',blight:'#151018',blightCured:'#b995ff',cave:'#9c8a76',waypoint:'#d9ae54',custom:'#c79a4a'};
+const MARKER_COL={player:'#d9ae54',objective:'#a56cff',landmark:'#c79a4a',bench:'#e7a24b',blight:'#151018',blightCured:'#b995ff',cave:'#9c8a76',waypoint:'#ffc35a',
+  shard:'#b48cff',cache:'#8a5a32',custom:'#c79a4a'};
 function pinGeometry(kind,color){
   const key=kind+color; if(pinGeo[key])return pinGeo[key];
   const parts=[{g:new THREE.CylinderGeometry(.025,.012,1.05,6),m:mat(0,.52,0),c:'#9a8c7a'}];
@@ -632,6 +651,18 @@ function pinGeometry(kind,color){
     parts.push({g:new THREE.SphereGeometry(.24,12,8,0,TAU,0,PI/2),m:mat(0,1.05,0,0,0,0,1,.7,1),c:color},{g:new THREE.SphereGeometry(.06,6,4),m:mat(.1,1.12,.05),c:'#efe2ff'});
   }else if(kind==='bench'){ // a tiny flask
     parts.push({g:new THREE.SphereGeometry(.2,10,8),m:mat(0,1.06,0),c:color},{g:new THREE.CylinderGeometry(.06,.07,.18,8),m:mat(0,1.3,0),c:color},{g:new THREE.CylinderGeometry(.075,.075,.05,8),m:mat(0,1.41,0),c:'#6b4a2e'});
+  }else if(kind==='waypoint'){ // a carved waystone with a brass lamp on top (no pin: it stands on the board)
+    parts.length=0;
+    parts.push({g:new THREE.CylinderGeometry(.34,.4,.12,10),m:mat(0,.06,0),c:'#7a6450'},{g:new THREE.BoxGeometry(.2,.78,.2),m:mat(0,.5,0),c:'#a08c74'},
+      {g:new THREE.BoxGeometry(.28,.06,.28),m:mat(0,.9,0),c:'#6b4a2e'},{g:new THREE.SphereGeometry(.14,10,8),m:mat(0,1.03,0),c:color},
+      {g:new THREE.ConeGeometry(.19,.2,8),m:mat(0,1.24,0),c:'#6b4a2e'},{g:new THREE.SphereGeometry(.04,6,4),m:mat(0,1.36,0),c:'#e2c27a'});
+  }else if(kind==='shard'){ // a sliver of lamp-glass on a pin
+    parts.push({g:new THREE.OctahedronGeometry(.17,0),m:mat(0,1.12,0,0,.4,0,.62,1.55,.62),c:color});
+  }else if(kind==='cache'){ // an iron-bound box on a pin
+    const lid=new THREE.CylinderGeometry(.12,.12,.34,8,1,false,0,PI); lid.rotateZ(PI/2);
+    parts.push({g:new THREE.BoxGeometry(.34,.18,.24),m:mat(0,1.0,0),c:color},{g:lid,m:mat(0,1.09,0,PI/2,0,0),c:'#9a6a3e'},
+      {g:new THREE.BoxGeometry(.04,.3,.27),m:mat(-.1,1.05,0),c:'#3a3540'},{g:new THREE.BoxGeometry(.04,.3,.27),m:mat(.1,1.05,0),c:'#3a3540'},
+      {g:new THREE.BoxGeometry(.08,.09,.03),m:mat(0,1.02,.13),c:'#e2c27a'});
   }else{
     parts.push({g:new THREE.SphereGeometry(kind==='objective'?.24:.19,12,10),m:mat(0,1.08,0),c:color});
   }
@@ -641,24 +672,33 @@ function makePinMesh(rec){
   const kind=rec.kind==='blight'?'blight':rec.kind;
   const color=rec.color||MARKER_COL[kind]||MARKER_COL.custom;
   const g=new THREE.Group();
-  const mesh=new THREE.Mesh(pinGeometry(kind,color),rec.kind==='objective'?objMat:pinMat); mesh.castShadow=true; g.add(mesh);
+  const m0=rec.kind==='objective'?objMat:rec.kind==='waypoint'?wpMat:rec.kind==='shard'?shardPinMat:pinMat;
+  const mesh=new THREE.Mesh(pinGeometry(kind,color),m0); mesh.castShadow=true; g.add(mesh); rec.baseMat=m0;
   const ol=new THREE.Mesh(mesh.geometry,olPinMat); ol.renderOrder=-1; g.add(ol);
   if(rec.kind==='blight'){ const cm=new THREE.Mesh(pinGeometry('blightCured',MARKER_COL.blightCured),glowcapMat); cm.castShadow=true; cm.visible=false; g.add(cm); rec.curedMesh=cm; }
+  if(rec.kind==='waypoint'){ // a glowing ring on the board: pulses while new, steady when chosen
+    const ring=new THREE.Mesh(new THREE.RingGeometry(.48,.62,28),new THREE.MeshBasicMaterial({color:col('#ffcf7a'),transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+    ring.rotation.x=-PI/2; ring.position.y=.03; ring.renderOrder=2; g.add(ring); rec.ring=ring; }
   rec.mesh=mesh; rec.group=g; g.visible=false; markerRoot.add(g);
 }
-let objMat=null, glowcapMat=null, olPinMat=null;
+let objMat=null, glowcapMat=null, olPinMat=null, wpMat=null, shardPinMat=null, dimMat=null;
 function buildMarkers(){
   markerRoot=new THREE.Group(); scene.add(markerRoot);
   pinMat=new THREE.MeshStandardMaterial({vertexColors:true,metalness:.7,roughness:.35,envMapIntensity:1.3});
   objMat=new THREE.MeshStandardMaterial({vertexColors:true,metalness:.3,roughness:.3,emissive:col('#7a3dff'),emissiveIntensity:.6});
   glowcapMat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.4,emissive:col('#8f5cff'),emissiveIntensity:.8});
+  wpMat=new THREE.MeshStandardMaterial({vertexColors:true,metalness:.45,roughness:.45,envMapIntensity:1.1,emissive:col('#ffb24a'),emissiveIntensity:.18});
+  shardPinMat=new THREE.MeshStandardMaterial({vertexColors:true,metalness:.2,roughness:.25,emissive:col('#8a4dff'),emissiveIntensity:.75});
+  // taken / opened: a faded, unlit pin (the colour drained toward the wood)
+  dimMat=new THREE.MeshStandardMaterial({color:col('#8d8178'),roughness:.85,metalness:0,transparent:true,opacity:.62});
   olPinMat=new THREE.MeshBasicMaterial({color:col('#1c120c'),side:THREE.BackSide});
   olPinMat.onBeforeCompile=sh=>{ sh.vertexShader=sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n transformed+=normal*.028;'); };
   olPinMat.customProgramCacheKey=()=>'bqmap-olpin';
   for(const r of markers)if(!r.group&&r.pin!==false)makePinMesh(r);
 }
 /** G.map.addMarker({id, pos:Vector3|{x,z}|()=>pos, kind, label, visible:()=>bool, color, pin, travel})
-    kind: 'landmark' (label only), 'bench', 'blight', 'cave', 'waypoint' (fast travel later), or anything (a brass pin).
+    kind: 'landmark' (label only), 'bench', 'blight', 'cave', 'waypoint' (a waystone; travel:true makes it a fast-travel
+    target, see section 11), 'shard' / 'cache' (section 12), or anything (a brass pin).
     Markers under clouds stay hidden unless o.always is true. */
 function addMarker(o){
   if(!o||!o.id)return null;
@@ -696,6 +736,7 @@ function syncDynamic(){
     addMarker({id,kind:'bench',label:'Alchemy Table',pos:{x:w.x,z:w.z},visible:()=>!(t.on&&t.on()===false)}); });
   for(const b of G.blights||[]){ const id='blight:'+b.id; if(byId[id])continue;
     addMarker({id,kind:'blight',label:b.name,pos:b.pos,blight:b,visible:()=>!!(b.cured||blightSeen[b.id]||(G.loop&&G.loop.active))}); }
+  syncCollectibles();
 }
 
 /* ================================================================ 7. UI CHROME */
@@ -737,6 +778,26 @@ const CSS=`
 #mapUI .mp-label.obj{color:#f4ecff;background:linear-gradient(180deg,#5d4580,#4b3863);box-shadow:0 3px 12px rgba(80,40,160,.55),inset 0 0 0 1px rgba(214,188,255,.5)}
 #mapUI .mp-label.obj small{display:block;font:600 10px var(--body);letter-spacing:.18em;text-transform:uppercase;color:#d6bcff}
 #mapUI .mp-label.you{font:700 11px var(--body);letter-spacing:.16em;text-transform:uppercase;padding:2px 7px}
+#mapUI .mp-label.wp{background:linear-gradient(180deg,#f6e2b0,#e2c27a);box-shadow:0 3px 10px rgba(0,0,0,.45),inset 0 0 0 1px rgba(110,70,20,.55)}
+#mapUI .mp-label.wp small{display:block;font:600 10px var(--body);letter-spacing:.16em;text-transform:uppercase;color:#7a4a1c}
+#mapUI .mp-label.wp.sel{color:#fff4dc;background:linear-gradient(180deg,#8a5a24,#6b4218);box-shadow:0 0 0 2px #ffcf7a,0 4px 14px rgba(0,0,0,.55)}
+#mapUI .mp-label.wp.sel small{color:#ffd88a}
+#mapUI .mp-label.item{font-size:12.5px;padding:2px 7px 3px}
+#mapUI .mp-label.item.done{color:#6c5a5f;font-style:italic}
+#mapUI .mp-confirm{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(380px,calc(100% - 32px));display:grid;gap:8px;
+  padding:18px 22px 16px;color:#21161f;text-align:center;cursor:default;
+  background:linear-gradient(180deg,#efe4cc,#e2d3b3);border-radius:3px;
+  box-shadow:0 18px 50px rgba(0,0,0,.6),inset 0 0 0 1px rgba(60,40,30,.25),inset 0 0 0 5px #efe4cc,inset 0 0 0 6px rgba(60,40,30,.35)}
+#mapUI .mp-confirm[hidden]{display:none}
+#mapUI .mp-confirm .eyebrow{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:#6c3f5f}
+#mapUI .mp-confirm h3{margin:0;font:400 clamp(22px,3.4vw,28px)/1.1 var(--display)}
+#mapUI .mp-confirm p{margin:0;font:italic 400 15px/1.35 var(--serif);color:#4a3438}
+#mapUI .mp-confirm.blocked .eyebrow{color:#8a3a2a}
+#mapUI .mp-confirm.blocked p{color:#6a2a22;font-style:normal}
+#mapUI .mp-cbtns{display:flex;justify-content:center;gap:10px;margin-top:6px}
+#mapUI .mp-blocked{position:absolute;left:max(16px,env(safe-area-inset-left,0px));top:calc(118px + env(safe-area-inset-top,0px));max-width:min(340px,calc(100% - 32px));
+  padding:7px 12px;font:italic 400 13.5px/1.3 var(--serif);color:#f1e2d8;background:rgba(40,18,16,.72);border-radius:2px;box-shadow:0 4px 14px rgba(0,0,0,.4);pointer-events:none}
+#mapUI .mp-blocked[hidden]{display:none}
 body.map-open #hud,body.map-open #toast,body.map-open #saved,body.map-open #pauseBtn,body.map-open .touch,body.map-open #prompt,body.map-open #mapBtn,body.map-open .stick{visibility:hidden!important}
 #mapBtn{position:fixed;left:calc(50% - 56px);top:calc(10px + env(safe-area-inset-top,0px));z-index:6;width:44px;height:44px;border-radius:50%;
   border:1px solid rgba(241,233,216,.45);background:rgba(20,15,26,.5);color:var(--bone);display:none;place-items:center;cursor:pointer;
@@ -772,11 +833,16 @@ function buildUI(){
     <div class="mp-legend" hidden><span class="eyebrow">Legend</span>
       <span><i style="background:#d9ae54"></i>You (the arrow shows your heading)</span>
       <span><i style="background:#a56cff;box-shadow:0 0 6px #a56cff"></i>Your objective</span>
+      <span><i style="background:#ffc35a;border-radius:2px"></i>Waystone: a place you can travel to</span>
+      <span><i style="background:#b48cff;border-radius:2px;transform:rotate(45deg) scale(.8)"></i>A Heart Shard you’ve spotted</span>
+      <span><i style="background:#8a5a32;border-radius:2px"></i>A keeper’s cache you’ve spotted</span>
+      <span><i style="background:#8d8178;opacity:.7"></i>Faded: already taken</span>
       <span><i style="background:#e7a24b"></i>Alchemy table</span>
       <span><i style="background:#151018"></i>A blight, still choked with ink</span>
       <span><i style="background:#b995ff"></i>A blight you’ve cured</span>
       <span><i style="background:#e8e2ea"></i>Cloud: somewhere you haven’t been yet</span>
       <span class="mp-lit" hidden><i style="background:#6b4b8a"></i>The violet line: how far the light reaches</span></div>
+    <div class="mp-blocked" hidden></div>
     <div class="mp-bar"><div class="mp-hints"></div><div class="mp-btns">
       <button type="button" class="mp-btn" data-mp="legend" aria-pressed="false">Legend</button>
       <button type="button" class="mp-btn primary" data-mp="close">Close</button></div></div>`;
@@ -787,6 +853,7 @@ function buildUI(){
   legendBtn.addEventListener('click',e=>{ e.stopPropagation(); toggleLegend(); });
   for(const b of [closeBtn,legendBtn])b.addEventListener('pointerdown',e=>e.stopPropagation());
   for(const r of markers)makeLabel(r);
+  buildConfirm();
   wirePointer();
   // the touch map icon beside the pause button
   mapBtn=document.createElement('button'); mapBtn.id='mapBtn'; mapBtn.type='button'; mapBtn.setAttribute('aria-label','Map'); mapBtn.innerHTML=MAP_ICON; mapBtn.hidden=true;
@@ -812,7 +879,7 @@ function addPadRows(){
 }
 function makeLabel(r){
   if(!labelsEl||r.el)return; if(!r.label&&r.kind!=='objective')return;
-  const el=document.createElement('div'); el.className='mp-label'+(r.kind==='objective'?' obj':r.kind==='player'?' you':'');
+  const el=document.createElement('div'); el.className='mp-label'+(r.kind==='objective'?' obj':r.kind==='player'?' you':r.kind==='waypoint'?' wp':(r.kind==='shard'||r.kind==='cache')?' item':'');
   el.textContent=r.label; r.el=el; labelsEl.appendChild(el);
 }
 function toggleLegend(on){ legendOn=on==null?!legendOn:!!on; legendEl.hidden=!legendOn; legendBtn.setAttribute('aria-pressed',String(legendOn)); }
@@ -822,14 +889,17 @@ function refreshHints(){
   if(dev===hintMode)return; hintMode=dev;
   const g=n=>G.ui&&G.ui.glyph?G.ui.glyph(n):n, view='<span class="pad pad-pill" role="img" aria-label="View button">&#10697;</span>';
   if(dev==='pad'){
-    hintsEl.innerHTML=`<span>${g('LS')} pan</span><span>${g('LT')} ${g('RT')} zoom</span><span>${g('RS')} tilt</span><span>${g('X')} find yourself</span><span>${g('Y')} legend</span>`;
+    hintsEl.innerHTML=`<span>${g('LS')} pan</span><span>${g('LT')} ${g('RT')} zoom</span><span>${g('RS')} tilt</span><span>${g('LB')} ${g('RB')} waystone</span><span>${g('A')} travel</span><span>${g('X')} find yourself</span><span>${g('Y')} legend</span>`;
     closeBtn.innerHTML=`Close ${view}`; legendBtn.innerHTML=`Legend ${g('Y')}`;
+    if(cfGo){ cfGo.innerHTML=`Travel ${g('A')}`; cfStay.innerHTML=`Stay ${g('B')}`; }
   }else if(dev==='touch'){
-    hintsEl.innerHTML='<span>Drag to pan</span><span>Pinch to zoom</span><span>Tap a place to name it</span>';
+    hintsEl.innerHTML='<span>Drag to pan</span><span>Pinch to zoom</span><span>Tap a waystone to travel</span>';
     closeBtn.innerHTML='Close'; legendBtn.innerHTML='Legend';
+    if(cfGo){ cfGo.innerHTML='Travel'; cfStay.innerHTML='Stay'; }
   }else{
-    hintsEl.innerHTML='<span>Drag or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> pan</span><span>Scroll or <kbd>+</kbd><kbd>−</kbd> zoom</span><span><kbd>R</kbd><kbd>F</kbd> tilt</span><span><kbd>C</kbd> find yourself</span>';
+    hintsEl.innerHTML='<span>Drag or <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> pan</span><span>Scroll or <kbd>+</kbd><kbd>−</kbd> zoom</span><span><kbd>R</kbd><kbd>F</kbd> tilt</span><span>Click a waystone or <kbd>Tab</kbd> <kbd>Enter</kbd> travel</span><span><kbd>C</kbd> find yourself</span>';
     closeBtn.innerHTML='Close <kbd>M</kbd>'; legendBtn.innerHTML='Legend <kbd>L</kbd>';
+    if(cfGo){ cfGo.innerHTML='Travel <kbd>Enter</kbd>'; cfStay.innerHTML='Stay <kbd>Esc</kbd>'; }
   }
 }
 
@@ -858,7 +928,9 @@ const _ray=new THREE.Raycaster(), _pl=new THREE.Plane(new THREE.Vector3(0,1,0),0
 function boardPoint(cx,cy,out){ _ray.setFromCamera({x:cx/innerWidth*2-1,y:-(cy/innerHeight)*2+1},cam); return _ray.ray.intersectPlane(_pl,out); }
 const ptrs=new Map(); let dragLast=null, pinch0=null, moved=0, hoverXY=null, tapXY=null, tapT=0;
 function wirePointer(){
-  ui.addEventListener('pointerdown',e=>{ if(e.target.closest('.mp-btns'))return; ui.setPointerCapture&&ui.setPointerCapture(e.pointerId);
+  ui.addEventListener('pointerdown',e=>{ if(e.target.closest('.mp-btns')||e.target.closest('.mp-confirm'))return;
+    if(confirmW){ hideConfirm(); return; }           // a click on the board outside the card is "stay"
+    ui.setPointerCapture&&ui.setPointerCapture(e.pointerId);
     ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY}); moved=0; dragLast={x:e.clientX,y:e.clientY}; ui.classList.add('drag');
     if(ptrs.size===2){ const [a,b]=[...ptrs.values()]; pinch0={d:Math.hypot(a.x-b.x,a.y-b.y),dist:view.tdist}; } });
   ui.addEventListener('pointermove',e=>{
@@ -869,7 +941,8 @@ function wirePointer(){
     if(boardPoint(prev.x,prev.y,_v)&&boardPoint(e.clientX,e.clientY,_v2)){ view.tx+=_v.x-_v2.x; view.tz+=_v.z-_v2.z; clampView(); view.x=view.tx; view.z=view.tz; placeCam(); }
   });
   const up=e=>{ if(!ptrs.has(e.pointerId))return; ptrs.delete(e.pointerId); if(ptrs.size<2)pinch0=null; if(!ptrs.size)ui.classList.remove('drag');
-    if(moved<8&&e.type==='pointerup'){ tapXY={x:e.clientX,y:e.clientY}; tapT=2.5; } };
+    if(moved<8&&e.type==='pointerup'){ tapXY={x:e.clientX,y:e.clientY}; tapT=2.5;
+      const w=waypointAt(e.clientX,e.clientY); if(w){ select(w,false); askTravel(w); } } };
   ui.addEventListener('pointerup',up); ui.addEventListener('pointercancel',up);
   ui.addEventListener('pointerleave',()=>{ hoverXY=null; });
   ui.addEventListener('wheel',e=>{ e.preventDefault(); const k=Math.exp(clamp(e.deltaY,-120,120)*.0022); view.tdist*=k; clampView(); },{passive:false});
@@ -886,6 +959,14 @@ addEventListener('keydown',e=>{
     return;
   }
   if(!M.isOpen)return;
+  if(confirmW){ // the travel card has the keys while it's up
+    if(e.code==='Enter'||e.code==='NumpadEnter'||e.code==='Space'||e.code==='KeyE'){ e.preventDefault(); e.stopPropagation(); confirmGo(); return; }
+    if(e.code==='Escape'||e.code==='Backspace'||e.code==='KeyP'){ e.preventDefault(); e.stopPropagation(); hideConfirm(); return; }
+    if(e.code==='Tab'){ e.preventDefault(); e.stopPropagation(); return; }
+    return;
+  }
+  if(e.code==='Tab'){ e.preventDefault(); e.stopPropagation(); cycle(e.shiftKey?-1:1); return; }
+  if((e.code==='Enter'||e.code==='NumpadEnter')&&selWp){ e.preventDefault(); e.stopPropagation(); askTravel(selWp); return; }
   if(e.code==='Escape'||e.code==='KeyP'||e.code==='Backspace'){ e.preventDefault(); e.stopPropagation(); close(); return; }
   if(e.code==='KeyL'){ e.preventDefault(); toggleLegend(); return; }
   if(e.code==='KeyC'){ centreOnPlayer(false); return; }
@@ -911,7 +992,15 @@ function padPlay(){ // in play: View (8) opens the map
 function padMap(dt){
   const g=readPad(); if(!g){ padPrev=[]; return; }
   const btn=padButtons(g), edge=i=>btn[i]&&!padPrev[i], ax=i=>clamp(+g.axes[i]||0,-1,1);
+  if(confirmW){ // the travel card: A travels, B stays; View / Menu still close the map
+    if(edge(0)){ padPrev=btn; confirmGo(); return; }
+    if(edge(1)){ padPrev=btn; hideConfirm(); return; }
+    if(edge(8)||edge(9)){ padPrev=btn; close(); return; }
+    padPrev=btn; return;
+  }
   if(edge(8)||edge(1)||edge(9)){ padPrev=btn; close(); return; }
+  if(edge(5)||edge(15))cycle(1); if(edge(4)||edge(14))cycle(-1);
+  if(edge(0)&&selWp){ padPrev=btn; askTravel(selWp); return; }
   if(edge(3))toggleLegend(); if(edge(2))centreOnPlayer(false);
   const dz=v=>Math.abs(v)<.18?0:(v-Math.sign(v)*.18)/.82;
   const lx=dz(ax(0)), ly=dz(ax(1)), ry=dz(ax(3));
@@ -935,16 +1024,28 @@ const M=G.map={isOpen:false,from:null,addMarker,removeMarker,get markers(){retur
   revealAll(){ bits.fill(1); recount(); dirtyTex=true; },
   reset(){ bits.fill(0); seen.fill(0); nBits=0; dirtyTex=true; },
   get view(){return view;}, get scene(){return scene;}, get camera(){return cam;},
-  /** fast travel (not yet): markers with travel:true */
-  travelTargets:()=>markers.filter(m=>m.travel),
+  /** fast travel: markers with travel:true (the unlocked waystones shown on the chart) */
+  travelTargets:()=>markers.filter(m=>m.travel&&(!m.wp||wpShown(m.wp))),
+  /** the waystones: [{id,name,unlocked,shown,isNew}] */
+  get waypoints(){ return WAYPOINTS.map(w=>({id:w.id,name:w.name,unlocked:!!wpOn[w.id],shown:wpShown(w),isNew:!!wpNew[w.id]})); },
+  travelBlock:id=>travelBlock(id),
+  /** travel now (the confirm card is the player's way in; this is for tools/tests). force skips the checks. */
+  travel:(id,o)=>{ const w=WP_BY[id]; return w?startTravel(w,o||{}):false; },
+  get traveling(){ return TR.on; },
+  ask:id=>{ const w=WP_BY[id]; if(!w||!M.isOpen)return false; select(w,true); return askTravel(w); },
+  get confirming(){ return confirmW?confirmW.id:null; }, get selected(){ return selWp?selWp.id:null; },
   debug:{retro,pack:()=>pack(bits),get cells(){return nBits;},grid:{nx:NX,nz:NZ,x0:B.x0,z0:B.z0,cw:CW,cd:CD},get buildMs(){return buildMs;},puffs:0,
     state:id=>{ const r=byId[id]; if(!r)return null; const p=posOf(r); return {shown:!!r.shownNow,label:r.el?r.el.classList.contains('on'):false,
       pos:p?[+(+p.x).toFixed(2),+(+p.z).toFixed(2)]:null,mesh:r.group?[+r.group.position.x.toFixed(3),+r.group.position.z.toFixed(3)]:null,screen:r.screen}; },
-    get revealing(){return revealT>=0;}, upload:()=>uploadField(true)}
+    get revealing(){return revealT>=0;}, upload:()=>uploadField(true),
+    lastBlock:null, get wpOn(){ return wpOn; }, get wpNew(){ return wpNew; }, get seen(){ return seenC; }, standFor:id=>standFor(WP_BY[id]), unlock:(id,o)=>unlockWp(WP_BY[id],o||{}), cycle:d=>{ const w=cycle(d||1); return w&&w.id; },
+    /** devtools start points: forget waystones + spotted collectibles, then grant what the (new) quest state implies */
+    resetWaypoints(){ for(const o of [wpOn,wpNew,seenC])for(const k in o)delete o[k]; selWp=null; retroWaypoints(); },
+    get TR(){ return TR; }}
 };
 let savedBloom=null, lastReal=0, wasLocked=false;
 function open(from){
-  if(M.isOpen)return false;
+  if(M.isOpen||TR.on)return false;
   const mode=G.state.mode;
   if(from==='pause'){ if(mode!=='paused')return false; }
   else if(from==='bare'){ if(mode!=='paused')return false; from='play'; } // paused with no card up (e.g. the test tools just closed): closing resumes play
@@ -965,12 +1066,15 @@ function open(from){
   spot.castShadow=G.quality.level!=='saver';
   lastReal=performance.now(); padPrev=padButtons(readPad()); keyHeld.clear();
   try{ closeBtn.focus({preventScroll:true}); }catch(_){}
+  selWp=null; hideConfirm(true); refreshBlocked(true);
   if(G.headless)G.headless.draw(3);
   G.emit('map:open',{from});
   return true;
 }
 function close(silent){
   if(!M.isOpen)return false;
+  hideConfirm(true); selWp=null;
+  for(const id in wpNew)delete wpNew[id];           // you've looked: the new waystones stop pulsing
   M.isOpen=false; ui.hidden=true; document.body.classList.remove('map-open');
   seen.set(bits); revealT=-1; uploadField(true);
   if(G.bloom&&savedBloom){ G.bloom.threshold=savedBloom.t; G.bloom.strength=savedBloom.s; G.bloom.radius=savedBloom.r; }
@@ -1018,6 +1122,7 @@ function updateOpen(dt){
   for(const s of glowSprites){ s.material.opacity=.32*smooth(.4,.8,shownAt(s.userData.anchor[0],s.userData.anchor[1]))*(.85+Math.sin(pulse*1.3)*.15); }
   if(caveArch)caveArch.visible=!!(G.caveBoss&&G.caveBoss.discovered);
   updateMarkers(dt);
+  refreshBlocked();
   if(tapT>0){ tapT-=dt; if(tapT<=0)tapXY=null; }
 }
 function updateMarkers(){
@@ -1043,6 +1148,11 @@ function updateMarkers(){
       if(vis){ r.group.position.set(x*S,y,z*S); let s=zs;
         if(r.kind==='objective'){ s*=1+Math.sin(pulse*4)*.08; objMat.emissiveIntensity=.55+Math.sin(pulse*4)*.35; }
         if(r.kind==='player'){ s*=1.1; const P=G.player; r.group.rotation.y=(P&&P.heading)||0; }
+        if(r.kind==='waypoint'){ const isNew=!!wpNew[r.wp.id], sel=r===selRec();
+          if(isNew)s*=1+Math.sin(pulse*5)*.1; if(sel)s*=1.18;
+          if(r.ring){ r.ring.material.opacity=sel?.85:isNew?.45+Math.sin(pulse*5)*.35:0; r.ring.scale.setScalar(sel?1.15:isNew?1+((pulse*.9)%1)*.6:1); } }
+        if(r.item){ const done=r.item.done(); if(r.mesh.material!==(done?dimMat:r.baseMat))r.mesh.material=done?dimMat:r.baseMat; if(done)s*=.78;
+          if(!done&&r.kind==='shard')r.mesh.rotation.y=pulse*.8; }
         r.group.scale.setScalar(s);
         if(r.curedMesh){ const c=!!(r.blight&&r.blight.cured); r.curedMesh.visible=c; r.mesh.visible=!c; r.group.children[1].visible=!c; }
       }
@@ -1053,20 +1163,336 @@ function updateMarkers(){
       const s=project(x*S,top,z*S); r.screen={x:Math.round(s.x),y:Math.round(s.y),on:s.on};
       if(r.kind==='objective'){ const nm=(G.quest&&G.quest.targetName)||'Objective'; const html='<small>Objective</small>'+esc(nm);
         if(r.el.innerHTML!==html)r.el.innerHTML=html; }
+      if(r.kind==='waypoint'){ const html='<small>'+(wpNew[r.wp.id]?'New · ':'')+'Waystone</small>'+esc(r.label); if(r.el.innerHTML!==html)r.el.innerHTML=html;
+        r.el.classList.toggle('sel',r===selRec()); }
+      if(r.item){ const done=r.item.done(), t=done?r.item.doneLabel:r.label; if(r.el.textContent!==t)r.el.textContent=t; r.el.classList.toggle('done',done); }
       r.el.style.transform=`translate(${s.x}px,${s.y}px) translate(-50%,-100%) translateY(-6px)`;
+      if(r.kind==='waypoint'){ const b=project(x*S,y+.2*zs,z*S); r.base={x:Math.round(b.x),y:Math.round(b.y)}; }
       if(pt){ const d=Math.hypot(s.x-pt.x,s.y-pt.y); if(d<nd){ nd=d; nearest=r; } }
-      r._want=s.on&&(r.kind==='objective'||closeZoom&&r.kind!=='player'||r.kind==='player'&&view.dist<14);
+      r._want=s.on&&(r.kind==='objective'||closeZoom&&r.kind!=='player'||r.kind==='player'&&view.dist<14||
+        r.kind==='waypoint'&&(view.dist<34||r===selRec()||!!wpNew[r.wp.id]));
     }
   }
   for(const r of markers){ if(!r.el||!r.shownNow)continue; r.el.classList.toggle('on',!!(r._want||r===nearest)); }
 }
 const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
+/* ================================================================ 11. WAYPOINTS + FAST TRAVEL
+   A waystone unlocks when you walk within `r` m of its anchor (the sea cave: the first time you go in). You arrive on a
+   checked standing spot (standFor) near `stand`, facing `yaw` (heading convention: facing (sin yaw, 0, cos yaw)). */
+const WAYPOINTS=[
+  {id:'lighthouse',name:'The Lighthouse',home:true,anchor:()=>{ const d=G.world.lighthouse&&G.world.lighthouse.doorOut; return d?{x:d.x-3.5,z:d.z}:{x:171,z:0}; },
+    stand:[170,1.5,PI/2],r:8,blurb:'The apron outside the tower door.'},
+  {id:'cottage',name:'The Keeper’s Cottage',anchor:()=>{ const c=LM().cottageDoor||{x:155.8,z:20.8}; return {x:c.x-1.1,z:c.z-1.6}; },
+    stand:[154,18.2,.61],r:6,blurb:'The doorstep, under the warm windows.'},
+  {id:'cliffpath',name:'The Foot of the Cliff Path',anchor:()=>{ const c=LM().cliffPathBottom||{x:95,z:12}; return {x:c.x-3,z:c.z-1.5}; },
+    stand:[91.5,10.2,PI/2],r:8,blurb:'Where the switchbacks meet the moor.'},
+  {id:'stones',name:'The Standing Stones',anchor:()=>{ const s=LM().stones||{x:40,z:-35}; return {x:s.x,z:s.z}; },
+    stand:[30,-42,.96],r:12,blurb:'Just outside the old ring of stones.'},
+  {id:'hamlet',name:'The Hamlet Road',anchor:()=>({x:6,z:16}),stand:[6,16,-1.08],r:8,blurb:'The trail into the ruined hamlet, short of its broken walls.'},
+  {id:'tree',name:'The Resisting Tree',anchor:()=>({x:-150,z:7}),stand:[-149,7,-1.69],r:9,blurb:'The edge of the old tree’s clearing.'},
+  {id:'cave',name:'The Sea Cave',cave:true,anchor:()=>LM().caveMouth||{x:181.2,z:52.4},r:0,blurb:'Just inside the cave’s mouth, above the tide.'}
+];
+const WP_BY=Object.fromEntries(WAYPOINTS.map(w=>[w.id,w]));
+const wpOn={}, wpNew={};
+let wpRetroPending=false, selWp=null, confirmW=null, firstTaught=false;
+const loopOn=()=>!!(G.loop&&G.loop.active);
+/** a waystone is on the chart: unlocked (and the cave only while the cave exists: the core loop) */
+const wpShown=w=>!!wpOn[w.id]&&(!w.cave||(loopOn()&&!!G.cave));
+function addWaypointMarkers(){
+  for(const w of WAYPOINTS){
+    const pos=w.cave?(()=>{ const m=LM().caveMouth; return m?{x:m.x,z:m.z+4.2}:null; }):(()=>{ const a=w.anchor(); return {x:a.x,z:a.z}; })();
+    addMarker({id:'wp:'+w.id,kind:'waypoint',label:w.name,pos,travel:true,wp:w,visible:()=>wpShown(w)});
+  }
+}
+const recOf=w=>w?byId['wp:'+w.id]:null;
+const selRec=()=>recOf(selWp);
+function unlockWp(w,o={}){
+  if(!w||wpOn[w.id])return false;
+  wpOn[w.id]=1;
+  if(!o.quiet){
+    wpNew[w.id]=1;
+    const key=G.input&&G.input.device==='gamepad'?'the View button':(G.isMobile||(G.input&&G.input.device==='touch'))?'the map button':'M';
+    const teach=!firstTaught&&!G.flag('wpTaught');
+    if(teach){ firstTaught=true; G.flag('wpTaught',true); }
+    const line=teach?`${w.name}: a waystone is marked on your chart. Open the map (${key}) and choose any waystone you’ve found to travel back to it.`
+                    :`${w.name}: a waystone is marked on your chart.`;
+    try{ G.ui.say(line,{priority:'low',key:'wp:'+w.id}); }catch(_){}
+  }
+  G.emit('map:waypoint',{id:w.id,quiet:!!o.quiet});
+  return true;
+}
+/** walking up to a waystone unlocks it (not mid-boss: the caption waits until the fight is over) */
+function visitWaypoints(){
+  const P=G.player; if(!P||!P.pos||!P.alive||G.state.mode!=='play')return;
+  if(G.cave&&G.cave.inside){ if(loopOn()&&WP_BY.cave)unlockWp(WP_BY.cave); return; }
+  if(bossFight())return;
+  for(const w of WAYPOINTS){ if(wpOn[w.id]||w.cave)continue;
+    const a=w.anchor(); if(Math.hypot(P.pos.x-a.x,P.pos.z-a.z)<w.r&&Math.abs(P.pos.y-G.world.height(a.x,a.z))<6)unlockWp(w,{quiet:!!w.home}); }
+}
+/* what a save already shows you've stood at (old saves, devtools start points): silent, additive */
+function retroWaypoints(){
+  const q=(G.quest&&G.quest.step)||'', L=G.items.lantern||{}, PR=G.progress, ps=(PR&&PR.state)||{shards:{},caches:{}};
+  const stag=!!(G.flow&&G.flow.stagDead), cured=!!(G.lighthouse&&G.lighthouse.cured), loop=loopOn(), done=!!(G.flow&&G.flow.bossDead);
+  const g=id=>unlockWp(WP_BY[id],{quiet:true});
+  g('lighthouse');
+  if(G.items.cloak&&G.items.cloak.owned)g('cottage');
+  if(ACT1_WEST.includes(q)||L.found||stag||cured||done||loop){ g('cliffpath'); g('hamlet'); }   // the road west runs past both
+  if(L.found||stag)g('tree');                                                              // you stood in its roots
+  if(ps.shards.stones||ps.caches.stones)g('stones');
+  if(loop&&G.cave&&(G.cave.inside||(G.caveBoss&&G.caveBoss.defeated)||G.flag('undertowDead')||(G.cave.litRooms&&G.cave.litRooms.length)))g('cave');
+  // a shard you took or a cache you opened: you've certainly seen it
+  for(const id in ps.shards)seenC['shard:'+id]=1; for(const id in ps.caches)seenC['cache:'+id]=1;
+}
+
+/* ---------- what stops you ---------- */
+const dist2D=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+function bossFight(){
+  const P=G.player, B=G.monsters&&G.monsters.boss;
+  if(B&&B.alive!==false&&!B.dying&&B.pos&&P&&P.pos&&dist2D(B.pos,P.pos)<90)return 'stag';
+  if(G.finaleBoss&&G.finaleBoss.active)return 'gloaming';
+  const CB=G.caveBoss; if(CB&&!CB.defeated&&CB.state&&CB.state!=='sunk'&&CB.state!=='dead')return 'undertow';
+  return null;
+}
+const HUNT=new Set(['chase','windup','attack','recover','hurt','hunt','sweep','stomp','charge','summon']);
+function hunted(){
+  const P=G.player, list=(G.monsters&&G.monsters.list)||[];
+  for(const m of list){ if(!m||!m.alive||m.dying||m.boss||!m.pos)continue; if(!HUNT.has(m.state))continue;
+    if(dist2D(m.pos,P.pos)<30&&Math.abs(m.pos.y-P.pos.y)<12)return m; }
+  return null;
+}
+function fogged(p){ // the destination lies beyond the light's edge (core loop)
+  const F=G.fog, Lm=G.lamp; if(!F||!Lm||!Lm.active||!F.centre||!isFinite(F.radius))return false;
+  return Math.hypot(p.x-F.centre.x,p.z-F.centre.z)>F.radius-4;
+}
+/** why you can't set off at all right now (null: you can) — the same for every waystone */
+function departBlock(){
+  const P=G.player, L=G.items.lantern||{}, T=G.items.storm||{}, q=(G.quest&&G.quest.step)||'';
+  if(TR.on)return 'You’re already on your way.';
+  if(!P||!P.pos||P.alive===false)return 'Not now.';
+  const boss=bossFight();
+  if(boss==='stag')return 'The Hollow Stag won’t let you slip away. Not while it stands.';
+  if(boss==='gloaming')return 'The Gloaming is at the lighthouse. You can’t leave the light now.';
+  if(boss==='undertow')return 'The Undertow has you. There’s no slipping away mid-fight.';
+  if(['cure','descend','finale'].includes(q)&&!(G.flow&&G.flow.bossDead))return 'Not now. Something is climbing the cliff toward the lighthouse.';
+  const R=G.cavePuzzles&&G.cavePuzzles.raft;
+  if(R&&R.lantern&&R.state!=='done')return R.state==='arrived'?'Maren’s lantern is still on the raft. Take it off first.':'Maren’s lantern is riding the raft. See it down the channel first.';
+  if(L.found&&L.carried&&!L.cured&&!(G.lighthouse&&G.lighthouse.cured))return 'The moths are following Maren’s lantern, and they can’t follow you through a map. Carry it there on foot.';
+  if(T.inCradle&&!T.failed)return 'Not now. Watch the little flame.';
+  const sw=(G.moths&&G.moths.swarm)|0;
+  if(sw>=5){ const jar=!!(G.moths.jar&&G.moths.jar.owned); return 'The swarm is following your light, and moths can’t follow you through a map. '+(jar?'Gather them into the jar, or walk them there.':'Walk them there.'); }
+  if(hunted())return 'Something is hunting you. Shake it off first.';
+  if(G.progress&&G.progress.busy)return 'Not just now.';
+  const ct=G.cave&&G.cave._debug&&G.cave._debug.S&&G.cave._debug.S.trans;
+  if(P.inputEnabled===false||ct)return 'Not just now.';
+  if(P.grounded===false||P.gliding)return 'Find your feet first.';
+  return null;
+}
+const HERE='You’re already here.';
+/** why you can't travel to w right now (null: you can): departure first, then the destination */
+function travelBlock(w){
+  if(typeof w==='string')w=WP_BY[w];
+  if(!w)return 'There’s no such place on the chart.';
+  if(!wpShown(w))return 'You haven’t found the way there yet.';
+  const d=departBlock(); if(d)return d;
+  const P=G.player;
+  if(w.cave){
+    if(!loopOn()||!G.cave||!G.cave.enter)return 'The sea cave can’t be reached now.';
+    if(G.cave.inside&&G.cave.room&&G.cave.room(P.pos)==='mouth')return HERE;
+    return null;
+  }
+  if(w.id==='tree'&&!(G.flow&&G.flow.stagDead)&&!loopOn())return 'The Hollow Stag stands over the old tree. You’ll have to walk in.';
+  const s=standFor(w);
+  if(!s)return 'There’s nowhere safe to stand there right now.';
+  if(fogged(s))return `The fog has closed over ${w.name}. Feed the light to win it back.`;
+  if(!(G.cave&&G.cave.inside)&&dist2D(s,P.pos)<14)return HERE;
+  return null;
+}
+
+/* ---------- where you land: a dry, open, level spot near the waystone ---------- */
+function standOK(x,z){
+  try{
+    if(!G.world.walkable(x,z))return null;
+    const h=G.world.height(x,z), f=G.floorAt(x,z,h+2.5);
+    if(!isFinite(f)||Math.abs(f-h)>.35)return null;                  // on the ground (not a roof, a perch or a ledge)
+    if(f<((G.world.tide)||0)+.4||h<.4)return null;                   // above the sea at any tide
+    for(const [dx,dz] of [[.8,0],[-.8,0],[0,.8],[0,-.8]])if(Math.abs(G.world.height(x+dx,z+dz)-h)>.55)return null; // level enough
+    const rad=(G.player&&G.player.radius)||.38;
+    const p={x,y:f,z}; G.moveCharacter(p,.01,0,rad+.15,'travel'); if(Math.hypot(p.x-x-.01,p.z-z)>.03)return null; // not inside a collider
+    let open=0; for(let k=0;k<8;k++){ const a=k/8*TAU, q={x,y:f,z}; const r=G.moveCharacter(q,Math.cos(a)*1.2,Math.sin(a)*1.2,rad,'travel');
+      if(!r.blocked&&Math.hypot(q.x-x,q.z-z)>1)open++; }
+    return open>=6?f:null;
+  }catch(e){ return null; }
+}
+function standFor(w){
+  if(!w||w.cave)return null;
+  const [sx,sz,yaw]=w.stand;
+  for(let rr=0;rr<=7;rr+=.75){ const n=rr?Math.max(6,Math.round(rr*5)):1;
+    for(let k=0;k<n;k++){ const a=k/n*TAU, x=sx+Math.cos(a)*rr, z=sz+Math.sin(a)*rr, f=standOK(x,z); if(f!=null)return {x,y:f,z,yaw}; } }
+  return null;
+}
+
+/* ---------- choosing in the open map ---------- */
+function travelList(){ return WAYPOINTS.filter(wpShown); }
+function select(w,pan){
+  selWp=w||null; if(!w||!pan)return;
+  const r=recOf(w), p=r&&posOf(r); if(!p)return;
+  const portrait=innerHeight>innerWidth; view.tx=p.x*S-(portrait?0:1.5); view.tz=p.z*S+(portrait?0:1); view.tdist=Math.min(view.tdist,34); clampView();
+}
+function cycle(dir){
+  const L=travelList(); if(!L.length)return null;
+  let i=selWp?L.indexOf(selWp):-1;
+  if(i<0){ // start from the waystone nearest to you
+    const P=playerMapPos()||{x:0,z:0}; let best=0,bd=1e9; L.forEach((w,k)=>{ const p=posOf(recOf(w))||{x:0,z:0}; const d=Math.hypot(p.x-P.x,p.z-P.z); if(d<bd){bd=d;best=k;} });
+    i=dir>0?best:best+1; }
+  i=((i+dir)%L.length+L.length)%L.length;
+  select(L[i],true); return L[i];
+}
+function waypointAt(cx,cy){
+  let best=null, bd=30;
+  for(const r of markers){ if(r.kind!=='waypoint'||!r.shownNow||!r.travel)continue;
+    for(const s of [r.screen,r.base]){ if(!s)continue; const d=Math.hypot(s.x-cx,s.y-cy); if(d<bd){ bd=d; best=r.wp; } }
+    if(r.el&&r.el.classList.contains('on')){ const b=r.el.getBoundingClientRect(); if(cx>=b.left-4&&cx<=b.right+4&&cy>=b.top-4&&cy<=b.bottom+4&&!best)best=r.wp; } }
+  return best;
+}
+
+/* ---------- the confirm card ---------- */
+let cfEl=null, cfGo=null, cfStay=null, cfTitle=null, cfWhy=null, cfEye=null, blockedEl=null, blockedT=0;
+function buildConfirm(){
+  cfEl=document.createElement('div'); cfEl.className='mp-confirm'; cfEl.hidden=true; cfEl.setAttribute('role','alertdialog'); cfEl.setAttribute('aria-modal','true');
+  cfEl.innerHTML=`<span class="eyebrow">Fast travel</span><h3 id="mpcfT"></h3><p class="mp-why"></p>
+    <div class="mp-cbtns"><button type="button" class="mp-btn" data-mp="stay">Stay</button><button type="button" class="mp-btn primary" data-mp="go">Travel</button></div>`;
+  cfEl.setAttribute('aria-labelledby','mpcfT');
+  ui.appendChild(cfEl);
+  cfGo=cfEl.querySelector('[data-mp=go]'); cfStay=cfEl.querySelector('[data-mp=stay]'); cfTitle=cfEl.querySelector('h3'); cfWhy=cfEl.querySelector('.mp-why'); cfEye=cfEl.querySelector('.eyebrow');
+  cfGo.addEventListener('click',e=>{ e.stopPropagation(); confirmGo(); });
+  cfStay.addEventListener('click',e=>{ e.stopPropagation(); hideConfirm(); });
+  cfEl.addEventListener('pointerdown',e=>e.stopPropagation());
+  blockedEl=ui.querySelector('.mp-blocked');
+}
+/** open the card for w: "Travel to X?" — or, when something stops you, the reason and only a way back */
+function askTravel(w){
+  if(!w||!cfEl)return false;
+  const why=travelBlock(w);
+  confirmW=w; cfEl.hidden=false; cfEl.classList.toggle('blocked',!!why);
+  cfEye.textContent=why?'You can’t travel now':'Fast travel';
+  cfTitle.textContent=why?w.name:'Travel to '+w.name+'?';
+  cfWhy.textContent=why||w.blurb||'';
+  cfGo.hidden=!!why;
+  hintMode=''; refreshHints(); if(why)cfStay.innerHTML=cfStay.innerHTML.replace(/^Stay/,'Back');
+  try{ (why?cfStay:cfGo).focus({preventScroll:true}); }catch(_){}
+  M.debug.lastBlock=why||null;
+  G.emit('map:ask',{id:w.id,blocked:why||null});
+  return !why;
+}
+function hideConfirm(quiet){
+  if(!cfEl)return; const was=!!confirmW; confirmW=null; cfEl.hidden=true;
+  if(was&&!quiet&&M.isOpen)try{ closeBtn.focus({preventScroll:true}); }catch(_){}
+}
+function confirmGo(){ const w=confirmW; if(!w)return false; const why=travelBlock(w); if(why){ askTravel(w); return false; } hideConfirm(true); return startTravel(w); }
+/** a quiet line under the title plate when nothing can be travelled to right now (the departure reason) */
+function refreshBlocked(force){
+  if(!blockedEl)return; blockedT-=1; if(!force&&blockedT>0)return; blockedT=15;
+  const why=travelList().length?departBlock():null;
+  blockedEl.hidden=!why; if(why)blockedEl.textContent='Fast travel: '+why;
+}
+
+/* ---------- the journey: fade out, move, settle the camera, fade in ---------- */
+const TR={on:false,t:0,w:null,moved:false,shown:false,last:0,din:.55,hold:.22,dout:.6};
+const reduceMotion=()=>{ try{ return matchMedia('(prefers-reduced-motion: reduce)').matches; }catch(_){ return false; } };
+function startTravel(w,o={}){
+  if(TR.on)return false;
+  if(!o.force){ const why=travelBlock(w); if(why)return false; }
+  const rm=reduceMotion();
+  Object.assign(TR,{on:true,t:0,w,moved:false,shown:false,last:performance.now(),din:rm?.05:.55,hold:rm?.12:.22,dout:rm?.1:.6});
+  const f=$('fade'); if(f){ TR.prevTrans=f.style.transition; f.style.transition=`opacity ${TR.din}s ease-in`; f.style.opacity='1'; }
+  if(M.isOpen)close(true);                      // the chart folds away under the black; the game stays paused until you land
+  if(G.state.mode==='play')G.setMode('paused');
+  try{ G.player.setControl&&G.player.setControl(false); }catch(_){}
+  G.emit('map:travel',{id:w.id,phase:'start'});
+  return true;
+}
+function arrive(w){
+  const P=G.player;
+  if(w.cave){
+    G.cave.enter('mouth',{instant:true});                    // cave.js's own way in: checkpoint, swarm, darkness
+    // cave.js lands you at the seaward edge of the mouth (knee-deep at high tide); travel sets you down on dry sand further in
+    const C=G.cave, O=C.origin, wl=C.water();
+    if(P.pos.y-O.y<wl+.15&&C.floorVis){ for(let z=P.pos.z-O.z;z>-23;z-=.5){ const f=C.floorVis(0,z);
+      if(isFinite(f)&&f>=wl+.2&&C.room(new THREE.Vector3(O.x,O.y+f,O.z+z))==='mouth'){ P.teleport(O.x,O.y+f,O.z+z,PI); break; } } }
+  }
+  else{
+    if(G.cave&&G.cave.inside&&G.cave.exit)G.cave.exit({instant:true}); // cave.js's own way out (restores the island checkpoint)
+    const s=standFor(w)||{x:w.stand[0],y:G.floorAt(w.stand[0],w.stand[1]),z:w.stand[1],yaw:w.stand[2]};
+    P.teleport(s.x,s.y,s.z,s.yaw);
+  }
+  if(P.aimCamera)P.aimCamera(P.heading,.26);                 // settle the follow camera behind you
+  if(G.focus&&P.pos)G.focus.copy(P.pos);
+  if(!w.cave)reveal(P.pos.x,P.pos.z,revealRadius(P.pos));
+  if(!wpOn[w.id])unlockWp(w,{quiet:true});
+  G.emit('map:travel',{id:w.id,phase:'arrive'});
+}
+function updateTravel(dt){
+  TR.t+=dt; const f=$('fade');
+  if(!TR.moved&&TR.t>=TR.din){
+    TR.moved=true;
+    try{ arrive(TR.w); }catch(e){ console.error('travel',e); }
+    if(G.state.mode==='paused'){ const pc=$('pause'); if(pc)pc.hidden=true; G.setMode('play'); if(!G.isMobile)try{ G.input.lockPointer(); }catch(_){} }
+    try{ G.player.setControl&&G.player.setControl(false); }catch(_){}
+  }
+  if(TR.moved&&!TR.shown&&TR.t>=TR.din+TR.hold){ TR.shown=true; if(f){ f.style.transition=`opacity ${TR.dout}s ease-out`; f.style.opacity='0'; } if(G.headless)G.headless.draw(2); }
+  if(TR.shown&&TR.t>=TR.din+TR.hold+TR.dout){
+    TR.on=false; if(f)f.style.transition=TR.prevTrans||'';
+    try{ G.player.setControl&&G.player.setControl(true); }catch(_){}
+    const w=TR.w; TR.w=null; G.emit('map:travel',{id:w.id,phase:'done'});
+  }
+}
+
+/* ================================================================ 12. COLLECTIBLES ON THE CHART
+   Heart Shards and Keeper's Caches (progression.js) get a pin once spotted: within ~12 m, or in view (camera frustum,
+   terrain not in the way) within ~55 m / ~40 m. Taken or opened → a faded pin. Cave ones sit by the cave mouth. */
+const seenC={};
+const _fr=new THREE.Frustum(), _fm=new THREE.Matrix4(), _fp=new THREE.Vector3();
+function syncCollectibles(){
+  const PR=G.progress; if(!PR)return;
+  const caveSpot=(dx)=>()=>{ const m=LM().caveMouth; return m?{x:m.x+dx,z:m.z+4}:null; };
+  for(const s of PR.spots||[]){ const id='shard:'+s.id; if(byId[id])continue;
+    addMarker({id,kind:'shard',label:s.cave?'Heart Shard (in the sea cave)':'Heart Shard',pos:s.cave?caveSpot(2.6):{x:s.pos.x,z:s.pos.z},
+      item:{done:()=>!!PR.state.shards[s.id],doneLabel:'Heart Shard (taken)'},
+      visible:()=>!!seenC[id]&&(!s.cave||(loopOn()&&!!(G.caveBoss&&G.caveBoss.discovered)))&&(!!PR.state.shards[s.id]||!s.when||s.when())}); }
+  for(const c of PR.caches||[]){ const id='cache:'+c.id; if(byId[id])continue;
+    addMarker({id,kind:'cache',label:c.cave?'Keeper’s Cache (in the sea cave)':'Keeper’s Cache',pos:c.cave?caveSpot(-2.6):{x:c.pos.x,z:c.pos.z},
+      item:{done:()=>!!PR.state.caches[c.id],doneLabel:'Keeper’s Cache (opened)'},
+      visible:()=>!!seenC[id]&&(!c.cave||(loopOn()&&!!(G.caveBoss&&G.caveBoss.discovered)))&&(!!PR.state.caches[c.id]||!c.when||c.when())}); }
+}
+function inView(p,far){
+  const P=G.player.pos, cam=G.camera; if(!cam)return false;
+  if(Math.hypot(p.x-P.x,p.z-P.z)>far)return false;
+  cam.updateMatrixWorld(); _fm.multiplyMatrices(cam.projectionMatrix,_fm.copy(cam.matrixWorld).invert()); _fr.setFromProjectionMatrix(_fm);
+  if(!_fr.containsPoint(_fp.set(p.x,p.y+.3,p.z)))return false;
+  if(G.cave&&G.cave.inside)return true;
+  const c=cam.position, n=12; // terrain in the way?
+  for(let k=1;k<n;k++){ const t=k/n, x=lerp(c.x,p.x,t), z=lerp(c.z,p.z,t), y=lerp(c.y,p.y+.5,t); if(H(x,z)>y+.25)return false; }
+  return true;
+}
+function spotCollectibles(){
+  const PR=G.progress, P=G.player; if(!PR||!P||!P.pos||G.state.mode!=='play')return;
+  const inCave=!!(G.cave&&G.cave.inside);
+  const look=(id,it,taken,near,far)=>{ if(seenC[id])return; if(taken){ seenC[id]=1; return; }
+    if(!!it.cave!==inCave||(it.when&&!it.when()))return;
+    const d=Math.hypot(it.pos.x-P.pos.x,it.pos.z-P.pos.z);
+    if((d<near&&Math.abs(it.pos.y-P.pos.y)<14)||inView(it.pos,far))seenC[id]=1; };
+  for(const s of PR.spots||[])look('shard:'+s.id,s,!!PR.state.shards[s.id],12,inCave?24:55);
+  for(const c of PR.caches||[])look('cache:'+c.id,c,!!PR.state.caches[c.id],10,inCave?20:40);
+}
+
 let discT=0, lastPct=-1;
 function updatePlay(dt){
   if(pendingRetro){ pendingRetro=false; if(!loadedMap){ retro(); seen.set(bits); } }
+  if(wpRetroPending){ wpRetroPending=false; retroWaypoints(); }
   padPlay();
   discT-=dt; if(discT>0)return; discT=.25;
+  try{ visitWaypoints(); spotCollectibles(); }catch(e){ console.error('map waypoints',e); }
   const P=G.player; if(!P||!P.pos||(G.cave&&G.cave.inside))return;
   const n=reveal(P.pos.x,P.pos.z,revealRadius(P.pos));
   if(n){ const pct=percent(); if(pct!==lastPct){ lastPct=pct; G.emit('map:discover',{cells:n,percent:pct}); } }
@@ -1075,10 +1501,14 @@ G.system('map',{order:58,modes:'always',
   init(){
     for(let j=0;j<NZ;j++)for(let i=0;i<NX;i++){ const x=B.x0+(i+.5)*CW, z=B.z0+(j+.5)*CD; land[idx(i,j)]=H(x,z)>.4?1:0; }
     landN=Math.max(1,land.reduce((a,b)=>a+b,0));
-    defaultMarkers(); buildUI();
+    defaultMarkers(); addWaypointMarkers(); buildUI();
+    G.on('cave:enter',()=>{ const w=WP_BY.cave; if(w&&!wpOn.cave&&G.loop&&G.loop.active)unlockWp(w); });
+    G.on('progress:shard',e=>{ if(e&&e.id)seenC['shard:'+e.id]=1; });
+    G.on('progress:cache',e=>{ if(e&&e.id)seenC['cache:'+e.id]=1; });
   },
   update(dt){
     const mode=G.state.mode; swallowPause=false;
+    if(TR.on){ const now=performance.now(); let rdt=(now-TR.last)/1000; TR.last=now; if(dt>0)rdt=dt; updateTravel(clamp(rdt,0,.1)); }
     if(M.isOpen){
       if(mode!=='paused'){ close(true); return; }
       const now=performance.now(); let rdt=(now-lastReal)/1000; lastReal=now; if(dt>0)rdt=dt; // G.step passes dt; real frames pass 0 while paused

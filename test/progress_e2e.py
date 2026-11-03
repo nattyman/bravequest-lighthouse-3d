@@ -26,14 +26,14 @@ window.T={
 
 STEPS=[
  ("start", "document.getElementById('begin').click(); G.debugStartLoop(); G.step(1/30,20); T.clear(); G.progress.debug.noSweep=true; G.progress.debug.reset(); G.progress.apply(); G.player.hp=G.player.maxHp; G.step(1/30,5); G.progress.summary()",
-   lambda r: r['maxHp']==10 and r['shards']==0 and r['marks']==0),
+   lambda r: r['maxHp']==4 and r['shards']==0 and r['marks']==0),   # 2 hearts to start (BASE_HP)
  # four shards in the open / on perches -> the 4th is a heart (the new heart fills in when the lift ends)
  ("shards", "(()=>{ const got=['hounds','roots','needle','west'].map(id=>T.shard(id)); return {got, s:G.progress.summary(), hearts:document.getElementById('hearts').children.length}; })()",
-   lambda r: all(r['got']) and r['s']['shards']==4 and r['s']['maxHp']==12 and r['hearts']==6),
+   lambda r: all(r['got']) and r['s']['shards']==4 and r['s']['maxHp']==6 and r['hearts']==3),
  ("shard-lift", "(()=>{ G.progress.debug.reset(); G.progress.apply(); ['hounds','roots','needle'].forEach(T.shard); const s=G.progress.spots.find(q=>q.id==='west');"
    " T.at(s.pos.x+.3,s.pos.y-.55,s.pos.z); G.step(1/30,10); const during={busy:G.progress.rewarding,ctl:G.player.inputEnabled,maxHp:G.player.maxHp,card:document.getElementById('rewardCard').textContent};"
    " G.step(1/30,60); const after={ctl:G.player.inputEnabled,maxHp:G.player.maxHp,hp:G.player.hp}; T.settle(); return {during,after}; })()",
-   lambda r: r['during']['busy']=='shard' and r['during']['ctl'] is False and r['during']['maxHp']==10 and '4 of 4' in r['during']['card'] and r['after']['ctl'] is True and r['after']['maxHp']==12),
+   lambda r: r['during']['busy']=='shard' and r['during']['ctl'] is False and r['during']['maxHp']==4 and '4 of 4' in r['during']['card'] and r['after']['ctl'] is True and r['after']['maxHp']==6),
  # a keeper's cache: interact -> a Mark + its loot
  ("cache", "(()=>{ const c=G.progress.caches.find(q=>q.id==='tower'); const g0=G.inv.count('glowcap'); T.at(c.pos.x-1.2,c.pos.y,c.pos.z); G.step(1/30,4);"
    " const ia=G.interact.pick(G.player.pos); const lab=ia&&G.interact.label(ia); ia&&ia.use(); G.step(1/30,30); const card=document.getElementById('rewardCard').textContent; T.settle(30);"
@@ -100,7 +100,7 @@ async def main():
         await pg.reload(); await pg.wait_for_timeout(5000); await pg.evaluate(HELP)
         await pg.click('#continue'); await pg.wait_for_timeout(2500)
         await run(pg,'retro',"(()=>{ G.step(1/30,90); T.settle(); return G.progress.summary(); })()",
-                  lambda r: r['maxHp']==14 and r['wings']==2 and r['marks']==6 and 'charm' in r['upgrades'] and r['shards']==0, fails)
+                  lambda r: r['maxHp']==8 and r['wings']==2 and r['marks']==6 and 'charm' in r['upgrades'] and r['shards']==0, fails)
         await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250)
         await pg.screenshot(path='/tmp/claude-0/progress/e2e_end.png',timeout=120000)
         real=[e for e in errs if '404' not in e]

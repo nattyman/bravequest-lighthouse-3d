@@ -545,7 +545,8 @@ const cl={lag:new V3(),lagV:new V3(),flare:.03,flareV:0,lift:0,liftV:0,rigid:.3}
    G.player API
    --------------------------------------------------------------------- */
 Object.assign(P,{
-  radius:.38,height:1.45,hp:10,maxHp:10,stamina:1,exhausted:false,alive:true,grounded:true,state:'idle',
+  radius:.38,height:1.45,hp:4,maxHp:4,  // 2 hearts; progression.js derives maxHp (BASE_HP + hearts earned)
+  stamina:1,exhausted:false,alive:true,grounded:true,state:'idle',
   lockTarget:null,gliding:false,sprinting:false,inputEnabled:true,model:null,heading:START.yaw,camYaw:START.yaw,
   hands:{left:null,right:null},
   actionLock:0,speedMul:1,poseHooks:[], // hooks for other modules' actions (potions.js)

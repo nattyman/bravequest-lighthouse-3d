@@ -1,5 +1,6 @@
 /* =====================================================================
    progression.js — rewards, collectibles and upgrades (spec: PROGRESSION.md)
+   - You start with 2 hearts (BASE_HP 4 half-hearts); max 7: 2 + 3 from shards + 2 boss hearts
    - Heart Shards (12 on the island, 4 = +1 heart) with a violet glint + chime
    - Keeper's Hearts from the Hollow Stag and the Undertow (+1 heart each)
    - Moth Wings: every 2 negatives freed -> +20% stamina (4 max)
@@ -26,7 +27,9 @@ const isPlay=()=>G.state.mode==='play';
 const H=(x,z)=>{ try{ const h=G.world.height(x,z); return isFinite(h)?h:0; }catch(_){ return 0; } };
 
 /* ---------------------------------------------------------------- numbers */
-const SHARDS_PER_HEART=4, WING_EVERY=2, WING_STAM=.2, BASE_HP=10, CHIME_R=12, PICK_R=1.25;
+// BASE_HP: you start with 2 hearts (Heath: hearts come quickly early on). maxHp is derived from it on every load, so every
+// save — old ones included — moves to the new base; hp is clamped to the new maximum (apply()).
+const SHARDS_PER_HEART=4, WING_EVERY=2, WING_STAM=.2, BASE_HP=4, CHIME_R=12, PICK_R=1.25;
 
 /* ---------------------------------------------------------------- state (persisted) */
 const S={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};

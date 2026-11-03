@@ -85,7 +85,7 @@ function base(o){
   const lh=LM().lighthouse||{x:180,y:42,z:0};
   return Object.assign({v:1,at:Date.now(),quiet:true,step:'done',objective:'The lamp burns',sub:'Explore the island freely',target:null,targetName:'',
     cp:[lh.x-8,lh.y,lh.z+2],cpYaw:-PI/2,cpName:'the lighthouse',
-    flags:{lanternFound:true,lanternBeat:true},pos:null,yaw:-PI/2,hp:10,maxHp:10,
+    flags:{lanternFound:true,lanternBeat:true},pos:null,yaw:-PI/2,hp:20,maxHp:20, // hp is clamped to the derived maxHp on load: full health
     lantern:{found:true,carried:false,shut:false,cured:true,inCradle:true,pos:null},
     staff:true,cloak:true,lampCured:true,bossDead:true,freed:[],loop:false,mods:{}},o||{});
 }
@@ -121,7 +121,7 @@ const STARTS=[
   {id:'lamp-failed',name:'The lamp failed',sub:'The storm lantern’s flame was drunk · staff in hand, at the foot of the stairs: Halloran waits outside',group:'Act 1'},
   {id:'stag',name:'Before the Hollow Stag',sub:'Edge of the old wood, staff in hand · the Stag guards Maren’s lantern',group:'Act 1'},
   {id:'finale',name:'Before the finale boss',sub:'Lamp cured, staff in hand, at the foot of the stairs: step outside',group:'Act 1'},
-  {id:'late',name:'Late game',sub:'Loop running · 10 hearts, 4 Moth Wings, every upgrade, all shards and caches · moth jar',group:'Act 1'},
+  {id:'late',name:'Late game',sub:'Loop running · 7 hearts (the most there are), 4 Moth Wings, every upgrade, all shards and caches · moth jar',group:'Act 1'},
   {id:'sandbar',name:'The sandbar, low tide',sub:'Loop running, lantern baited, 60 moths · the cave mouth ahead',group:'The cave'},
   {id:'cave:mouth',name:'The Mouth',sub:'Just inside, nothing lit yet',group:'The cave'},
   {id:'cave:gallery',name:'Gallery of Keepers',sub:'Mouth lit · the gallery seal ahead',group:'The cave'},
@@ -139,7 +139,30 @@ function caveSwarmAndEnter(room){
   if(room&&G.cave&&G.cave.enter){ G.cave.enter(room==='after'?'arena':room,{instant:true}); }
   setTimeout(()=>{ giveSwarm(60); render(); },60); // top up anything the transfer missed
 }
+/* hearts at each start point: what a typical player has picked up by then (progression.js: 2 hearts to start, 4 Heart Shards
+   per heart, a Keeper's Heart from the Stag and the Undertow). The Act 1 road passes the needle (headland), the cliff-path
+   outcrop, the hamlet attic and the hounds' ring; by the cave a player has also found the stones, the spire, the old tree's roots
+   and the west tip. 'late' keeps progression.js's lateGame() (everything). */
+const ROUTE_ACT1=['needle','outcrop','attic','hounds'], ROUTE_LOOP=ROUTE_ACT1.concat(['stones','spire','roots','west']);
+function progressFor(id){
+  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id))?ROUTE_LOOP:null;
+  if(!shards)return null;
+  const o={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};
+  for(const k of shards)o.shards[k]=1;
+  if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
+  if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
+  return o;
+}
 function runStart(id){
+  const F=G.flow; if(!F)return;
+  if(id==='story'&&G.progress&&G.progress.debug)G.progress.debug.reset();   // a brand-new game: 2 hearts, nothing found
+  const b0=F.begin, pr=progressFor(id);
+  if(pr)F.begin=s=>{ if(s&&typeof s==='object'){ s.mods=s.mods||{}; if(!s.mods.progress)s.mods.progress=pr; } return b0(s); };
+  try{ runStart0(id); } finally{ F.begin=b0; }
+  if(G.map&&G.map.debug&&G.map.debug.resetWaypoints)G.map.debug.resetWaypoints();       // waystones + spotted collectibles for this point
+  if(G.player&&G.player.alive)G.player.hp=G.player.maxHp;
+}
+function runStart0(id){
   const F=G.flow; if(!F)return;
   testMode();
   closePanel(true);

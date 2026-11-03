@@ -294,7 +294,7 @@ function heartSVG(fill){ // fill 0, 1 (half), 2 (full)
   ${fill?`<path d="${HEART}" fill="#c2405a" clip-path="url(#${id})"/><path d="M6 6.5c1.5-1.2 3-.8 3.8.2" stroke="#ffd6de" stroke-width="1.4" fill="none" stroke-linecap="round" clip-path="url(#${id})"/>`:''}</svg>`;
 }
 function updateHearts(){
-  const P=G.player; const hp=Math.max(0,Math.round(P.hp||0)), max=Math.max(2,Math.round(P.maxHp||10));
+  const P=G.player; const hp=Math.max(0,Math.round(P.hp||0)), max=Math.max(2,Math.round(P.maxHp||4));
   const key=hp+'/'+max; if(key===lastHearts)return; lastHearts=key;
   const grew=lastMax>0&&max>lastMax, from=lastMax/2; lastMax=max; // a new heart (progression.js) grows in with a glow
   let h=''; for(let i=0;i<max/2;i++){const v=hp-i*2; h+=`<div class="heart${grew&&i>=from?' born':''}">${heartSVG(v>=2?2:v===1?1:0)}</div>`;}

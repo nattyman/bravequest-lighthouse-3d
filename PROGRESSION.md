@@ -5,7 +5,9 @@ small collectibles that add up, boss rewards, and upgrades bought at the keeper'
 everything is a keeper's relic, an ether-thing or a moth-thing, never generic "loot".
 
 ## 1. Heart Shards and Keeper's Hearts (health)
-- Start: 5 hearts (`maxHp` 10, half-heart units). Max reachable in this build: 10 hearts.
+- Start: **2 hearts** (`maxHp` 4, half-heart units; `BASE_HP` in progression.js — was 5 hearts until v15, Heath: hearts come
+  quickly early on). `maxHp` is derived on every load, so older saves move to the new base and hp is clamped to it.
+  Max reachable in this build: 7 hearts (2 + 3 from shards + 2 boss hearts).
 - **Heart Shards** — "a sliver of the old lamp's glass, still warm". 4 shards = +1 heart. **12 shards** on the island (=3 hearts).
   Place them where they reward exploring and the movement kit: on top of the standing stones (double jump), a cliff ledge only
   reachable by gliding down from the headland, a sea stack at low tide, the hamlet (an attic / roof), inside the forest
@@ -13,7 +15,7 @@ everything is a keeper's relic, an ether-thing or a moth-thing, never generic "l
   a blighted grove, one in the sea cave off the main path, the tower gallery outside the lamp room, etc. Each spot should be
   visible from somewhere so the player can spot the glint (a soft violet sparkle + a faint chime within ~12 m).
 - **Keeper's Heart** (+1 full heart, refills hp) from the **Hollow Stag** and the **Undertow**. The Gloaming instead gives
-  2 Keeper's Marks and the Lantern Charm (below). Total: 5 + 2 boss hearts + 3 from shards = **10 hearts**.
+  2 Keeper's Marks and the Lantern Charm (below). Total: 2 + 2 boss hearts + 3 from shards = **7 hearts**.
 - Existing saves: grant boss hearts retroactively on load if the boss is already dead.
 
 ## 2. Stamina — Moth Wings
@@ -55,8 +57,8 @@ caches found (x/8), shards found (x/12), negatives freed (x/8), blights cured, b
   "late game" start point with all upgrades.
 - New `test/progress_e2e.py`: pick up a shard (×4 → heart), open a cache, buy each upgrade and verify its effect, Moth Wings
   on freeing negatives, boss hearts, journal counts, save/reload/Continue, retroactive grants from an old save.
-- Balance check: the Hollow Stag must stay "challenging, but not too hard" for a player who arrives with 5–6 hearts and no
-  upgrades — don't make the game need upgrades to finish Act 1.
+- Balance check: the Hollow Stag must stay "challenging, but not too hard" for a player who arrives with 2–3 hearts (v15; was
+  5–6) and no upgrades — don't make the game need upgrades to finish Act 1. See §9.
 
 ## 8. Placement (as built — `js/progression.js`, verified by script)
 Movement kit measured in-game (30 fps steps): **jump peak 1.15 m**, **double jump peak ≈1.8 m** (needs the cloak),
@@ -98,3 +100,28 @@ The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lig
 Marks: 8 caches + Stag 1 + Undertow 2 + Gloaming 2 + first cure of each blight 1×3 = **16**. Temper costs 12 Marks for all seven
 (Lantern Charm is the Gloaming's gift, so 9 in practice). The Temper tab only exists at the benches, which only work in the
 core loop — Act 1 (and the Hollow Stag) is untouched by upgrades; only shards and Moth Wings can add up before it.
+
+## 9. The 2-heart start (v15) — balance check
+Damage is in half-hearts; a fresh player has 4.
+| threat | where / when | damage | hits to fall from 2 hearts |
+|---|---|---|---|
+| falling into the sea / a void (respawn at the checkpoint) | anywhere | 1 | 4 |
+| a hard landing (> 14 m drop) | running off the headland's west face without the cloak | 2 | 2 |
+| hound bite | the moor pack (3), the forest | 1 | 4 |
+| hollow claw / lunge | the hamlet (3), the forest | 2 | 2 |
+| brineling pinch | the cave, the raft raids | 1 | 4 |
+| the Hollow Stag: charge / sweep / stomp ring | the old tree | **2** (charge was 3) / 2 / 2 | 2 |
+| the Gloaming: slam / sweep | the lighthouse | 2 / 2 | — (3–4 hearts by then) |
+| the Undertow: lash / surge | the cave's pool | 2 / 2 | — (5–6 hearts by then) |
+| the fog's chill | outside the light (core loop) | 1 every 2–9 s | — |
+Nothing one-shots a 2-heart player. The Stag's charge (3) took a fresh player to half a heart in one blow, so it now costs one
+heart like every other Stag attack (monsters.js `P.stag.chargeDmg`). Healing on the way: the 2 Mender's Draughts in the
+cottage chest (3 hearts each — a full refill at this size), glowing mushrooms, and the hearts monsters drop (35%).
+
+Hearts at each boss on the normal route (the devtools start points use the "typical" column):
+| boss | minimal (no detours) | typical | thorough |
+|---|---|---|---|
+| the Hollow Stag | 2 | 3 (needle, outcrop, attic, hounds' ring = 4 shards) | 3 + 2/4 (+ stones, spire) |
+| the Gloaming | 3 (+ the Stag's heart) | 4 | 4–5 |
+| the Undertow (core loop) | 3–4 | 5 (+ stones, spire, roots, west tip) | 6 |
+| after the Undertow | 4–5 | 6 | 7 |
