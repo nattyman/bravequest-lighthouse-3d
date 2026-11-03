@@ -141,7 +141,7 @@ PLACE=[
    " return {up,sp,mid,vig,push:!!push,back,ctl,through,room,stam:+(G.player.stamina-st0).toFixed(2)}; })()",
    lambda r: r['up'] and r['sp']<.5 and 15<r['mid'][0]<16.6 and r['vig']>.5 and r['push'] and r['back'][0]<15 and r['ctl'] and r['through'][0]>18 and r['room']=='mill' and r['stam']>=0),
  # the stair to the mill loft that was: up with the Glass; lowered on it, back to the present floor
- ("place:pastStair", "(()=>{ T.place.at(16.25,-6,-49.5,0); T.place.glass(true); T.place.walk(75); const top=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(40); const mid=T.place.L(); T.place.glass(false,40);"
+ ("place:pastStair", "(()=>{ T.place.at(16.25,-6,-49.5,0); G.step(1/30,12); for(const m of G.monsters.list.slice())if(m.alive&&!m.dying&&m.pos.distanceTo(G.player.pos)<30)G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)}); G.step(1/30,20); T.place.at(16.25,-6,-49.5,0); T.place.glass(true); T.place.walk(75); const top=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(40); const mid=T.place.L(); T.place.glass(false,40);"
    " const after=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(75); const noGlass=T.place.L(); return {top,mid,after,noGlass}; })()",
    lambda r: abs(r['top'][1]+3)<.2 and r['mid'][1]>-5.6 and abs(r['after'][1]+6)<.2 and abs(r['noGlass'][1]+6)<.2 and r['noGlass'][2]<-44.0),
  # an echo: the Glass raised at the chapel altar plays 'the bargain' (a caption + glass:echo)
