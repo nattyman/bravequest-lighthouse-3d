@@ -60,9 +60,9 @@ BOSS=[
  # the copies: through the Glass the real one is warm and solid, the copies empty; without it, his shadow lags his feet
  ("boss:copies", "(()=>{ const B=G.undercroftBoss; B.debug.hold(); if(!G.glass)G.glass={owned:true,raised:false,canSee:()=>true,_stub:true}; const g=G.glass; if(g.give)g.give({silent:true}); if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,30);"
    " const lag=B.figures.map(f=>({real:f.real,d:+Math.hypot(f.shadow.position.x-f.pos.x,f.shadow.position.z-f.pos.z).toFixed(2)}));"
-   " const was=g.raised; if(g.raise)g.raise(true); else g.raised=true; G.step(1/30,30); const look=B.figures.map(f=>({real:f.real,op:+f.mats.ink.opacity.toFixed(2),warm:+f.mats.warm.opacity.toFixed(2)}));"
+   " const P=G.player, rf=B.debug.real(); P.teleport(P.pos.x,P.pos.y,P.pos.z,Math.atan2(rf.pos.x-P.pos.x,rf.pos.z-P.pos.z)); if(P.aimCamera)P.aimCamera(P.heading,.05); G.step(1/30,3); if(g.raise)g.raise(true); else g.raised=true; G.step(1/30,30); const look=B.figures.map(f=>({real:f.real,seen:!g.canSee||g.canSee(f.pos)!==false,op:+f.mats.ink.opacity.toFixed(2),warm:+f.mats.warm.opacity.toFixed(2)}));"
    " if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,3); return {lag,look}; })()",
-   lambda r: all((x['d']>0.12) if x['real'] else (x['d']<0.05) for x in r['lag']) and all((x['warm']>0.15 and x['op']>0.8) if x['real'] else (x['op']<0.4 and x['warm']<0.05) for x in r['look'])),
+   lambda r: all((x['d']>0.12) if x['real'] else (x['d']<0.05) for x in r['lag']) and any(x['real'] and x['seen'] for x in r['look']) and all((x['warm']>0.15 and x['op']>0.8) if x['real'] else (x['op']<0.4 and x['warm']<0.05) for x in r['look'] if x['seen'])),
  ("boss:copyHit", "(()=>{ const B=G.undercroftBoss, P=G.player; T.hold(); const c=B.figures.find(f=>!f.real&&f.alive); const hp0=B.hp; T.boss.strike(c.pos,2); let proj=0; for(let i=0;i<30;i++){ G.step(1/30,1); proj=Math.max(proj,G.combat.projectiles.filter(p=>p.team==='enemy').length); }"
    " const hpA=B.hp; const r=B.debug.real(); T.boss.strike(r.pos,2); G.step(1/30,2); return {copyAlive:c.alive,bossHpAfterCopy:hpA,hp0,proj,realHit:hpA-B.hp}; })()",
    lambda r: r['copyAlive'] is False and r['bossHpAfterCopy']==r['hp0'] and r['proj']>=5 and r['realHit']>=2),
