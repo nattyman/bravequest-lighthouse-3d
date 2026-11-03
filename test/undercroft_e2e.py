@@ -135,7 +135,7 @@ PLACE=[
  ("place:wall", "(()=>{ T.place.at(13.6,-2,-24,Math.PI/2); T.place.walk(45); return {L:T.place.L(),room:G.undercroft.room(G.player.pos)}; })()",
    lambda r: r['L'][0]<15 and r['room']=='cellars'),
  # the Glass: raised, the past doorway is walkable (slow walk, vignette); lowered mid-way you're eased back, never trapped
- ("place:glassDoor", "(()=>{ G.glass.give({silent:true}); T.place.at(13.6,-2,-24,Math.PI/2); const st0=G.player.stamina; const up=T.place.glass(true); const sp=G.player.speedMul; T.place.walk(28);"
+ ("place:glassDoor", "(()=>{ G.glass.give({silent:true}); T.place.at(13.6,-2,-24,Math.PI/2); const st0=G.player.stamina; const up=T.place.glass(true); const sp=G.player.speedMul; for(let i=0;i<40&&T.place.L()[0]<15.5;i++)T.place.walk(2);"
    " const mid=T.place.L(); const vig=+getComputedStyle(document.getElementById('glassVig')).opacity; let push=null; G.on('undercroft:pastPush',e=>push=e); T.place.glass(false,35);"
    " const back=T.place.L(), ctl=G.player.inputEnabled; T.place.glass(true); T.place.walk(90); const through=T.place.L(), room=G.undercroft.room(G.player.pos); T.place.glass(false);"
    " return {up,sp,mid,vig,push:!!push,back,ctl,through,room,stam:+(G.player.stamina-st0).toFixed(2)}; })()",
