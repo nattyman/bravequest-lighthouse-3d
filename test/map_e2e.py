@@ -3,6 +3,7 @@ Covers: open/close with M, Esc, the pause card's Map button and a (faked) contro
 it's open; discovery grows as the player moves; markers stay hidden under clouds and appear once charted; the objective pin
 follows G.quest.target; discovery survives save -> reload -> Continue; an old save with no map data gets retroactive
 discovery from its quest progress; the map's draw calls stay under budget; no page errors. Screenshots in /tmp/claude-0/map/.
+Pointer lock is stubbed out (see HELP): headless Chrome's async lock/unlock otherwise re-pauses the game between steps.
 usage: python3 test/map_e2e.py [url]   (default http://localhost:8950/dev.html?debug&headless)
 """
 import asyncio, sys, time, json, os
@@ -12,6 +13,9 @@ OUT='/tmp/claude-0/map'; os.makedirs(OUT,exist_ok=True)
 BUDGET=150
 
 HELP=r"""(()=>{ window.T={};
+  // headless Chrome grants and drops pointer lock asynchronously; a late "unlock" lands while playing and flow.js pauses.
+  // The map's own logic doesn't depend on it, so the suite runs without pointer lock.
+  G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{}; try{ document.exitPointerLock&&document.exitPointerLock(); }catch(_){}
   T.st=id=>G.map.debug.state(id);
   T.tp=(x,z)=>{ G.player.teleport(x,G.world.height(x,z)+.2,z,0); G.step(1/30,12); };
   // a fake standard-mapping controller (core and the map both read navigator.getGamepads)
@@ -46,14 +50,16 @@ FRESH=[
    const back=!G.map.isOpen&&!document.getElementById('pause').hidden&&G.state.mode==='paused';
    document.getElementById('resume').click(); G.step(1/30,2);
    return {ok:card&&!!b&&open&&back&&G.state.mode==='play',card,open,back,mode:G.state.mode}; })()"""),
- ("controller", r"""(()=>{ T.padOn(); G.step(1/30,4); T.press(8); const open=G.map.isOpen&&G.state.mode==='paused'&&document.getElementById('pause').hidden;
-   G.step(1/30,10); const stayed=G.map.isOpen&&G.state.mode==='paused';
-   T.press(1); const closedB=!G.map.isOpen&&G.state.mode==='play'&&document.getElementById('pause').hidden;
-   G.step(1/30,6); T.press(8); const again=G.map.isOpen; T.press(8); const closedView=!G.map.isOpen&&G.state.mode==='play';
-   T.press(9); const menuPauses=G.state.mode==='paused'&&!document.getElementById('pause').hidden&&!G.map.isOpen;
+ ("controller", r"""(()=>{ T.padOn(); G.step(1/30,4); T.press(8); window.C={open:G.map.isOpen&&G.state.mode==='paused'&&document.getElementById('pause').hidden};
+   G.step(1/30,10); C.stayed=G.map.isOpen&&G.state.mode==='paused'; return true; })()""", "WAIT 400", "(()=>{ T.press(1); return true; })()", "WAIT 400",
+   r"""(()=>{ G.step(1/30,2); C.closedB=!G.map.isOpen&&G.state.mode==='play'&&document.getElementById('pause').hidden;
+   G.step(1/30,6); T.press(8); C.again=G.map.isOpen; return true; })()""", "WAIT 600",
+   r"""(()=>{ T.press(8); return true; })()""", "WAIT 400",
+   r"""(()=>{ G.step(1/30,2); C.closedView=!G.map.isOpen&&G.state.mode==='play';
+   T.press(9); C.menuPauses=G.state.mode==='paused'&&!document.getElementById('pause').hidden&&!G.map.isOpen;
    document.getElementById('resume').click(); G.step(1/30,2);
-   const help=[...document.querySelectorAll('#keys span, [data-pad-legend] span')].some(s=>/map/.test(s.textContent));
-   return {ok:open&&stayed&&closedB&&again&&closedView&&menuPauses&&help,open,stayed,closedB,again,closedView,menuPauses,help}; })()"""),
+   C.help=[...document.querySelectorAll('#keys span, [data-pad-legend] span')].some(s=>/map/.test(s.textContent));
+   C.ok=C.open&&C.stayed&&C.closedB&&C.again&&C.closedView&&C.menuPauses&&C.help; return C; })()"""),
  ("discovery", r"""(()=>{ const c0=G.map.debug.cells; const h=G.world.landmarks.hamlet; T.tp(h.x+6,h.z); const c1=G.map.debug.cells;
    T.tp(40,-30); T.tp(-120,0); const c2=G.map.debug.cells;
    return {ok:c1>c0&&c2>c1&&G.map.discovered(-20,30)&&G.map.discovered(40,-35)&&!G.map.discovered(-215,-90),c0,c1,c2,pct:G.map.percent()}; })()"""),
@@ -82,15 +88,16 @@ AFTER_RELOAD=[
  ("caveAndBlights", r"""(()=>{ G.map.open(); G.step(1/30,40); const c=T.st('cave'), w=T.st('blight:well');
    const b=G.blights.find(b=>b.id==='well'); const cured0=w&&w.shown; if(b)b.cured=true; G.step(1/30,2); const curedMesh=G.map.markers.find(m=>m.id==='blight:well').curedMesh.visible; if(b)b.cured=false; G.step(1/30,2);
    const benches=G.map.markers.filter(m=>m.kind==='bench'&&m.shownNow).length;
-   G.map.close(); G.step(1/30,2);
-   return {ok:c.shown&&cured0&&curedMesh&&benches>=1,cave:c.shown,well:cured0,glowcap:curedMesh,benches}; })()"""),
+   return {ok:c.shown&&cured0&&curedMesh&&benches>=1,cave:c.shown,well:cured0,glowcap:curedMesh,benches}; })()""", "WAIT 500",
+   "(()=>{ G.map.close(); G.step(1/30,2); return true; })()", "WAIT 500",
+   "(()=>{ G.step(1/30,1); return {ok:G.state.mode==='play'&&document.getElementById('pause').hidden,mode:G.state.mode}; })()"),
  ("shot:mid", "SHOT mid 'T.tp(-150,-40); T.tp(-60,-55); G.map.open(); window.__rolling=G.map.debug.revealing; G.map.view.tdist=46; G.map.view.tx=1; G.map.view.tz=1; G.step(1/30,4)' 250"),
  ("rollBack", r"""(()=>({ok:window.__rolling===true,rolling:window.__rolling}))()"""),
  ("shot:mid-settled", "SHOT mid-settled 'G.step(1/30,60)'"),
  ("drawCallsMid", "CALLS"),
- ("shot:full", "SHOT full 'G.map.revealAll(); G.map.close(); G.map.open(); G.map.view.tdist=58; G.map.view.tx=0; G.map.view.tz=0; G.step(1/30,60)'"),
+ ("shot:full", "SHOT full 'G.map.revealAll(); G.map.view.tdist=58; G.map.view.tx=0; G.map.view.tz=0; G.step(1/30,60)'"),
  ("drawCallsFull", "CALLS"),
- ("shot:lighthouse", "SHOT lighthouse 'const lh=G.world.lighthouse; G.map.view.tx=lh.x*.1-1.6; G.map.view.tz=lh.z*.1+1.4; G.map.view.tdist=15; G.map.view.tpitch=.72; G.step(1/30,80)'"),
+ ("shot:lighthouse", "SHOT lighthouse 'const lh=G.world.lighthouse; G.player.teleport(lh.doorOut.x-2.5,42,lh.doorOut.z+1,-Math.PI/2); G.map.view.tx=lh.x*.1-1.6; G.map.view.tz=lh.z*.1+1.4; G.map.view.tdist=17; G.map.view.tpitch=.66; G.step(1/30,80)'"),
  ("legend", r"""(()=>{ const b=document.querySelector('#mapUI [data-mp=legend]'); b.click(); const on=!document.querySelector('#mapUI .mp-legend').hidden; b.click();
    return {ok:on&&document.querySelector('#mapUI .mp-legend').hidden,on}; })()"""),
  ("hook", r"""(()=>{ let vis=false; const r=G.map.addMarker({id:'testShard',kind:'heart',label:'Heart Shard',pos:{x:-20,z:30},visible:()=>vis}); G.step(1/30,2); const a=T.st('testShard').shown;
@@ -105,8 +112,10 @@ async def run_steps(pg, steps, res):
     for st in steps:
         name=st[0]; parts=st[1:]
         try:
-            r=None
+            r=None; bad=[]
             for js in parts:
+                if js.startswith('WAIT '):
+                    await pg.wait_for_timeout(int(js[5:])); continue
                 if js.startswith('KEY '):
                     await pg.keyboard.press(js[4:]); await pg.wait_for_timeout(120); continue
                 if js=='RELOAD':
@@ -114,12 +123,14 @@ async def run_steps(pg, steps, res):
                 if js=='CALLS':
                     r=await pg.evaluate('T.calls(8)'); r['ok']=r['calls']<=BUDGET; r['budget']=BUDGET; continue
                 if js.startswith('SHOT'):
-                    bits=js.split("'"); tag=bits[0].split()[1]; code=bits[1]; wait=int(bits[2].strip() or 600) if len(bits)>2 and bits[2].strip() else 600
+                    bits=js.split("'"); tag=bits[0].split()[1]; code=bits[1]; wait=int(bits[2].strip()) if len(bits)>2 and bits[2].strip() else 1600
                     await pg.evaluate(f"(()=>{{ {code}; G.headless&&G.headless.draw(4); }})()"); await pg.wait_for_timeout(wait)
                     path=f'{OUT}/{tag}.png'; await pg.screenshot(path=path); print(f'shot {name:16s} {path}'); r='shot'; continue
                 r=await pg.evaluate(js)
+                if isinstance(r,dict) and 'ok' in r and not r['ok']: bad.append(r)
             if r=='shot': continue
-            good=bool(r.get('ok')) if isinstance(r,dict) else bool(r)
+            good=(bool(r.get('ok')) if isinstance(r,dict) else bool(r)) and not bad
+            if bad and r is not bad[-1]: r={'ok':False,'failed':bad,'last':r}
             res[name]=r; ok=ok and good; print(f"{'ok  ' if good else 'FAIL'} {name:16s} {json.dumps(r)[:420]}")
         except Exception as e: ok=False; print(f'FAIL {name:16s} {str(e)[:300]}')
     return ok

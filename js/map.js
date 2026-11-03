@@ -999,7 +999,7 @@ let pulse=0;
 function updateOpen(dt){
   uni.uTime.value+=dt; pulse+=dt;
   if(revealT>=0){ revealT+=dt; if(revealT>=revealDur){ revealT=-1; seen.set(bits); } uploadField(true); }
-  else if(dirtyTex)uploadField(true);
+  else if(dirtyTex){ uploadField(true); pctEl.textContent=percent()+'% of the island charted'; }
   keysMap(dt); padMap(dt); refreshHints();
   // ease the view
   const k=1-Math.exp(-10*dt); view.x=lerp(view.x,view.tx,k); view.z=lerp(view.z,view.tz,k); view.dist=lerp(view.dist,view.tdist,k); view.pitch=lerp(view.pitch,view.tpitch,k);
