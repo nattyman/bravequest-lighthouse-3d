@@ -1,6 +1,7 @@
 /* =====================================================================
    BRAVE QUEST: LIGHTHOUSE — monsters.js  (Creatures agent)
-   The fog's hunters: Hollows, Shade Hounds, and the Hollow Stag (boss).
+   The fog's hunters: Hollows, Shade Hounds, and the Hollow Stag (boss). Brinelings (the sea cave) and the Nameless
+   (the Hamlet Undercroft: placed by undercroft_boss.js; spawn('nameless',pos,{eatsMoths}) for the Wren defence).
    Act 1 (v12): the Stag guards Maren's lantern at the Resisting Tree (G.monsters.startStag(), flow.js calls it on
    approach); it is no longer the finale (finale_boss.js answers 'finale:start'). Its death emits boss:dead {who:'stag'}.
    API: G.monsters = {list, spawn(kind,pos,opts), alive(), boss, startStag(), stagArena(), reset()}
