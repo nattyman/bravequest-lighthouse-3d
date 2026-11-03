@@ -255,9 +255,11 @@ G.constrainers.push((prev,next,y,rad,who)=>{
   let s=Sphys(nx,nzz,ly)+rad; if(s<=0)return false;
   for(let k=0;k<4&&s>0;k++){ const e=.12, gx=Sphys(nx+e,nzz,ly)-Sphys(nx-e,nzz,ly), gz=Sphys(nx,nzz+e,ly)-Sphys(nx,nzz-e,ly), gl=Math.hypot(gx,gz)||1;
     nx-=gx/gl*(s+.005); nzz-=gz/gl*(s+.005); s=Sphys(nx,nzz,ly)+rad; }
-  const pen=s0+rad>0, eases=pen&&Sphys(nx,nzz,ly)<s0;   // already overlapping (dropped off a ledge into a blocker's skin): any move that eases out is allowed
-  if(s>.02&&!eases){ next.x=prev.x; next.z=prev.z; return true; }
+  if(s>.02&&!(s0+rad>0&&Sphys(nx,nzz,ly)<s0)){ next.x=prev.x; next.z=prev.z; return true; }
   const jump=Math.hypot(nx-px,nzz-pz), lim=Math.hypot(next.x-prev.x,next.z-prev.z)+.05;
+  // dropped off a ledge into a blocker's skin (the channel-head stairs beside the walkway shelf): ease out a step at a time.
+  // Only for a real overlap with a blocker box, never ordinary wall contact (that would let pushes tunnel)
+  const eases=blockS(px,pz,ly)+rad>.06&&Sphys(nx,nzz,ly)<s0;
   if(jump>lim){
     // a push bigger than the step would tunnel through thin walls; but when we're stuck inside, ease out a step at a time
     if(!eases){ next.x=prev.x; next.z=prev.z; return true; }
