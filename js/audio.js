@@ -53,6 +53,7 @@ function build(){
   for(const k of LAYER_NAMES){ const g=ctx.createGain(); g.gain.value=0; g.connect(synthBus); layers[k]={gain:g,w:0}; }
   buildAmbience();
   buildCave();
+  buildUndercroft();
   buildRecording();
   applyVolume();
 }
@@ -269,7 +270,7 @@ function updateAmbience(dt,ref,mode){
   const inside=mode!=='title'&&lh&&lh.inside?lh.inside(P.pos):false;
   const inBody=mode!=='title'&&lh&&lh.inBody?lh.inBody(P.pos):false;
   const forest=G.world.inForest?G.world.inForest(ref.x):ref.x<-70;
-  const cured=G.atmo.cured||0, ck=cv.k, out=1-ck;   // ck: 0 on the island, 1 deep in the cave
+  const cured=G.atmo.cured||0, ck=Math.max(cv.k,uc.k), out=1-ck;   // ck: 0 on the island, 1 deep in the cave (or the Undercroft)
   surfT-=dt; if(surfT<=0){surfT=.5; surfLevel=sampleSurf(ref);}
   const alt=U.smooth(14,44,ref.y), T=ctx.currentTime;
   windEnv(T);
@@ -292,8 +293,8 @@ function updateAmbience(dt,ref,mode){
   const swell=.55+.45*Math.sin(G.time*.75)*Math.sin(G.time*.31+1.3);
   // in the cave the sea is heard through rock: steady, low and booming (cv.surge swells it after each boom)
   const caveSurf=(.16+.12*swell+.12*cv.hiW+cv.surge*.25);
-  tgt(amb.surfG.gain,surfLevel*(.3+.35*swell)*(inBody?.1:1)*out+caveSurf*ck,.5);
-  tgt(amb.surfF.frequency,(380+swell*620)*out+(130+swell*90+cv.surge*160)*ck,.5);
+  tgt(amb.surfG.gain,surfLevel*(.3+.35*swell)*(inBody?.1:1)*out+caveSurf*cv.k,.5);   // (the Undercroft is under a field: no sea down there)
+  tgt(amb.surfF.frequency,Math.max(80,(380+swell*620)*out+(130+swell*90+cv.surge*160)*cv.k),.5);
   tgt(amb.droneG.gain,inBody?(.16*(1-cured*.85)):0,1.2);
   // corruption hum: nearest black patch
   let dmin=1e9; for(const q of (G.world.landmarks.patches||[])){const d=Math.hypot(q.x-ref.x,q.z-ref.z); if(d<dmin)dmin=d;}
@@ -469,6 +470,8 @@ function musicState(mode){
   if(rec.override)return {s:rec.override,base:rec.override};
   if(mode==='title')return {s:'title'}; if(mode==='ending')return {s:'ending'}; if(mode==='dead')return {s:'dead'};
   const P=G.player, lh=G.world.lighthouse;
+  // the Undercroft: the dungeon recording like the cave (dark / lit / combat); the Tithe-Keeper fight sets the 'boss' override
+  if(uc.inside&&!cv.inside){ const base=uc.lit?'caveLit':'caveDark'; return {s:threatNear(P)?'caveCombat':base,base}; }
   // the cave: near-silence in the dark, a music box where it's lit, the full theme only for the Undertow
   if(cv.inside){ const T=ctx.currentTime;
     if(cv.boss)return {s:'caveBoss'};
@@ -769,6 +772,7 @@ function updateMonsterSounds(){
   const L=extraMon.length?G.monsters.list.concat(extraMon):G.monsters.list;
   for(const m of L){
     if(m.kind==='brineling'||m.kind==='undertow'){ caveMonster(m); continue; }
+    if(m.kind==='nameless'){ namelessSnd(m); continue; }
     // player hits arrive via the 'strike' event (which records lastHit); any other hit is the moth swarm (creatures.js calls hb.hit directly)
     if(m.kind==='hollow'&&m.lastHit!=null&&lastHurtSeen.get(m)!==m.lastHit){ lastHurtSeen.set(m,m.lastHit); if(!m.dying)hollowHurt(m,true); }
     const prev=mStates.get(m); const s=m.state; if(prev===s)continue; mStates.set(m,s); if(prev===undefined)continue;
@@ -1208,6 +1212,130 @@ const caveAPI={ get active(){return cv.inside;}, get mix(){return +cv.k.toFixed(
   feed(id,pos,dur){ G.emit('cave:seal',{id,pos,dur}); },
   undertow:undertowFx, testMonsters:extraMon };
 
+
+/* =====================================================================
+   THE HAMLET UNDERCROFT — ambience (dripping brick, a low choir hum, the mill-race), the Nameless, Aldous Crane.
+   Inert until the player is inside (G.undercroft.inside, or by position at O = (0, 60, −800) before undercroft.js lands).
+   Recorded files: each sound first tries a recorded SFX under its reserved name (add the stem to SFX_LIST once
+   sfx/<name>.mp3 exists — reserved Suno names: crane_recite, crane_quill, crane_pages, crane_split, crane_death,
+   nameless_grab, glass_raise) and falls back to the synth version below.
+   ===================================================================== */
+const UC_SFX=['crane_recite','crane_quill','crane_pages','crane_split','crane_death','nameless_grab','glass_raise',
+  'uc_drip','uc_enter','uc_ledger','uc_hit','uc_resolve','nameless_murmur','nameless_hurt','nameless_death'];
+const uc={k:0,inside:false,evtInside:false,room:null,lit:false,boss:false,dripT:1,creakT:6,murT:0,log:[]};
+const ubed={};
+const UC_O=new THREE.Vector3(0,60,-800);
+function ucW(x,y,z){ const u=G.undercroft; if(u&&u.toWorld){ try{ const v=u.toWorld(x,y,z); if(v)return new THREE.Vector3(v.x,v.y,v.z); }catch(_){} } const o=(u&&u.origin)||UC_O; return new THREE.Vector3(o.x+x,o.y+y,o.z+z); }
+function buildUndercroft(){
+  ubed.bus=ctx.createGain(); ubed.bus.gain.value=0; ubed.bus.connect(ambBus);
+  // a low choir hum: three wordless voices on D–F–A, very slow vibrato, behind the brick
+  ubed.choirG=ctx.createGain(); ubed.choirG.gain.value=0; ubed.choirG.connect(ubed.bus);
+  const f1=filt('bandpass',560,5,ubed.choirG), f2=filt('bandpass',920,7,ubed.choirG), lp=filt('lowpass',900,.7,f1); void lp;
+  [[50,0],[53,.31],[57,.67],[38,.13]].forEach(([m,ph])=>{ const s=ctx.createOscillator(); s.type='sawtooth'; s.frequency.value=midi(m)*(1+(Math.random()-.5)*.004);
+    const v=ctx.createGain(); v.gain.value=midi(m)*.006; const l=ctx.createOscillator(); l.frequency.value=.18+ph*.2; l.connect(v); v.connect(s.frequency); l.start();
+    const g=ctx.createGain(); g.gain.value=m<40?.5:1; s.connect(g); g.connect(f1); g.connect(f2); s.start(); });
+  ubed.choirLfo=ctx.createGain(); ubed.choirLfo.gain.value=.012; const cl=ctx.createOscillator(); cl.frequency.value=.07; cl.connect(ubed.choirLfo); ubed.choirLfo.connect(ubed.choirG.gain); cl.start();
+  // the mill-race: running water in a stone channel (bright chatter + low body), louder near the mill
+  ubed.millG=ctx.createGain(); ubed.millG.gain.value=0; ubed.millG.connect(ubed.bus);
+  ubed.millF=filt('bandpass',900,.9,ubed.millG); loopNoise(ubed.millF);
+  loopNoise(filt('lowpass',320,.8,ubed.millG),true);
+  ubed.millAM=ctx.createGain(); ubed.millAM.gain.value=.3; const ml=ctx.createOscillator(); ml.frequency.value=2.3; ml.connect(ubed.millAM); ubed.millAM.connect(ubed.millG.gain); ml.start();
+  // a dry, close room tone (packed earth and brick)
+  ubed.roomG=ctx.createGain(); ubed.roomG.gain.value=0; ubed.roomG.connect(ubed.bus); loopNoise(filt('lowpass',140,.7,ubed.roomG),true);
+}
+/* -- synth placeholders: (t, out, o) -- */
+const US={
+  drip(t,out,o={}){ const f=o.f||rnd(1400,2600), g=o.g||rnd(.03,.07);  // brick: a short, dry tick and a tiny slap back off the vault
+    const s=osc('sine',f,t,t+.12,envGain(out,t,.001,g,0,.08)); s.frequency.exponentialRampToValueAtTime(f*1.4,t+.025);
+    noise(t,.01,filt('highpass',4000,.7,envGain(out,t,.0005,g*.5,0,.01)));
+    const s2=osc('sine',f*1.1,t+.07,t+.16,envGain(out,t+.07,.001,g*.25,0,.06)); void s2; },
+  creak(t,out){ const s=osc('sawtooth',rnd(60,90),t,t+1.2,filt('bandpass',rnd(300,520),5,envGain(out,t,.3,.035,.3,.5))); s.frequency.linearRampToValueAtTime(rnd(90,120),t+1); },
+  enter(t,out,o={}){ CS.creak(t,out,{f:80,bp:420,dur:.9,g:.08,rate:22}); S.thud(t+.85,{dest:out,g:.35,f0:110,f1:50,dur:.35}); if(!o.exit)for(let i=0;i<3;i++)US.drip(t+1.3+i*rnd(.3,.6),out); },
+  recite(t,out){ S.voice(t,10+(Math.random()*6|0),{dest:out,f:88,g:.07}); I.choir(out,t+.2,[50,57],2.6,.012); },
+  quill(t,out){ for(let i=0;i<9;i++){ const tt=t+i*.028; noise(tt,.02,filt('bandpass',rnd(3000,5200),4,envGain(out,tt,.001,.12,0,.02))); }   // a scratch of nib on vellum…
+    for(let i=0;i<6;i++)S.thud(t+.08+i*.04,{dest:out,g:.16,f0:150,f1:60,dur:.1,click:.5}); S.whoosh(t,{dest:out,f0:400,f1:2600,dur:.3,g:.18}); },          // …then the ink stabs
+  pages(t,out){ for(let i=0;i<22;i++){ const tt=t+Math.random()*.45; noise(tt,.025,filt('bandpass',rnd(1500,4500),1.5,envGain(out,tt,.002,rnd(.04,.1),0,.03))); }
+    S.whoosh(t,{dest:out,f0:500,f1:3000,dur:.5,g:.2,Q:.8}); },
+  split(t,out){ US.pages(t,out); I.choir(out,t,[50,53,56,61],2.8,.05); S.rumble(t,{dest:out,g:.25,dur:1.6,f0:60,f1:40}); },
+  death(t,out){ I.choir(out,t,[62,57,53,50],4.5,.06); S.dissolve(t+.4,{dest:out,dur:3.2,g:.2}); for(let i=0;i<5;i++)US.pages(t+i*.5,out); S.bell(t+3.6,50,{dest:out,g:.12,decay:4}); },
+  grab(t,out){ S.moan(t,{dest:out,f:150,dur:1.1,g:.11}); const b=filt('bandpass',700,1.2,envGain(out,t,.6,.06,.2,.3)); noise(t,1.2,b); },   // a breathy rising moan + cloth
+  murmur(t,out){ S.voice(t,3+(Math.random()*3|0),{dest:out,f:120,g:.035}); },
+  nHurt(t,out){ for(let i=0;i<3;i++){ const tt=t+i*.03; noise(tt,.04,filt('bandpass',rnd(1200,2600),2,envGain(out,tt,.002,.12,0,.05))); } S.moan(t+.05,{dest:out,f:200,dur:.5,g:.07}); },
+  nDeath(t,out){ S.dissolve(t,{dest:out,dur:1.4,g:.16}); S.moan(t,{dest:out,f:170,dur:1.6,g:.08}); },
+  glass(t,out,o={}){ if(o.on===false){ S.chime(t,[86,81],{dest:out,g:.035,step:.05,decay:.6}); return; }
+    S.chime(t,[81,86,88,93],{dest:out,g:.045,step:.06,decay:1.6}); S.whoosh(t,{dest:out,f0:1800,f1:5200,dur:.5,g:.06,Q:2}); },
+  ledger(t,out){ I.choir(out,t,[38,45,50,51],3,.05); S.hiss(t,{dest:out,dur:2.4,f0:900,f1:2400,g:.05,Q:2}); },
+  hit(t,out){ noise(t,.06,filt('bandpass',2200,1.2,envGain(out,t,.002,.14,0,.07))); S.thud(t,{dest:out,g:.22,f0:140,f1:60,dur:.18,click:.2}); },
+  resolve(t,out){ S.chime(t,[62,66,69,74,78],{dest:out,g:.06,step:.12,decay:2.6}); I.choir(out,t+.3,[50,54,57,62],5,.04); }
+};
+const UC_SYN={crane_recite:'recite',crane_quill:'quill',crane_pages:'pages',crane_split:'split',crane_death:'death',nameless_grab:'grab',glass_raise:'glass',
+  uc_drip:'drip',uc_enter:'enter',uc_ledger:'ledger',uc_hit:'hit',uc_resolve:'resolve',nameless_murmur:'murmur',nameless_hurt:'nHurt',nameless_death:'nDeath'};
+/** play an Undercroft sound: the recorded file `name` if loaded, else the synth fallback */
+function ufx(name,pos,o={}){
+  if(!ctx)return null; uc.log.push(name); if(uc.log.length>60)uc.log.shift();
+  if(hasSfx(name)){ const h=playSfx(name,Object.assign({pos,ref:o.ref||5},o.sfx||{})); if(h)return h; }
+  const fn=US[UC_SYN[name]]; if(!fn)return null;
+  fn(ctx.currentTime+(o.delay||0),o.dest||(pos?at(pos,o.ref||5):sfxBus),o.arg||{}); return true;
+}
+function ucRead(){
+  const u=G.undercroft, P=G.player;
+  if(u&&'inside' in u)uc.inside=!!u.inside;
+  else { const p=P&&P.pos; uc.inside=uc.evtInside||!!(p&&p.y>30&&Math.hypot(p.x-UC_O.x,p.z-(UC_O.z-50))<70); }
+  if(!uc.inside)return;
+  try{ uc.room=u&&u.room?u.room(P.pos):null; }catch(_){ uc.room=null; }
+  try{ uc.lit=!!(uc.room&&u&&u.isLit&&u.isLit(uc.room)); }catch(_){ uc.lit=false; }
+}
+let ucLastT=0;
+function updateUndercroft(_dt,mode){
+  ucRead();
+  const dt=U.clamp(ctx.currentTime-(ucLastT||ctx.currentTime),0,1); ucLastT=ctx.currentTime;
+  const k0=uc.k; uc.k=U.damp(uc.k,uc.inside?1:0,uc.inside?1.6:2.2,dt); if(uc.k<.001&&!uc.inside)uc.k=0;
+  const k=uc.k; if(k===0&&k0===0)return;
+  // acoustics: a close brick vault (the cave's convolver, a shorter send) — only while the cave isn't the one sounding
+  if(cv.k<.01){ tgt(revSend.gain,revBase*(1-k)+.06*k,.3); tgt(mSend.gain,.55*(1-k*.7),.3); tgt(aSend.gain,.15*(1-k),.3);
+    tgt(caveSend.gain,.36*k,.3); tgt(caveAmbSend.gain,.3*k,.3); tgt(caveMusSend.gain,.5*k,.3); tgt(caveCoreSend.gain,k*(rec.state==='boss'?.15:.5),.6); }
+  tgt(ubed.bus.gain,k*(mode==='paused'?.6:1),.3);
+  const P=G.player.pos, mill=ucW(22,-6,-50), dm=Math.hypot(P.x-mill.x,P.z-mill.z);
+  tgt(ubed.choirG.gain,(uc.lit?.022:.034)+(uc.boss?.02:0),1.5);
+  tgt(ubed.millG.gain,.22*U.clamp(1-(dm-4)/26,0,1)+.012,.8); tgt(ubed.millF.frequency,800+Math.sin(ctx.currentTime*.9)*180,.3);
+  tgt(ubed.roomG.gain,.05,1);
+  if(mode!=='play'||!uc.inside)return;
+  const t=ctx.currentTime;
+  if((uc.dripT-=dt)<=0){ uc.dripT=rnd(.5,2.2); const a=Math.random()*6.283, r=rnd(1.5,9);
+    ufx('uc_drip',new THREE.Vector3(P.x+Math.cos(a)*r,P.y+rnd(1.6,3.2),P.z+Math.sin(a)*r),{ref:3}); }
+  if((uc.creakT-=dt)<=0){ uc.creakT=rnd(9,18); const a=Math.random()*6.283; US.creak(t,at(new THREE.Vector3(P.x+Math.cos(a)*8,P.y+3,P.z+Math.sin(a)*8),6)); }
+}
+/* the Nameless: a sad breathy moan on the wind-up (the telegraph), paper-and-cloth on a hit, a sigh as they go */
+const nmon=new WeakMap();
+function namelessSnd(m){
+  if(!ctx)return; const P=G.player; let M=nmon.get(m); if(!M){ M={s:m.state,hit:m.lastHit,dead:false,mur:rnd(2,8)}; nmon.set(m,M); return; }
+  const d=Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z); if(d>40){ M.s=m.state; M.hit=m.lastHit; return; }
+  const pos=new THREE.Vector3(m.pos.x,m.pos.y+1.5,m.pos.z);
+  if(m.dying){ if(!M.dead){ M.dead=true; ufx('nameless_death',pos); } return; }
+  if(m.lastHit!=null&&m.lastHit!==M.hit){ M.hit=m.lastHit; ufx('nameless_hurt',pos); }
+  if(m.state!==M.s){ if(m.state==='windup')ufx('nameless_grab',pos,{ref:6}); else if(m.state==='attack')S.whoosh(ctx.currentTime,{dest:at(pos,4),f0:300,f1:1400,dur:.35,g:.18}); M.s=m.state; }
+  if(d<14&&(m.state==='chase'||m.state==='idle')){ M.mur-=1/30; if(M.mur<=0){ M.mur=rnd(5,11); ufx('nameless_murmur',pos,{ref:4}); } }
+}
+function wireUndercroft(){
+  G.on('undercroft:enter',()=>{ uc.evtInside=true; requestCave(); if(ctx)ufx('uc_enter',null); });
+  G.on('undercroft:exit',()=>{ uc.evtInside=false; if(ctx)ufx('uc_enter',null,{arg:{exit:true}}); });
+  G.on('undercroft:bossStart',()=>{ uc.boss=true; });
+  G.on('undercroft:bossReset',()=>{ uc.boss=false; });
+  G.on('undercroft:bossTelegraph',e=>{ if(!ctx||!e)return; const p=e.pos?new THREE.Vector3(e.pos.x,e.pos.y+2,e.pos.z):null;
+    if(e.kind==='quill')S.hiss(ctx.currentTime,{dest:p?at(p,6):sfxBus,dur:e.lead||1,f0:1200,f1:4200,g:.08,Q:3});
+    else if(e.kind==='pages')for(let i=0;i<10;i++){ const tt=ctx.currentTime+(e.lead||1)*i/10; noise(tt,.03,filt('bandpass',rnd(1800,4000),1.5,envGain(p?at(p,6):sfxBus,tt,.002,.03+.06*i/10,0,.03))); }
+    else if(e.kind==='ledger')ufx('uc_ledger',p,{ref:8}); });
+  G.on('undercroft:bossHit',e=>{ if(ctx)ufx('uc_hit',null); });
+  G.on('undercroft:bossDead',e=>{ uc.boss=false; if(!ctx||(e&&e.restored))return; ufx('uc_resolve',null); });
+  G.on('glass:raise',e=>{ if(ctx)ufx('glass_raise',null,{arg:{on:!(e&&e.on===false)}}); });
+}
+const ucAPI={ get active(){return uc.inside;}, get mix(){return +uc.k.toFixed(3);}, get boss(){return uc.boss;}, get log(){return uc.log.slice();},
+  sfxNames:UC_SFX, synth:US,
+  levels(){ if(!ctx)return null; const v=g=>+g.gain.value.toFixed(4); return {bus:v(ubed.bus),choir:v(ubed.choirG),mill:v(ubed.millG),room:v(ubed.roomG),wind:v(amb.windG),surf:v(amb.surfG)}; },
+  /** play any Undercroft sound by its reserved name (recorded if present, synth otherwise) */
+  play(name,pos){ return !!ufx(name,pos?new THREE.Vector3(pos.x,pos.y+1.5,pos.z):null,{ref:8}); },
+  crane(action,pos){ return ucAPI.play('crane_'+action,pos); } };
+
 /* ---------- pause-menu controls ---------- */
 let volEl=null, musEl=null, muteEl=null;
 function syncUI(){ if(volEl){volEl.value=Math.round(settings.volume*100);musEl.value=Math.round(settings.music*100);muteEl.checked=settings.muted;} }
@@ -1243,14 +1371,16 @@ G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get outp
     setOverride, restart(){ if(rec.loaded)startStems(ctx.currentTime+.05); },
     meta:{key:'D minor',meter:'6/8',pulseBpm:+(60/PULSE).toFixed(2),beatBpm:+(60/BEAT).toFixed(2),bar:BAR,loopStart:REC.loopStart,loopEnd:REC.loopEnd,chart:CHART,caveChart:CAVE_CHART,motif:'D E F E C'} }};
 G.audio.cave=caveAPI;
+G.audio.undercroft=ucAPI;
 G.system('audio',{order:92,modes:'always',
-  init(){ wire(); wireCave(); buildUI(); },
+  init(){ wire(); wireCave(); wireUndercroft(); buildUI(); },
   update(dt){
     if(!ctx||ctx.state!=='running')return;
     const mode=G.state.mode;
     setListener();
     const ref=mode==='title'?G.camera.position:(G.player&&G.player.pos)||G.camera.position;
     updateCave(dt,mode);
+    updateUndercroft(dt,mode);
     updateAmbience(dt,ref,mode);
     updateMusic(dt,mode);
     if(mode==='play'){ updatePlayerSounds(dt); updateMonsterSounds(); }

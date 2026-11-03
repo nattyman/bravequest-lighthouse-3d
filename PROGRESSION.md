@@ -1,4 +1,4 @@
-# Progression, rewards and upgrades — binding spec (v14)
+# Progression, rewards and upgrades — binding spec (v14; v21: the Undercroft's 8th heart)
 
 Goal: exploring, fighting and freeing things should pay off in ways the player can feel. Zelda/BotW-style:
 small collectibles that add up, boss rewards, and upgrades bought at the keeper's benches. Gentle Gothic tone:
@@ -7,15 +7,16 @@ everything is a keeper's relic, an ether-thing or a moth-thing, never generic "l
 ## 1. Heart Shards and Keeper's Hearts (health)
 - Start: **2 hearts** (`maxHp` 4, half-heart units; `BASE_HP` in progression.js — was 5 hearts until v15, Heath: hearts come
   quickly early on). `maxHp` is derived on every load, so older saves move to the new base and hp is clamped to it.
-  Max reachable in this build: 7 hearts (2 + 3 from shards + 2 boss hearts).
+  Max reachable in this build: 8 hearts (2 + 3 from shards + 3 boss hearts).
 - **Heart Shards** — "a sliver of the old lamp's glass, still warm". 4 shards = +1 heart. **12 shards** on the island (=3 hearts).
   Place them where they reward exploring and the movement kit: on top of the standing stones (double jump), a cliff ledge only
   reachable by gliding down from the headland, a sea stack at low tide, the hamlet (an attic / roof), inside the forest
   (hidden behind the Resisting Tree's roots), a tidepool only open at low tide, one guarded by a hound pack, one for clearing
   a blighted grove, one in the sea cave off the main path, the tower gallery outside the lamp room, etc. Each spot should be
   visible from somewhere so the player can spot the glint (a soft violet sparkle + a faint chime within ~12 m).
-- **Keeper's Heart** (+1 full heart, refills hp) from the **Hollow Stag** and the **Undertow**. The Gloaming instead gives
-  2 Keeper's Marks and the Lantern Charm (below). Total: 2 + 2 boss hearts + 3 from shards = **7 hearts**.
+- **Keeper's Heart** (+1 full heart, refills hp) from the **Hollow Stag**, the **Undertow** and **Aldous Crane, the Tithe-Keeper**
+  (the Hamlet Undercroft; UNDERCROFT.md). The Gloaming instead gives 2 Keeper's Marks and the Lantern Charm (below).
+  Total: 2 + 3 boss hearts + 3 from shards = **8 hearts**. (The Undercroft's heart is dropped where Crane falls: walk into it.)
 - Existing saves: grant boss hearts retroactively on load if the boss is already dead.
 
 ## 2. Stamina — Moth Wings
@@ -23,7 +24,7 @@ everything is a keeper's relic, an ether-thing or a moth-thing, never generic "l
   cloak. 4 upgrades total. Toast on each: "Moth Wing — the swarm lends you its lightness". Retroactive on load.
 
 ## 3. Keeper's Marks (currency for upgrades)
-- Brass keeper's tokens. Sources (~14 total): keeper's caches (below) 8, bosses (Stag 1, Undertow 2, Gloaming 2),
+- Brass keeper's tokens. Sources (~18 total): keeper's caches (below) 8, bosses (Stag 1, Undertow 2, Gloaming 2, Tithe-Keeper 2),
   first time each blighted spot is cured 1 each (there are 3: grove, tidepool, well).
 - **Keeper's Caches**: 8 small iron-bound boxes hidden around the island (not the cottage chest). Each holds a Mark plus some
   materials (pearls, ichor, vials). Open with interact; Zelda-style "lift and show" moment.
@@ -97,7 +98,7 @@ The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lig
 | `north` | moor's north shore (−20, 10.85, −80) | 2 kelp, 1 brine | |
 | `gallery` | sea cave, Gallery of Keepers near the roost, world (4.8, 63.0, 773.2) | 1 pearl, 1 ichor | cave |
 | `sandbar` | on the sandbar under the south cliff (146, −0.95, 56.6) | 1 pearl, 1 kelp | low tide, core loop |
-Marks: 8 caches + Stag 1 + Undertow 2 + Gloaming 2 + first cure of each blight 1×3 = **16**. Temper costs 12 Marks for all seven
+Marks: 8 caches + Stag 1 + Undertow 2 + Gloaming 2 + Tithe-Keeper 2 + first cure of each blight 1×3 = **18**. Temper costs 12 Marks for all seven
 (Lantern Charm is the Gloaming's gift, so 9 in practice). The Temper tab only exists at the benches, which only work in the
 core loop — Act 1 (and the Hollow Stag) is untouched by upgrades; only shards and Moth Wings can add up before it.
 
@@ -113,6 +114,8 @@ Damage is in half-hearts; a fresh player has 4.
 | the Hollow Stag: charge / sweep / stomp ring | the old tree | **2** (charge was 3) / 2 / 2 | 2 |
 | the Gloaming: slam / sweep | the lighthouse | 2 / 2 | — (3–4 hearts by then) |
 | the Undertow: lash / surge | the cave's pool | 2 / 2 | — (5–6 hearts by then) |
+| a Nameless grab (long wind-up) | the Undercroft: cellars, chapel, mill, the Tithe Store | 2 | — (3–5 hearts) |
+| Aldous Crane: quill line / page storm / a burst copy | the Tithe Store | 2 / 2 (one page lands; i-frames) / 1 | — (3–5 hearts) |
 | the fog's chill | outside the light (core loop) | 1 every 2–9 s | — |
 Nothing one-shots a 2-heart player. The Stag's charge (3) took a fresh player to half a heart in one blow, so it now costs one
 heart like every other Stag attack (monsters.js `P.stag.chargeDmg`). Healing on the way: the 2 Mender's Draughts in the
@@ -125,3 +128,5 @@ Hearts at each boss on the normal route (the devtools start points use the "typi
 | the Gloaming | 3 (+ the Stag's heart) | 4 | 4–5 |
 | the Undertow (core loop) | 3–4 | 5 (+ stones, spire, roots, west tip) | 6 |
 | after the Undertow | 4–5 | 6 | 7 |
+| the Tithe-Keeper (core loop, before or after the cave) | 3–4 | 4–5 | 6–7 |
+| after both dungeons | 5–6 | 7 | **8** (the most there are) |
