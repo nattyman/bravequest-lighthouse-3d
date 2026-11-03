@@ -54,7 +54,7 @@ for(const x of [-9,-3,3,9]){ solid(x-.4,x+.4,-34.5,-27.2); solid(x-.4,x+.4,-20.8
 // the old root cellar off bay 1: a rotten floor over a pit (Corwin's trap), rubble steps climb back out of the pit
 const TRAP={x0:-22,x1:-18,z0:-20,z1:-15};
 const inTrap=(x,z)=>x>TRAP.x0&&x<TRAP.x1&&z>TRAP.z0&&z<TRAP.z1;
-rect('rootCellar','cellars',-23.2,-14.8,-21,-14,(x,z)=>(inTrap(x,z)&&S_trap())?null:-2,1.1,{vmax:.8,visFloor:(x,z)=>inTrap(x,z)?null:-2});
+rect('rootCellar','cellars',-23.2,-13.4,-21,-14,(x,z)=>(inTrap(x,z)&&S_trap())?null:-2,1.1,{vmax:.8,visFloor:(x,z)=>inTrap(x,z)?null:-2});
 rect('pit','cellars',TRAP.x0,TRAP.x1,TRAP.z0,TRAP.z1,-5.2,1.1,{vmax:0});
 const rampF=stepF('z',-19.6,-15.2,-5.2,-2,6);
 rect('pitRamp','cellars',-22,-20.6,-20,-15,rampF,1.1,{vmax:0,stair:stair('z',-19.6,-15.2,-5.2,-2,6,-22,-20.6,{kind:'rubble'})});
@@ -67,10 +67,11 @@ seg('chapelStair','chapel',-22,-28,-22,-38.6,1.25,chStF,null,{ceilH:3.0,vmax:.5,
 rect('chapel','chapel',-30,-14,-58,-38,-4,0.4,{vmax:1.9});
 for(const x of [-26.5,-17.5]) for(const z of [-43,-48,-53]) solid(x-.42,x+.42,z-.42,z+.42,{pillar:1});
 rect('niche','chapel',-14.4,-12.7,-52.1,-49.9,-4,-1.2,{vmax:.4});
-rect('vestry','chapel',-36,-29.6,-54,-46,-4,-1.0,{vmax:.6});
+rect('vestry','chapel',-36,-28.4,-54,-46,-4,-1.0,{vmax:.6});
 solid(-30.4,-29.6,-54.4,-51.2); solid(-30.4,-29.6,-48.8,-45.6);      // the vestry door (z -51.2 .. -48.8)
 // --- the way east: a doorway that is only there in the past (the Glass), then down to the mill
-rect('pastDoor','cellars',14.4,16.9,-25.2,-22.8,-2,1.0,{past:1,vmax:.3});
+// (zones overlap generously where they join: the field is a min of shapes, so a shallow overlap reads as a wall to a body)
+rect('pastDoor','cellars',13.0,18.6,-25.2,-22.8,-2,1.0,{past:1,vmax:.3});
 seg('eastHall','mill',17.8,-24,22,-24,1.25,-2,1.0,{vmax:.5});
 const millStF=stepF('z',-27,-37,-2,-6,10);
 seg('millStair','mill',22,-24,22,-40.6,1.25,millStF,null,{ceilH:3.0,vmax:.5,stair:stair('z',-27,-37,-2,-6,10,20.75,23.25)});
@@ -84,7 +85,7 @@ rect('race','mill',RACE.x0,RACE.x1,RACE.z0,RACE.z1,-7.6,.6,{vmax:0,water:1});
 rect('bridge','mill',RACE.x0-.2,RACE.x1+.2,-51.1,-48.9,-6,.6,{vmax:0,timber:1,visFloor:()=>null});
 rect('loft','mill',14,19.6,-44,-40,-3,.6,{vmax:0});
 const pastStF=stepF('z',-47.6,-44.2,-6,-3,5);
-rect('pastStair','mill',15,17.5,-48,-44,pastStF,.6,{past:1,vmax:0,stair:stair('z',-47.6,-44.2,-6,-3,5,15,17.5,{past:1})});
+rect('pastStair','mill',15,17.5,-48,-42.6,pastStF,.6,{past:1,vmax:0,stair:stair('z',-47.6,-44.2,-6,-3,5,15,17.5,{past:1})});
 // --- down to the store
 const storeStF=stepF('z',-61,-67,-6,-8,6);
 seg('storeStair','mill',18,-59.6,18,-68,1.25,storeStF,null,{ceilH:3.0,vmax:.5,stair:stair('z',-61,-67,-6,-8,6,16.75,19.25)});
@@ -227,7 +228,7 @@ const ECHOES=ECHODEF.map(e=>({id:e[0],room:e[1],pos:W(e[2],e[3],e[4]),r:e[5]}));
 
 /* ================================================================ 4. THE TRAPDOOR (island) */
 const LM=()=>(G.world&&G.world.landmarks)||{};
-const doorLM=LM().undercroftDoor||{x:-8.7,y:G.world.height(-8.7,37),z:37,yaw:-.28};
+const doorLM=LM().undercroftDoor||{x:-8.6,y:G.world.height(-8.6,37.6),z:37.6,yaw:-.28};
 const doorPos=V(doorLM.x,doorLM.y,doorLM.z);
 /* the open hatch is a hole: nobody walks into it */
 G.addCollider({x:doorPos.x,z:doorPos.z,r:.85,y0:doorPos.y-3,y1:doorPos.y+1.5});
@@ -311,9 +312,9 @@ const tUni={uTime:{value:0}};
 /* ---------- textures ---------- */
 function brickCanvas(g,s){
   const r=U.rng(7121); g.fillStyle='#5b5552'; g.fillRect(0,0,s,s);            // mortar
-  const rows=16, bh=s/rows, bw=s/4;
+  const rows=16, bh=s/rows, bw=s/6;
   for(let j=0;j<rows;j++){ const off=(j%2)*bw/2;
-    for(let i=-1;i<5;i++){ const x=i*bw+off, y=j*bh; const h=12+r()*16, l=34+r()*16, sat=18+r()*18;
+    for(let i=-1;i<7;i++){ const x=i*bw+off, y=j*bh; const h=14+r()*14, l=36+r()*15, sat=12+r()*14;
       g.fillStyle=`hsl(${h},${sat}%,${l}%)`; g.fillRect(x+2,y+2,bw-4,bh-4);
       // soft face shading + chips
       const gr=g.createLinearGradient(0,y,0,y+bh); gr.addColorStop(0,'rgba(255,240,220,.10)'); gr.addColorStop(1,'rgba(0,0,0,.16)'); g.fillStyle=gr; g.fillRect(x+2,y+2,bw-4,bh-4);
@@ -323,13 +324,19 @@ function brickCanvas(g,s){
   for(let i=0;i<30;i++){ g.fillStyle=`rgba(${90+r()*30},${110+r()*20},70,${.06+r()*.08})`; g.beginPath(); g.arc(r()*s,r()*s,3+r()*12,0,TAU); g.fill(); }
 }
 function flagCanvas(g,s){
-  const r=U.rng(9931); g.fillStyle='#3b3633'; g.fillRect(0,0,s,s);
-  // irregular flags: a jittered grid of rounded slabs
-  const n=5, c=s/n;
-  for(let j=0;j<n;j++)for(let i=0;i<n;i++){ const x=i*c+(r()-.5)*6, y=j*c+(r()-.5)*6, w=c-5-r()*5, h=c-5-r()*5, l=40+r()*14;
-    g.fillStyle=`hsl(${25+r()*15},${6+r()*8}%,${l}%)`; g.beginPath(); g.moveTo(x+4,y); g.lineTo(x+w-3,y+1); g.lineTo(x+w,y+h-4); g.lineTo(x+2,y+h); g.closePath(); g.fill();
-    for(let k=0;k<30;k++){ g.fillStyle=r()<.5?'rgba(0,0,0,.08)':'rgba(255,245,230,.06)'; g.fillRect(x+r()*w,y+r()*h,1+r()*3,1+r()*3); } }
-  for(let i=0;i<1500;i++){ g.fillStyle=r()<.5?'rgba(20,16,14,.08)':'rgba(240,230,210,.05)'; g.fillRect(r()*s,r()*s,1+r()*2,1+r()*2); }
+  const r=U.rng(9931); g.fillStyle='#4a4440'; g.fillRect(0,0,s,s);
+  // courses of irregular flags: each course its own height, each slab its own width, corners knocked round
+  let y=0; const H=[.17,.22,.19,.24,.18];
+  for(let row=0;y<s-2;row++){ const h=Math.min(s-y,Math.round(s*H[row%H.length])); let x=-r()*s*.2;
+    while(x<s){ const w=s*(.16+r()*.22), l=44+r()*12, hue=24+r()*18, sat=5+r()*8;
+      for(const ox of [0,-s,s]){ const x0=x+ox+2.5, y0=y+2.5, x1=x+ox+w-2.5, y1=y+h-2.5, k=4+r()*5;
+        g.fillStyle=`hsl(${hue},${sat}%,${l}%)`; g.beginPath(); g.moveTo(x0+k,y0); g.lineTo(x1-k*.6,y0+r()*1.5); g.quadraticCurveTo(x1,y0,x1,y0+k); g.lineTo(x1-r()*1.5,y1-k*.7);
+        g.quadraticCurveTo(x1,y1,x1-k,y1); g.lineTo(x0+k*.8,y1); g.quadraticCurveTo(x0,y1,x0,y1-k); g.lineTo(x0+r()*1.5,y0+k); g.quadraticCurveTo(x0,y0,x0+k,y0); g.fill();
+        const gr=g.createRadialGradient(x0+w*.4,y0+h*.4,2,x0+w*.5,y0+h*.5,Math.max(w,h)*.7); gr.addColorStop(0,'rgba(255,245,230,.06)'); gr.addColorStop(1,'rgba(0,0,0,.12)'); g.fillStyle=gr; g.fill(); }
+      x+=w; }
+    y+=h; }
+  for(let i=0;i<2600;i++){ g.fillStyle=r()<.5?'rgba(20,16,14,.07)':'rgba(240,230,210,.045)'; g.fillRect(r()*s,r()*s,1+r()*2,1+r()*2); }
+  for(let i=0;i<14;i++){ g.strokeStyle='rgba(20,14,12,.18)'; g.lineWidth=.8; g.beginPath(); let x=r()*s, yy=r()*s; g.moveTo(x,yy); for(let k=0;k<4;k++){ x+=(r()-.5)*30; yy+=(r()-.5)*30; g.lineTo(x,yy);} g.stroke(); }
 }
 let brickTex=null, flagTex=null, woodTex=null;
 function triMaterial(kind,scale,o){
@@ -342,11 +349,11 @@ function triMaterial(kind,scale,o){
     sh.vertexShader='varying vec3 vWP;varying vec3 vWN;\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.)).xyz; vWN=normalize(mat3(modelMatrix)*objectNormal);');
     sh.fragmentShader='uniform sampler2D uBrick,uFlag;varying vec3 vWP;varying vec3 vWN;\n'+sh.fragmentShader.replace('#include <map_fragment>',`
       { vec3 n=abs(normalize(vWN)); vec4 tc;
-        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:
+        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:kind==='stone'?`vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.)); tc=texture2D(uFlag,vWP.zy*${sc})*bw.x+texture2D(uFlag,vWP.xz*${sc})*bw.y+texture2D(uFlag,vWP.xy*${sc})*bw.z;`:
           `vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.));
            vec4 tx=texture2D(uBrick,vec2(vWP.z,vWP.y*1.6)*${sc}), tz=texture2D(uBrick,vec2(vWP.x,vWP.y*1.6)*${sc}), ty=texture2D(uBrick,vWP.xz*${sc});
            tc=tx*bw.x+ty*bw.y+tz*bw.z;`}
-        tc.rgb=pow(tc.rgb,vec3(2.2)); diffuseColor.rgb*=tc.rgb*1.9; }`);
+        tc.rgb=pow(tc.rgb,vec3(2.2)); diffuseColor.rgb*=tc.rgb*${kind==='stone'?'2.2':'1.9'}; }`);
   };
   m.customProgramCacheKey=()=>'ucTri'+kind+sc;
   return m;
@@ -450,7 +457,7 @@ function buildShell(){
 /* ---------- props ---------- */
 let mats=null;
 function propMats(){ if(mats)return mats;
-  mats={stone:G.toon('#ffffff',{vertexColors:true}),timber:timberMaterial(),iron:G.toon('#ffffff',{vertexColors:true}),cloth:G.toon('#ffffff',{vertexColors:true}),
+  mats={stone:triMaterial('stone',.55),timber:timberMaterial(),iron:G.toon('#ffffff',{vertexColors:true}),cloth:G.toon('#ffffff',{vertexColors:true}),
     root:G.toon('#ffffff',{vertexColors:true}),wax:G.toon('#ffffff',{vertexColors:true,emissive:'#3a2a12',emissiveIntensity:.25})};
   return mats; }
 function treadsFor(Z,B,col){ const s=Z.stair, n=s.n, d=(s.a1-s.a0)/(n+1), lo=Math.min(s.y0,s.y1)-.6;
@@ -462,7 +469,7 @@ function treadsFor(Z,B,col){ const s=Z.stair, n=s.n, d=(s.a1-s.a0)/(n+1), lo=Mat
 function buildProps(){
   const M=propMats(), r=U.rng(3311);
   const St=new Builder(), Tb=new Builder(), Ir=new Builder(), Cl=new Builder();
-  const stoneC=()=>jit('#8d8580',r,.2), darkStone=()=>jit('#6b6560',r,.2), wood=()=>jit('#a08a74',r,.25), woodDk=()=>jit('#6e5a48',r,.2);
+  const stoneC=()=>jit('#8a827b',r,.16), darkStone=()=>jit('#6b6560',r,.2), wood=()=>jit('#a08a74',r,.25), woodDk=()=>jit('#6e5a48',r,.2);
   const box=(B,w,h,d,c,x,y,z,ry)=>{ B.box(w,h,d,c,x,y,z,ry||0); };
   const col=(x,z,w,d,y0,y1,yaw)=>G.addBoxCollider({x:O.x+x,z:O.z+z,hw:w/2,hd:d/2,yaw:yaw||0,y0:O.y+y0-1,y1:O.y+y1});
   const circleCol=(x,z,rr,y0,y1)=>G.addCollider({x:O.x+x,z:O.z+z,r:rr,y0:O.y+y0-1,y1:O.y+y1});
@@ -787,8 +794,8 @@ function updateTrans(dt){
   if(T.t>=1.35){ if(G.player.setControl)G.player.setControl(true); S.trans=null; }
 }
 function arrivalFor(roomId){ const s=(ROOMDEF[roomId]||ROOMDEF.stair).spawn; const f=zoneFloor(s[0],s[2],s[1]+.5); return [s[0],f==null?s[1]:f,s[2],s[3]]; }
-const outsideSpot=()=>{ const yaw=doorLM.yaw||0, lx=-.2, lz=-1.9; // in front of the hatch, toward the ruin's door
-  const x=doorPos.x+lx*Math.cos(yaw)+lz*Math.sin(yaw), z=doorPos.z-lx*Math.sin(yaw)+lz*Math.cos(yaw); return [x,G.world.height(x,z),z,yaw+PI]; };
+const outsideSpot=()=>{ const yaw=doorLM.yaw||0, lx=1.75, lz=.1;  // beside the hatch, on the ruin's floor
+  const x=doorPos.x+lx*Math.cos(yaw)+lz*Math.sin(yaw), z=doorPos.z-lx*Math.sin(yaw)+lz*Math.cos(yaw); return [x,G.world.height(x,z),z,yaw+PI/2]; };
 function shiftSwarm(delta,to,from){
   const P=from||G.player.pos, ms=(G.creatures&&G.creatures.moths)||[];
   for(const m of ms){ if(!m||!m.p||!SWARM.has(m.tgt))continue; if(m.p.distanceTo(P)>45)continue;
@@ -902,7 +909,7 @@ function setRoost(on){ const Cr=G.creatures; if(!Cr||!Cr.setRoost||!Cr.roost)ret
 /* ---------- opening the trapdoor ---------- */
 function openDoor(restored){
   if(S.open)return; S.open=true; API.open=true;
-  if(restored)VIS.doorOpenK=1;
+  if(restored){ VIS.doorOpenK=1; setDoorVis(1); }
   G.emit('undercroft:open',{restored:!!restored,pos:doorPos.clone()});
 }
 G.on('blight:cured',e=>{ if(e&&e.id==='well')openDoor(!!e.restored); });
@@ -979,6 +986,7 @@ G.system('undercroft',{order:14,modes:'always',
       if(fog){ fog.color.copy(FOG0).lerp(FOG1,k); if(G.scene.background&&G.scene.background.isColor)G.scene.background.copy(fog.color); }
       G.lights.hemi.color.lerp(HEMI_SKY,.75); G.lights.hemi.groundColor.lerp(HEMI_GND,.75); if(lit)G.lights.hemi.color.lerp(HEMI_LIT,.35); }
     updateCandles(dt); updateGateVis(false,dt);
+    if(VIS.rubble){ const k=G.glass?G.glass.k:0; VIS.rubbleMat.opacity=1-k*.92; VIS.rubble.visible=k<.98; VIS.rubbleMat.depthWrite=k<.3; }
     if(VIS.runner&&S.mill){ VIS.runner.rotation.y+=dt*.9; } if(VIS.wheel){ VIS.wheel.rotation.x-=dt*(S.mill?1.1:.06); }
     if(mode==='play'){ updatePast(dt); updateTrap(dt); }
   }
@@ -992,9 +1000,12 @@ function buildPast(){
   const Gl=G.glass; const r=U.rng(1717);
   // the present: rubble heaped in the doorway (hidden while the Glass shows the door)
   const RB=new Builder();
-  for(let k=0;k<30;k++){ const s=.22+r()*.4, y=-2+Math.pow(r(),1.6)*2.8; RB.add(new THREE.DodecahedronGeometry(s,0),jit(r()<.7?'#7a5c4c':'#77706a',r,.3),14.6+r()*2.0,y,-25.3+r()*2.6,r()*3,r()*3,r()*3); }
-  RB.box(2.3,.4,.3,'#5b4a3c',15.6,-.1,-24.2,0,0,.5).box(2.3,.3,.3,'#5b4a3c',15.4,-1.2,-23.6,0,0,-.4);
-  VIS.rubble=RB.mesh(propMats().stone,'ucDoorRubble'); ucRoot.add(VIS.rubble);
+  for(let k=0;k<70;k++){ const w=.24+r()*.2, h=.1+r()*.08, d=.12+r()*.1, y=-2+Math.pow(r(),1.4)*2.9*(1-Math.abs(r()-.5)*.6);
+    RB.box(w,h,d,jit(r()<.75?'#80594a':'#7a726a',r,.25),14.6+r()*1.9,y,-25.2+r()*2.4,r()*3,(r()-.5)*1.4,(r()-.5)*1.4); }
+  for(let k=0;k<8;k++){ const s2=.25+r()*.25; RB.add(new THREE.DodecahedronGeometry(s2,0),jit('#6f6862',r,.2),14.7+r()*1.7,-2+s2*.6,-25+r()*2,r()*3,r()*3,r()*3); }
+  RB.box(2.2,.18,.22,'#5b4a3c',15.6,-.3,-24.3,.2,0,.5).box(2.0,.16,.2,'#5b4a3c',15.4,-1.3,-23.6,-.3,0,-.4);
+  const rubM=G.toon('#ffffff',{vertexColors:true,transparent:true}); VIS.rubbleMat=rubM;
+  VIS.rubble=RB.mesh(rubM,'ucDoorRubble'); ucRoot.add(VIS.rubble);
   if(!Gl||!Gl.addPast)return;
   const mat=Gl.memoryMaterial?Gl.memoryMaterial('#ffc98a',{base:.42}):new THREE.MeshBasicMaterial({color:C('#ffc98a'),transparent:true,opacity:.4});
   // the doorway as it was: a round-arched frame, a timber door standing open, a worn threshold

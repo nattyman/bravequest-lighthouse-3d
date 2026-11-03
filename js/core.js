@@ -228,7 +228,8 @@ const BIND={
   forward:['KeyW','ArrowUp'], back:['KeyS','ArrowDown'], left:['KeyA','ArrowLeft'], right:['KeyD','ArrowRight'],
   jump:['Space'], sprint:['ShiftLeft','ShiftRight'], roll:['KeyC','ControlLeft','AltLeft'],
   attack:['KeyJ','mouse0'], lock:['KeyQ','Tab','mouse2'], interact:['KeyE'], shutter:['KeyF'], potion:['KeyH'], pause:['Escape','KeyP'],
-  advance:['Enter','NumpadEnter'] // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
+  advance:['Enter','NumpadEnter'], // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
+  glass:['KeyG'] // hold: raise the Remembering Glass (glass.js; the Undercroft). Controller: hold Y (see pollPad)
 };
 const held=new Set(), pressed=new Set(), released=new Set(), vheld=new Set(), vpressed=new Set();
 let lookX=0, lookY=0, dragging=false;
@@ -277,7 +278,7 @@ const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',
 /* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
    so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
 const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,trigger:.5,navDelay:.38,navRepeat:.14};
-const pad={connected:false,id:'',blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0};
+const pad={connected:false,id:'',blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0,yT:-1};
 try{ const fp=document.featurePolicy||document.permissionsPolicy; if(fp&&fp.allowsFeature)pad.policy=!!fp.allowsFeature('gamepad'); }catch(_){}
 let device=isMobile?'touch':'keyboard';
 function setDevice(d){
@@ -402,6 +403,13 @@ function pollPad(dt){
     }else{
       const acts=new Set();
       for(let i=0;i<btn.length;i++){ if(!btn[i]){pad.sup[i]=false;continue;} if(!pad.sup[i]&&PAD_BTN[i])acts.add(PAD_BTN[i]); }
+      /* GLASS HOOK (glass.js): once the Remembering Glass is yours, Y is interact on a tap (sent when it's let go) and the Glass
+         while held past .35 s. Before that Y interacts at once, as it always has. */
+      if(G.glass&&G.glass.owned){
+        const y=acts.has('interact'); acts.delete('interact');
+        if(y){ pad.yT=pad.yT<0?0:pad.yT+dt; if(pad.yT>=.35)acts.add('glass'); }
+        else{ if(pad.yT>=0&&pad.yT<.35){ pressed.add('interact'); released.add('interact'); } pad.yT=-1; }
+      }else pad.yT=-1;
       padActs(acts);
       pad.mx=mx; pad.my=my; pad.mmag=mm;
       lookX+=rx*PAD.lookX*dt; lookY+=ry*PAD.lookY*dt;
