@@ -15,22 +15,95 @@ const queue=[]; let cur=null;
    - high (boss/quest beats, danger): interrupts the current line at once (a current high line keeps its minimum time first)
    - normal: a queued line with the same key is replaced; dropped if it has waited longer than STALE
    - low: flavour; dropped quickly if it can't be shown, never cuts anything
-   Reading time scales with length; any waiting line cuts the current one short once its minimum time has passed. */
-const CAP={MIN:2.5, PER:.06, MAX:7, TYPE:44, STALE:{0:2.5,1:6,2:14}, QMAX:4};
+   Reading time scales with length; a waiting line cuts the current one short once its minimum time has passed.
+   The player picks the reading time in the pause menu (SPEEDS, localStorage 'bq-captions'):
+   - relaxed (default): about twice the standard reading time, generous minimums; waiting lines cut in later
+   - standard: the original pacing
+   - hold: normal/high lines stay until the player advances them; low lines still time out
+   Advance: the 'advance' action (Enter) or a click/tap on the caption: the first press finishes the typewriter,
+   the next shows the next waiting line or dismisses. Every line said is also kept in the message log (pause > Messages). */
+const SPEEDS={
+  standard:{k:1,  MIN:2.5,PER:.06,MAX:7, QMAX:4,cut:0,  hold:false},
+  relaxed: {k:2.2,MIN:5,  PER:.12,MAX:15,QMAX:6,cut:.6, hold:false},
+  hold:    {k:2.2,MIN:5,  PER:.12,MAX:15,QMAX:8,cut:.6, hold:true}
+};
+const CAP={MIN:2.5, PER:.06, MAX:7, TYPE:44, STALE:{0:2.5,1:6,2:14}, QMAX:4, speed:'relaxed', cut:0, hold:false};
+const STALE0={0:2.5,1:6,2:14};
+function setCapSpeed(id,quiet){
+  if(!SPEEDS[id])id='relaxed';
+  const S=SPEEDS[id]; CAP.speed=id; CAP.MIN=S.MIN; CAP.PER=S.PER; CAP.MAX=S.MAX; CAP.QMAX=S.QMAX; CAP.cut=S.cut; CAP.hold=S.hold;
+  for(const p in STALE0)CAP.STALE[p]=STALE0[p]*S.k;
+  if(S.hold){ CAP.STALE[1]=Infinity; CAP.STALE[2]=Infinity; } // held lines wait for the player (QMAX still bounds the queue)
+  if(!quiet){ try{localStorage.setItem('bq-captions',JSON.stringify({speed:id}));}catch(_){} if(G.emit)G.emit('settings',{captionSpeed:id}); }
+  if(cur){ const r=capTimes(cur.t); cur.read=r.read; cur.min=r.min; }
+  return id;
+}
+{ let sp='relaxed'; try{ const c=JSON.parse(localStorage.getItem('bq-captions')||'null'); if(c&&SPEEDS[c.speed])sp=c.speed; }catch(_){} setCapSpeed(sp,true); }
 const PRI={low:0,normal:1,high:2};
 const capRead=t=>U.clamp(t.length*CAP.PER,CAP.MIN,CAP.MAX);
+function capTimes(t){ const typeT=reduceMotion?0:t.length/CAP.TYPE; return {typeT, read:Math.max(capRead(t),typeT+1.2), min:Math.max(CAP.MIN,Math.min(typeT+.6,CAP.MAX))}; }
 function capItem(text,who,o){ const p=PRI[o.priority]; return {t:text,who:who||'',pri:p==null?1:p,key:o.key||null,age:0}; }
+const held=c=>CAP.hold&&c&&c.pri>=1; // waits for the player
+function capMissed(it){ if(it&&it.log&&!it.log.seen)it.log.m=1; logDirty=true; }
 function capEnqueue(it){
   let i=queue.length; while(i>0&&(queue[i-1].pri<it.pri||(it.requeued&&queue[i-1].pri===it.pri)))i--; // higher priority goes ahead, FIFO within a priority (an interrupted line resumes first)
   queue.splice(i,0,it);
-  while(queue.length>CAP.QMAX){ let w=0; for(let j=1;j<queue.length;j++)if(queue[j].pri<queue[w].pri)w=j; queue.splice(w,1); } // drop the oldest of the least important
+  while(queue.length>CAP.QMAX){ let w=0; for(let j=1;j<queue.length;j++)if(queue[j].pri<queue[w].pri)w=j; capMissed(queue.splice(w,1)[0]); } // drop the oldest of the least important
+}
+/* the line on screen goes away: was it read? (fully typed and on screen for half its reading time, or the player moved on) */
+function capEnd(byPlayer){
+  if(!cur)return;
+  const done=cur.i>=cur.t.length&&(byPlayer||cur.el>=Math.min(cur.read*.5,cur.min));
+  if(cur.log){ if(done){ cur.log.seen=true; cur.log.m=0; logDirty=true; } else if(!cur.requeuing)capMissed(cur); }
+  cur=null;
 }
 function capShow(it){
-  const typeT=reduceMotion?0:it.t.length/CAP.TYPE;
-  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,
-       read:Math.max(capRead(it.t),typeT+1.2), min:Math.max(CAP.MIN,Math.min(typeT+.6,CAP.MAX)), requeued:it.requeued};
-  capWho.textContent=it.who; capWho.hidden=!it.who; capEl.classList.add('show');
+  if(cur&&cur!==it)capEnd(false);
+  const T=capTimes(it.t);
+  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log};
+  capWho.textContent=it.who; capWho.hidden=!it.who; capEl.classList.add('show'); capEl.classList.toggle('hi',it.pri>=2);
+  capChip=null;
 }
+/* ---------- the message log (pause menu > Messages; persisted in the save as 'captions') ---------- */
+const LOG_MAX=200, LOG_REPEAT=8; // ×N when the same line comes again within LOG_REPEAT game seconds
+let msgLog=[], logDirty=true, logSeq=0;
+const CAVE_ROOMS={mouth:'mouth',gallery:'gallery',stair:'stair',channel:'channel',drafts:'drafts',arena:'Undertow’s pool'};
+function capPlace(){
+  try{
+    const P=G.player&&G.player.pos; if(!P||G.state.mode==='title')return '';
+    if(G.cave&&G.cave.inside){ const r=G.cave.room&&G.cave.room(P); return 'Sea cave'+(r?' · '+(CAVE_ROOMS[r]||r):''); }
+    const lh=G.world&&G.world.lighthouse; if(lh&&lh.inside&&lh.inside(P))return 'The lighthouse';
+    const L=(G.world&&G.world.landmarks)||{}, near=(l,r)=>l&&Math.hypot(P.x-l.x,P.z-l.z)<r;
+    if(near(L.cottage,12)||near(L.shed,7))return 'The keeper’s cottage';
+    if(P.x>=128)return 'The headland';
+    if(P.x>=88)return 'The cliff path';
+    if(near(L.resistingTree,(L.resistingTree&&L.resistingTree.r||14)+10))return 'The Resisting Tree';
+    if(near(L.hamlet,28))return 'The ruined hamlet';
+    if(near(L.stones,18))return 'The standing stones';
+    if(P.x<-70)return 'The forest';
+    return 'The moor';
+  }catch(_){ return ''; }
+}
+function logLine(it){
+  const last=msgLog[msgLog.length-1];
+  if(last&&last.t===it.t&&last.w===it.who&&last.gt!=null&&G.time-last.gt<LOG_REPEAT){
+    if(G.time-last.gt>=.5)last.n=(last.n||1)+1; // a line said every frame counts once per half second
+    last.gt=G.time; last.at=Date.now(); last.p=Math.max(last.p,it.pri); logDirty=true; return last;
+  }
+  const e={id:++logSeq,t:it.t,w:it.who||'',p:it.pri,a:capPlace(),at:Date.now(),n:1,gt:G.time};
+  msgLog.push(e); if(msgLog.length>LOG_MAX)msgLog.splice(0,msgLog.length-LOG_MAX);
+  logDirty=true; return e;
+}
+const LOG_PERSIST={
+  save:()=>({v:1,list:msgLog.map(e=>{ const o={t:e.t,w:e.w,p:e.p,a:e.a,at:e.at}; if(e.n>1)o.n=e.n; if(e.m)o.m=1; return o; })}),
+  load(d){
+    if(!d||d.v!==1||!Array.isArray(d.list))return; // unknown versions are ignored (the log starts empty)
+    const old=d.list.filter(e=>e&&typeof e.t==='string').map(e=>({id:++logSeq,t:e.t,w:e.w||'',p:+e.p||1,a:e.a||'',at:+e.at||0,n:+e.n||1,m:e.m?1:0,seen:!e.m}));
+    msgLog=old.concat(msgLog.filter(e=>!old.some(o=>o.t===e.t&&o.at===e.at))).slice(-LOG_MAX); logDirty=true;
+  }
+};
+if(G.persist&&G.persist.register)G.persist.register('captions',LOG_PERSIST);
+else G.on('ready',()=>{ if(G.persist&&G.persist.register)G.persist.register('captions',LOG_PERSIST); });
 /* ---------- objective ---------- */
 const objEl=$('obj'), objSub=$('objSub'); let objTimer=0;
 /* ---------- toast ---------- */
@@ -46,19 +119,28 @@ G.ui={
     if(!text)return;
     if(who&&typeof who==='object'){opts=who;who=opts.who;} // say(text,{priority,key,who}) also works
     const it=capItem(text,who,opts||{});
-    if(cur&&cur.t===text){ cur.pri=Math.max(cur.pri,it.pri); return; }
-    const d=queue.findIndex(q=>q.t===text); if(d>=0){ if(queue[d].pri<it.pri){queue.splice(d,1);capEnqueue(it);} return; }
+    it.log=logLine(it);
+    if(cur&&cur.t===text){ cur.pri=Math.max(cur.pri,it.pri); cur.log=it.log; return; }
+    const d=queue.findIndex(q=>q.t===text); if(d>=0){ queue[d].log=it.log; if(queue[d].pri<it.pri){queue.splice(d,1);capEnqueue(it);} return; }
     if(it.key){
-      const k=queue.findIndex(q=>q.key===it.key); if(k>=0)queue.splice(k,1); // a newer line for the same thing replaces the waiting one
+      const k=queue.findIndex(q=>q.key===it.key); if(k>=0)capMissed(queue.splice(k,1)[0]); // a newer line for the same thing replaces the waiting one
       if(cur&&cur.key===it.key&&it.pri>=cur.pri){ capShow(it); return; }   // ...or the one on screen
     }
     if(it.pri>=2&&cur&&!(cur.pri>=2&&cur.el<cur.min)){
       // interrupt now; a line cut off early (under half read) comes back once afterwards
-      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)) capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true});
+      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)){ capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true,log:cur.log}); cur.requeuing=true; }
       capShow(it); return;
     }
-    if(it.pri===0&&(cur||queue.length)&&queue.some(q=>q.pri>0))return; // flavour never waits behind real lines
+    if(it.pri===0&&(cur||queue.length)&&queue.some(q=>q.pri>0)){ capMissed(it); return; } // flavour never waits behind real lines
     capEnqueue(it);
+  },
+  /** Enter / a tap on the caption: finish the typing, else move on to the next waiting line (or dismiss). Returns what it did. */
+  advance(){
+    if(!cur){ if(queue.length){ capShow(queue.shift()); return 'next'; } return ''; }
+    if(cur.i<cur.t.length){ cur.i=1e4; return 'complete'; } // the rest of its reading time still runs
+    capEnd(true);
+    if(queue.length){ capShow(queue.shift()); return 'next'; }
+    capEl.classList.remove('show'); return 'dismiss';
   },
   objective(text,sub){
     if(text!=null&&objEl.textContent!==text){ objEl.textContent=text; objEl.classList.add('fresh'); clearTimeout(objTimer); objTimer=setTimeout(()=>objEl.classList.remove('fresh'),2600); }
@@ -81,25 +163,126 @@ function placeBoss(){
   bossEl.style.top='calc('+top+'px + env(safe-area-inset-top,0px))';
   toastEl.style.top='calc(max(18%, '+(top+58)+'px) + env(safe-area-inset-top,0px))'; // toasts ("The lens is free") go under the bar
 }
+let capChip=null; // last hint state drawn, so the chip only re-renders when it changes
+const capHint=document.createElement('span'); capHint.className='capnext'; capHint.setAttribute('aria-hidden','true');
+const capBar=document.createElement('i'); capBar.className='captime';
+capEl.append(capHint,capBar);
+function hintKey(){ const d=G.input.device; return d==='gamepad'?'':d==='touch'||(G.isMobile&&d!=='keyboard')?'<span class="tap">Tap</span>':'<kbd>Enter</kbd>'; }
+function drawChip(){
+  const typing=cur.i<cur.t.length, n=queue.length, key=hintKey();
+  const want=(typing?'t':'s')+n+key;
+  if(want===capChip)return; capChip=want;
+  capHint.innerHTML=(n?`<span class="more">${n} more</span>`:'')+key+'<b>▸</b>';
+  capEl.classList.toggle('waiting',n>0); capEl.classList.toggle('held',held(cur)&&!typing);
+}
 function updateCaption(dt){
   dt=dt||0;
-  for(let j=queue.length-1;j>=0;j--){ const q=queue[j]; q.age+=dt; if(q.age>CAP.STALE[q.pri])queue.splice(j,1); } // late lines are stale lines
+  for(let j=queue.length-1;j>=0;j--){ const q=queue[j]; q.age+=dt; if(q.age>CAP.STALE[q.pri])capMissed(queue.splice(j,1)[0]); } // late lines are stale lines
   if(cur){
     cur.el+=dt;
-    if(queue.length&&cur.el>=cur.min&&(queue[0].pri>=cur.pri||cur.el>=cur.read*.6))cur=null; // something is waiting: cut short after the minimum
-    else if(cur.el>=cur.read)cur=null;
+    if(held(cur)){ /* stays until the player advances it (or a high line interrupts) */ }
+    else if(queue.length&&cur.el>=cur.min&&(queue[0].pri>=cur.pri?cur.el>=cur.read*CAP.cut:cur.el>=cur.read*Math.max(.6,CAP.cut+.25)))capEnd(false); // something is waiting: cut short
+    else if(cur.el>=cur.read)capEnd(false);
     if(!cur&&!queue.length)capEl.classList.remove('show');
   }
   if(!cur&&queue.length)capShow(queue.shift());
   if(!cur)return;
   cur.i+=dt*(queue.length?CAP.TYPE*1.6:CAP.TYPE); const n=Math.min(cur.t.length,Math.floor(cur.i));
   if(n!==cur.shown){capText.textContent=cur.t.slice(0,n);cur.shown=n;}
+  drawChip();
+  capBar.style.transform=held(cur)?'scaleX(0)':`scaleX(${U.clamp(1-cur.el/cur.read,0,1).toFixed(3)})`;
 }
+/* Enter (the 'advance' action, core.js) while playing; clicks/taps on the caption itself (never reach the canvas, so no attack) */
+function canAdvance(){ return G.state.mode==='play'&&!!cur&&!document.querySelector('.card:not([hidden])'); }
+capEl.addEventListener('pointerdown',e=>{
+  if(!capEl.classList.contains('show'))return;
+  e.preventDefault(); e.stopPropagation();
+  if(G.state.mode==='play')G.ui.advance();
+});
+capEl.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); });
+capEl.addEventListener('contextmenu',e=>e.preventDefault());
 /* for tests and devtools: what is on screen and waiting */
-G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2)},
-  queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)}))});
+G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
+  queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)})), speed:CAP.speed});
 G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); };
+/** reading time: 'relaxed' (default) | 'standard' | 'hold'. Persisted in localStorage 'bq-captions'. */
+G.ui.setCaptionSpeed=id=>{ const r=setCapSpeed(id); syncCapSeg(); return r; };
+Object.defineProperty(G.ui,'captionSpeed',{get:()=>CAP.speed,set:v=>G.ui.setCaptionSpeed(v),enumerable:true});
+G.ui.captionConfig=()=>JSON.parse(JSON.stringify(CAP,(k,v)=>v===Infinity?'hold':v));
+/** the message log, oldest first: [{t, w (who), p (0 low,1 normal,2 high), a (place), at (ms), n (repeats), m (missed)}] */
+G.ui.messages=()=>msgLog.map(e=>({text:e.t,who:e.w,pri:e.p,place:e.a,at:e.at,n:e.n||1,missed:!!e.m}));
+G.ui.clearMessages=()=>{ msgLog=[]; logDirty=true; };
 
+/* ---------- pause menu: reading-time setting, tabs (Paused / Messages) and the message log ---------- */
+const CAP_NOTES={
+  relaxed:'Messages stay on screen about twice as long. Press Enter or tap a message to move on sooner.',
+  standard:'The original, quicker pacing. Press Enter or tap a message to skip ahead.',
+  hold:'Story and dialogue wait for you: press Enter or tap the message to continue. Small asides still fade on their own.'
+};
+function syncCapSeg(){
+  document.querySelectorAll('#capSpeedSeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.cap===CAP.speed)));
+  const n=$('capSpeedNote'); if(n)n.textContent=CAP_NOTES[CAP.speed]||'';
+}
+document.querySelectorAll('#capSpeedSeg button').forEach(b=>b.addEventListener('click',()=>G.ui.setCaptionSpeed(b.dataset.cap)));
+syncCapSeg();
+const pauseSheet=document.querySelector('#pause .sheet');
+let pzTab='main', pzList=null, pzTabs=null, pzCount=null;
+(function buildPauseTabs(){
+  if(!pauseSheet)return;
+  pzTabs=document.createElement('div'); pzTabs.className='pz-tabs'; pzTabs.setAttribute('role','tablist'); pzTabs.setAttribute('aria-label','Pause menu');
+  pzTabs.innerHTML='<button type="button" role="tab" id="pzTabMain" data-pz="main" aria-controls="pause" aria-selected="true">Paused</button>'+
+    '<button type="button" role="tab" id="pzTabMsgs" data-pz="msgs" aria-controls="pzMsgs" aria-selected="false">Messages <span class="pz-n" id="pzCount"></span></button>';
+  // the Messages tab hides everything except the tabs, the log and the buttons row (index.html CSS), so rows other
+  // modules add to the pause sheet later (techniques, sound, map) stay in "Paused"; Resume, Journal, Save stay in both
+  const acts=pauseSheet.querySelector('.actions');
+  const pane=document.createElement('div'); pane.id='pzMsgs'; pane.setAttribute('role','tabpanel'); pane.setAttribute('aria-labelledby','pzTabMsgs');
+  pane.innerHTML='<div class="pz-mhead"><span class="eyebrow">Messages · newest first</span><h2>What was said</h2></div>'+
+    '<ol class="pz-log" id="pzLog" tabindex="0" aria-label="Messages, newest first"></ol>';
+  pauseSheet.insertBefore(pzTabs,pauseSheet.firstChild);
+  if(acts)pauseSheet.insertBefore(pane,acts); else pauseSheet.appendChild(pane);
+  pzList=pane.querySelector('#pzLog'); pzCount=pzTabs.querySelector('#pzCount');
+  pzTabs.addEventListener('click',e=>{ const b=e.target.closest('[data-pz]'); if(b)setPauseTab(b.dataset.pz,true); });
+  pzTabs.addEventListener('keydown',e=>{ if(e.code==='ArrowRight'||e.code==='ArrowLeft'){ e.preventDefault(); setPauseTab(pzTab==='main'?'msgs':'main',true); } });
+  pauseSheet.dataset.tab='main';
+})();
+function setPauseTab(t,focus){
+  if(!pauseSheet||!pzTabs)return;
+  pzTab=t==='msgs'?'msgs':'main'; pauseSheet.dataset.tab=pzTab;
+  for(const b of pzTabs.querySelectorAll('[data-pz]'))b.setAttribute('aria-selected',String(b.dataset.pz===pzTab));
+  if(pzTab==='msgs'){ renderLog(); pzList.scrollTop=0; }
+  const card=$('pause'); if(card)card.scrollTop=0;
+  else syncCapSeg();
+  if(focus){ const f=pzTabs.querySelector(`[data-pz="${pzTab}"]`); try{f.focus({preventScroll:true});}catch(_){f.focus();} if(G.input.device==='gamepad')f.classList.add('pad-focus'); }
+}
+G.ui.pauseTab=(t,focus)=>{ if(t)setPauseTab(t,focus); return pzTab; };
+function fmtTime(at){
+  if(!at)return '';
+  const d=new Date(at), now=new Date();
+  let s; try{ s=d.toLocaleTimeString([], {hour:'numeric',minute:'2-digit'}); }catch(_){ s=d.getHours()+':'+String(d.getMinutes()).padStart(2,'0'); }
+  if(d.toDateString()!==now.toDateString()){ try{ s=d.toLocaleDateString([], {month:'short',day:'numeric'})+', '+s; }catch(_){} }
+  return s;
+}
+function renderLog(){
+  if(!pzList)return; logDirty=false;
+  if(pzCount)pzCount.textContent=msgLog.length?String(msgLog.length):'';
+  if(pzTab!=='msgs')return;
+  if(!msgLog.length){ pzList.innerHTML='<li class="pz-empty">Nothing has been said yet. Everything you see in the captions is kept here.</li>'; return; }
+  let h='';
+  for(let i=msgLog.length-1;i>=0;i--){ const e=msgLog[i];
+    const ctx=[e.a,fmtTime(e.at)].filter(Boolean).map(esc).join(' · ');
+    h+=`<li class="pz-msg p${e.p}${e.m?' missed':''}"><div class="pz-meta">${e.w?`<b>${esc(e.w)}</b>`:''}<span class="ctx">${ctx}</span>`+
+      `${e.n>1?`<span class="rep" title="Said ${e.n} times">×${e.n}</span>`:''}${e.m?'<span class="flag" title="This one went by before you could read it">missed</span>':''}</div><p>${esc(e.t)}</p></li>`;
+  }
+  pzList.innerHTML=h;
+}
+G.on('mode',e=>{ if(e.mode==='paused'&&pauseSheet){ syncCapSeg(); renderLog(); if(pzTab==='msgs')pzList.scrollTop=0; } });
+/* controller: the right stick (or D-pad up/down while a tab has focus) scrolls the log */
+function padScrollLog(dt){
+  if(!pzList||pzTab!=='msgs'||$('pause').hidden||!navigator.getGamepads)return;
+  let g=null; try{ for(const p of navigator.getGamepads()||[]){ if(p&&p.connected!==false){g=p;break;} } }catch(_){ return; }
+  if(!g)return; const y=+(g.axes&&g.axes[3])||0;
+  if(Math.abs(y)>.2)pzList.scrollTop+=y*900*Math.max(dt,1/60);
+}
 /* ---------- hearts ---------- */
 const heartsEl=$('hearts'); let lastHearts='', lastMax=0;
 heartsEl.style.maxWidth='272px'; // ten hearts in one row before wrapping (Heart Shards / Keeper's Hearts raise maxHp to 20)
@@ -309,7 +492,9 @@ G.on('staff:pickup',()=>{$('staffChip').hidden=false;});
 
 G.system('hud',{order:90,modes:'always',
   update(dt){
+    if(G.input.pressed('advance')&&canAdvance())G.ui.advance();
     updateCaption(dt);
+    if(G.state.mode==='paused'){ if(logDirty)renderLog(); padScrollLog(G.dt||0); }
     if(toastT>0){toastT-=(dt||G.dt||0); if(toastT<=0)toastEl.classList.remove('show');}
     if(G.state.mode!=='play'&&stickId!==null){stickId=null;stick.classList.remove('on');}
     if(G.state.mode==='title')return;

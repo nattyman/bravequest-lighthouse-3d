@@ -51,6 +51,21 @@ body{background:#141019;color:var(--bone);font-family:var(--body);overflow:hidde
 .caption.show{opacity:1;transform:none}
 .caption .who{display:block;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:4px}
 .caption p{margin:0;font-family:var(--serif);font-style:italic;font-size:19px;line-height:1.45;color:var(--bone)}
+/* the caption is clickable/tappable (next line); hud.js adds the hint chip (.capnext) and the time-left bar (.captime) */
+.caption{position:relative;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.caption:not(.show){pointer-events:none!important}
+.caption:not(.show) .capnext{pointer-events:none!important}
+.capnext{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:5px -6px -6px 0;font:600 11.5px var(--body);letter-spacing:.06em;color:var(--fog);opacity:.8;transition:opacity .3s}
+.capnext:empty{display:none}
+.capnext kbd{height:18px;min-width:0;font-size:10.5px;padding:0 5px}
+.capnext .tap{text-transform:uppercase;letter-spacing:.14em;font-size:10.5px}
+.capnext .more{color:var(--amber);letter-spacing:.04em}
+.capnext b{color:var(--ether-hi);font-size:13px;line-height:1}
+.caption.held .capnext,.caption.waiting .capnext{opacity:1}
+.caption.held .capnext b{animation:capNudge 1.4s ease-in-out infinite}
+@keyframes capNudge{50%{transform:translateX(3px)}}
+.captime{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ether);opacity:.4;transform-origin:left center;transform:scaleX(0)}
+@media (prefers-reduced-motion:reduce){.caption.held .capnext b{animation:none}}
 .keys{display:flex;gap:6px 12px;flex-wrap:wrap;justify-content:flex-end;font-size:12px;color:var(--fog);text-shadow:0 1px 3px #000;max-width:420px;transition:opacity 1.2s}
 .keys span{display:flex;align-items:center;gap:5px}
 kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;height:21px;display:inline-grid;place-items:center;padding:0 5px;
@@ -102,6 +117,9 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
   .caption{max-width:min(540px,calc(100% - 230px))}
   .caption p{font-size:16px;line-height:1.4}
   .prompt{bottom:calc(max(30%,280px) + env(safe-area-inset-bottom,0px))}
+  /* bottom-left caption sits in the move-stick zone: only its "Tap ▸" chip takes taps there */
+  .caption{pointer-events:none}
+  .caption.show .capnext{pointer-events:auto;padding:10px 8px 10px 18px;margin:-4px -14px -14px auto;width:max-content}
 }
 @media (pointer:coarse) and (orientation:landscape){
   .caption{max-width:min(540px,calc(100% - 300px))}
@@ -112,6 +130,7 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
   .hud-bottom{display:contents}
   .caption{grid-row:2;align-self:start;max-width:100%}
   #hud:has(~ #boss:not([hidden])) .caption{margin-top:64px}
+  .caption{pointer-events:auto} /* up top, clear of the stick: the whole box is the tap target */
 }
 
 /* pause button: always available, top centre, thumb- and mouse-friendly */
@@ -164,6 +183,35 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
 .padlegend .eyebrow{color:#4b3863}
 .padnote{font-size:13px!important;line-height:1.4!important;color:#6c5a5f!important}
 .padnote.warn{color:#6c3f5f!important}
+/* pause menu tabs (hud.js): "Paused" (controls, settings) and "Messages" (the caption log). Same look as the bench's Brew/Temper tabs */
+.pz-tabs{display:flex;gap:6px;border-bottom:1px solid rgba(60,40,30,.3);margin:-8px 0 -2px}
+.pz-tabs button{font:600 14px var(--body);letter-spacing:.06em;padding:8px 16px 7px;min-height:40px;border:1px solid transparent;border-bottom:0;border-radius:3px 3px 0 0;background:transparent;color:#6c5a5f;cursor:pointer;margin-bottom:-1px;display:inline-flex;align-items:center;gap:7px}
+.pz-tabs button[aria-selected="true"]{background:rgba(255,255,255,.35);border-color:rgba(60,40,30,.3);color:#21161f}
+.pz-tabs button:focus-visible{outline:2px solid var(--ether);outline-offset:2px}
+.pz-n{font:700 11.5px var(--body);letter-spacing:0;min-width:20px;height:18px;padding:0 6px;border-radius:9px;background:rgba(75,56,99,.14);color:#4b3863;display:inline-grid;place-items:center;font-variant-numeric:tabular-nums}
+.pz-n:empty{display:none}
+/* Messages tab: everything but the tabs, the log and the buttons row steps aside (including rows other modules add later) */
+#pause .sheet[data-tab="msgs"] > :not(.pz-tabs):not(#pzMsgs):not(.actions):not(.savenote):not(.dt-entry){display:none!important}
+#pause .sheet:not([data-tab="msgs"]) > #pzMsgs{display:none}
+#pause .sheet{margin-block:auto} /* taller than the window: start at the top (the tabs) instead of overflowing above it, unreachable */
+#pause .sheet[data-tab="msgs"]{width:100%;max-width:620px}
+#pzMsgs{display:grid;gap:10px;min-width:0}
+#pzMsgs h2{font-size:clamp(28px,4.4vw,40px)}
+.pz-log{list-style:none;margin:0;padding:0 10px 0 0;max-height:max(240px,min(54vh,calc(100dvh - 380px)));overflow-y:auto;overscroll-behavior:contain;touch-action:pan-y;-webkit-user-select:text;user-select:text;
+  border-top:1px solid rgba(60,40,30,.28);border-bottom:1px solid rgba(60,40,30,.28);scrollbar-color:rgba(75,56,99,.45) transparent;scrollbar-width:thin}
+.pz-log:focus-visible{outline:2px solid var(--ether);outline-offset:3px}
+.pz-msg{padding:11px 4px 12px 12px;border-bottom:1px solid rgba(60,40,30,.15);border-left:2px solid transparent}
+.pz-msg:last-child{border-bottom:0}
+.pz-msg.p2{border-left-color:#8a5fd0}
+.pz-meta{display:flex;flex-wrap:wrap;align-items:center;gap:3px 10px;margin-bottom:3px;font:700 11.5px var(--body);letter-spacing:.16em;text-transform:uppercase}
+.pz-meta b{color:#8a5a1e}
+.pz-meta .ctx{font:500 12.5px var(--body);letter-spacing:.02em;text-transform:none;color:#7a6a6e}
+.pz-meta .rep{font:700 12px var(--body);letter-spacing:.02em;text-transform:none;padding:0 7px;border-radius:9px;background:rgba(75,56,99,.14);color:#4b3863}
+.pz-meta .flag{font:700 10px var(--body);letter-spacing:.12em;padding:1px 6px;border-radius:9px;border:1px solid rgba(163,48,74,.45);color:#a3304a}
+#pzMsgs .pz-msg p{margin:0;max-width:none;font-family:var(--serif);font-size:18px;line-height:1.5;color:#2a1f26}
+#pzMsgs .pz-msg.p0 p{font-style:italic;font-size:17px;color:#5a4a4e}
+.pz-empty{padding:16px 2px;font-family:var(--serif);font-style:italic;font-size:17px;color:#5a4a4e}
+@media (max-width:480px){ #pause .sheet{padding:22px 18px 20px} #pzMsgs .pz-msg p{font-size:17px} .pz-msg{padding:10px 2px 11px 10px} .pz-tabs button{padding:8px 12px 7px} }
 </style>
 
 <canvas id="c" tabindex="0" aria-label="The island of the lighthouse"></canvas>
@@ -193,6 +241,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <span><kbd>Q</kbd> lock on</span>
       <span>Click attack</span>
       <span><kbd>E</kbd> interact</span>
+      <span><kbd>Enter</kbd> next message</span>
       <span><kbd>Esc</kbd> pause</span>
     </div>
     <div class="touch" id="touch">
@@ -230,6 +279,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <span>Click strike</span>
       <span><kbd>E</kbd> interact</span>
       <span><kbd>F</kbd> lantern shutter</span>
+      <span><kbd>Enter</kbd> next message</span>
     </div>
     <div class="padlegend" data-pad-legend hidden></div>
     <div class="actions"><button class="btn" id="continue" type="button" hidden>Continue</button><button class="btn" id="begin" type="button">Begin</button><span class="loading" id="loading">Building the island…</span></div>
@@ -251,6 +301,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <span>Click strike, hold to charge</span>
       <span><kbd>E</kbd> interact</span>
       <span><kbd>F</kbd> lantern shutter</span>
+      <span><kbd>Enter</kbd> next message</span>
     </div>
     <div class="padlegend" data-pad-legend hidden></div>
     <div class="setting"><span>Graphics</span>
@@ -261,6 +312,10 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <div class="seg" id="invertSeg" role="group" aria-labelledby="invertLbl">
         <button type="button" data-invert="0">Normal</button><button type="button" data-invert="1">Inverted</button>
       </div><small>Inverted: pushing the mouse or right stick up tilts the camera down, flight-stick style.</small></div>
+    <div class="setting"><span id="capSpeedLbl">Message reading time</span>
+      <div class="seg" id="capSpeedSeg" role="group" aria-labelledby="capSpeedLbl">
+        <button type="button" data-cap="relaxed">Relaxed</button><button type="button" data-cap="standard">Standard</button><button type="button" data-cap="hold">Hold until I continue</button>
+      </div><small id="capSpeedNote">Messages stay on screen about twice as long. Press Enter or tap a message to move on sooner.</small></div>
     <div class="actions"><button class="btn" id="resume" type="button">Resume</button><button class="btn ghost" id="saveBtn" type="button">Save game</button><button class="btn ghost" id="quitBtn" type="button">Save and quit</button></div>
     <p class="savenote" id="saveNote"></p>
   </div>

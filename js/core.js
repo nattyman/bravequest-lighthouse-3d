@@ -227,7 +227,8 @@ G.items={
 const BIND={
   forward:['KeyW','ArrowUp'], back:['KeyS','ArrowDown'], left:['KeyA','ArrowLeft'], right:['KeyD','ArrowRight'],
   jump:['Space'], sprint:['ShiftLeft','ShiftRight'], roll:['KeyC','ControlLeft','AltLeft'],
-  attack:['KeyJ','mouse0'], lock:['KeyQ','Tab','mouse2'], interact:['KeyE'], shutter:['KeyF'], potion:['KeyH'], pause:['Escape','KeyP']
+  attack:['KeyJ','mouse0'], lock:['KeyQ','Tab','mouse2'], interact:['KeyE'], shutter:['KeyF'], potion:['KeyH'], pause:['Escape','KeyP'],
+  advance:['Enter','NumpadEnter'] // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
 };
 const held=new Set(), pressed=new Set(), released=new Set(), vheld=new Set(), vpressed=new Set();
 let lookX=0, lookY=0, dragging=false;
@@ -235,7 +236,9 @@ const joy={on:false,id:null,ox:0,oy:0,x:0,y:0}, look={id:null,x:0,y:0};
 const actionsOf=code=>Object.keys(BIND).filter(a=>BIND[a].includes(code));
 function press(code){ if(!held.has(code)){held.add(code);actionsOf(code).forEach(a=>pressed.add(a));} }
 function release(code){ if(held.has(code)){held.delete(code);actionsOf(code).forEach(a=>released.add(a));} }
-addEventListener('keydown',e=>{ if(e.repeat)return; if(['Tab','Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault(); press(e.code); });
+addEventListener('keydown',e=>{ if(e.repeat)return;
+  if((e.code==='Enter'||e.code==='NumpadEnter')&&e.target&&e.target.closest&&e.target.closest('button,input,select,textarea,a,.card'))return; // a menu's Enter (e.g. on Resume) must not also advance a caption
+  if(['Tab','Space','ArrowUp','ArrowDown'].includes(e.code))e.preventDefault(); press(e.code); });
 addEventListener('keyup',e=>release(e.code));
 addEventListener('blur',()=>{[...held].forEach(release);});
 canvas.addEventListener('contextmenu',e=>e.preventDefault());

@@ -389,6 +389,8 @@ function render(){
     <button type="button" data-prog="reveal" aria-pressed="${!!G.progress.reveal}"${dis(!title)}>Reveal collectibles</button></div></div>`:''}
   <div class="dt-row"><span class="lbl">Tide <small>(${tideName()})</small></span><div class="seg">${['low','rising','high','falling'].map(k=>`<button type="button" data-tide="${k}" aria-pressed="${tideName()===k}"${dis(!title&&loop)}>${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div></div>
   <div class="dt-row"><span class="lbl">Time speed</span><div class="seg">${[1,4].map(n=>`<button type="button" data-speed="${n}" aria-pressed="${(G.timeScale||1)===n}">${n}×</button>`).join('')}</div></div>
+  ${G.ui.setCaptionSpeed?`<div class="dt-row"><span class="lbl">Captions <small>(${G.ui.messages().length} logged)</small></span><div class="seg">${[['relaxed','Relaxed'],['standard','Standard'],['hold','Hold']].map(([k,l])=>`<button type="button" data-capspeed="${k}" aria-pressed="${G.ui.captionSpeed===k}">${l}</button>`).join('')}
+    <button type="button" data-act="capTest"${dis(!title)}>Say a burst of lines</button><button type="button" data-act="capClear">Clear message log</button></div></div>`:''}
   <div class="dt-h">Map</div><div class="seg">
     <button type="button" data-act="mapReveal"${dis(!title&&G.map)}>Reveal the whole map</button>
     <button type="button" data-act="mapCover"${dis(!title&&G.map)}>Cover it in cloud again</button>
@@ -406,7 +408,7 @@ function render(){
   sheet.innerHTML=h; noteEl=$('dtNote'); noteEl.textContent=lastNote;
   if(focusKey){ const el=sheet.querySelector(focusKey); if(el&&!el.disabled){ try{el.focus({preventScroll:true});}catch(_){el.focus();} if(G.input.device==='gamepad')el.classList.add('pad-focus'); } }
 }
-function keyOf(el){ for(const a of ['data-prog','data-start','data-cheat','data-give','data-act','data-tide','data-speed','data-tp','data-spawn']) if(el.hasAttribute(a))return `[${a}="${el.getAttribute(a)}"]`; return null; }
+function keyOf(el){ for(const a of ['data-capspeed','data-prog','data-start','data-cheat','data-give','data-act','data-tide','data-speed','data-tp','data-spawn']) if(el.hasAttribute(a))return `[${a}="${el.getAttribute(a)}"]`; return null; }
 function onClick(e){
   const b=e.target.closest('button'); if(!b||b.disabled)return;
   const d=b.dataset; let msg='';
@@ -417,6 +419,9 @@ function onClick(e){
     else if(d.give)msg=giveItem(d.give);
     else if(d.tide){ testMode(); msg=setTide(d.tide); }
     else if(d.speed){ setSpeed(+d.speed); return; }
+    else if(d.capspeed){ G.ui.setCaptionSpeed(d.capspeed); msg='Message reading time: '+d.capspeed; }
+    else if(d.act==='capTest'){ sayBurst(); msg='Five lines queued (one low, one high): close the panel to watch them, then pause > Messages'; }
+    else if(d.act==='capClear'){ G.ui.clearMessages(); msg='Message log cleared'; }
     else if(d.tp)msg=teleport(d.tp);
     else if(d.spawn)msg=spawnMonster(d.spawn);
     else if(d.act==='close'){ closePanel(); return; }
@@ -430,6 +435,15 @@ function onClick(e){
     else if(d.act==='mapOpen'){ const from=opener; closePanel(from==='play'); G.map.open(); return; } // from play: stay paused under the map (it resumes on close)
   }catch(err){ console.error('devtools',err); msg='That failed: '+(err&&err.message); }
   note(msg); render();
+}
+/* captions: a burst of lines of every priority, to try the reading time, the Enter/tap hint, the queue and the log */
+function sayBurst(){
+  const say=(t,o)=>G.ui.say(t,o);
+  say('A long line to read at your own pace: the fog lies thick in the hollows of the moor, and somewhere inside it a bell is ringing very slowly.');
+  say('“Can’t get in, can you?” he says. “No more could I.”',{who:'Halloran'});
+  say('A gull cries somewhere below.',{priority:'low'});
+  say('A second thing, waiting its turn behind the first.');
+  setTimeout(()=>say('Something stirs in the fog. (a high-priority line: it cuts in)',{priority:'high'}),2500);
 }
 function openPanel(){
   if(!card||!card.hidden)return;
