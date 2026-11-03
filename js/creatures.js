@@ -289,6 +289,10 @@ function mothTarget(m,t,o){
     case 'satchel': c=satchelPos(); break;                       // loop: drawn to the ichor in the player's satchel
     case 'feed': if(m.feedC)return o.set(m.feedC.x+Math.cos(m.ph+t*m.sp*.35)*m.rad,m.feedC.y+Math.sin(t*2.1+m.ph)*.18,m.feedC.z+Math.sin(m.ph+t*m.sp*.35)*m.rad); c=lanternPos(); break;
     case 'gone': return o.copy(m.p);
+    case 'snatch':{ // taken by a raft raider (moths.js snatch): into the claw, then dragged down under the water
+      const sn=m.snatch; if(!sn)return o.copy(m.p); const e=t-sn.t0;
+      if(e<.25)return o.copy(sn.claw);
+      const k=Math.min(1,(e-.25)/.45); return o.set(sn.claw.x+(m.ph%1-.5)*.3*k,U.lerp(sn.claw.y,sn.water-.7,k),sn.claw.z); }
     case 'roost':{ // cave moths clinging to the rock; now and then one lifts off and settles again
       if(!m.rp)return o.copy(m.p);
       const f=Math.sin(t*.31+m.ph*3.7)+.4*Math.sin(t*.83+m.ph);
@@ -305,8 +309,8 @@ function mothTarget(m,t,o){
   let rad=m.rad;
   if((m.tgt==='lantern'||m.tgt==='spot')&&zoneOf(c,g)!=='out')rad=Math.min(rad,1.05);
   if(m.tgt==='lantern'&&API.clingR!=null){ // a shut lantern in the cave / the raft: the swarm clings tight
-    const cr=API.clingR*(.3+.7*Math.min(1,m.rad/1.75));
-    return o.set(c.x+Math.cos(a*.6)*cr, c.y-.05+m.hy*.12+Math.sin(t*1.9+m.ph)*.1, c.z+Math.sin(a*.6)*cr);
+    const cr=API.clingR*(.3+.7*Math.min(1,m.rad/1.75)), sh=API.clingShy; // clingShy {x,y,z}: the swarm shrinks back from a raider on the raft
+    return o.set(c.x+Math.cos(a*.6)*cr+(sh?sh.x:0), c.y-.05+m.hy*.12+Math.sin(t*1.9+m.ph)*.1+(sh?sh.y*(.6+.4*Math.sin(t*3.1+m.ph)):0), c.z+Math.sin(a*.6)*cr+(sh?sh.z:0));
   }
   return o.set(c.x+Math.cos(a)*rad, c.y+m.hy*.5+Math.sin(t*1.3+m.ph)*.45-(m.tgt==='lamp'?.5:0), c.z+Math.sin(a)*rad);
 }
@@ -408,7 +412,7 @@ function updateMoths(dt){
     if(m.tgt==='lantern'||m.tgt==='hunt')lc++;
     mothTarget(m,t,tmp);
     route(m,g);
-    const hunting=m.tgt==='hunt', glass=m.tgt==='glass', clinging=m.tgt==='lantern'&&API.clingR!=null, perch=m.tgt==='roost', jar=m.tgt==='jar';
+    const hunting=m.tgt==='hunt'||m.tgt==='snatch', glass=m.tgt==='glass', clinging=m.tgt==='lantern'&&API.clingR!=null, perch=m.tgt==='roost', jar=m.tgt==='jar';
     const k=hunting||clinging||jar?13:glass||perch?9:7, c=hunting||clinging||jar?4.2:glass||perch?3.2:3.6, nz=glass||perch?3:clinging?2:6;
     tmp2.subVectors(tmp,m.p).multiplyScalar(k).addScaledVector(m.v,-c);
     tmp2.x+=(rnd()-.5)*nz; tmp2.y+=(rnd()-.5)*nz; tmp2.z+=(rnd()-.5)*nz;

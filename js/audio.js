@@ -1160,6 +1160,10 @@ function wireCave(){
     if(st==='loaded')S.clank(now(),{dest:at(raftPos(),4),f:420,g:.07});
     cfx('cave_raft_knock',raftPos(),'knock',{ref:5,arg:{g:e&&e.bump?.08:.12,f:160}}); });
   G.on('brineling:board',e=>{ if(!ctx)return; const p=V3(e&&e.pos)||raftPos(), o=at(p,4), t=now(); for(let i=0;i<4;i++)CS.scuttle(t+i*.05,o,.05); CS.knock(t+.12,o,{g:.07,f:190}); });
+  // raft raiders: claws on the edge (a slap of water, chitter, the planks knock), knocked off (a heavy splash), a moth dragged under (a bubble)
+  G.on('brineling:grip',e=>{ if(!ctx)return; const p=V3(e&&e.pos)||raftPos(), o=at(p,4), t=now(); CS.slap(t,o,.12); CS.chitter(t+.15,o,.07); CS.knock(t+.3,o,{g:.06,f:170}); CS.chitter(t+.8,o,.06); CS.slap(t+.9,o,.06); });
+  G.on('brineling:splash',e=>{ if(!ctx)return; const p=V3(e&&e.pos)||raftPos(), o=at(p,4), t=now(); CS.slap(t,o,.2); for(let i=0;i<6;i++)CS.bubble(t+.05+i*.05,o,.05,rnd(140,380)); });
+  G.on('moths:lost',e=>{ if(!ctx||!(e&&e.snatch))return; const p=V3(e.pos)||raftPos(), o=at(p,4); CS.bubble(now()+.3,o,.05,rnd(300,600)); });
   // gusts: cave:gust {pos, phase:'telegraph', lead} then {phase:'burst'} per vent; no phase = both, burst after lead
   G.on('cave:gust',e=>{ if(!ctx)return; const pos=V3(e&&e.pos)||pNear(0), ph=(e&&e.phase)||'';
     if(Math.hypot(pos.x-G.player.pos.x,pos.z-G.player.pos.z)>35)return;

@@ -6,9 +6,10 @@
    monsters and carries it to the Blights, where it feeds and cures them.
    API: G.moths  = {swarm, feeding, bait(seconds), baited, baitLeft, lost,
                     addSite(site), sites, kill(m), toLantern(m), release(m),          // shared feeding (cave seals)
+                    snatch(m,{by,claw,water}),                                         // a raft raider drags one moth under (cave)
                     jar:{owned,count,capacity:60,give(),capture(),release()}, jarPos()} // the moth jar (cave reward)
         G.blights = [{id,name,pos,radius,needs,cured,reward,progress,feeding,stalled,hum}]
-   Events: moths:bait {seconds,left} · moths:baitEnd · moths:lost {n,pos} · moths:noticed
+   Events: moths:bait {seconds,left} · moths:baitEnd · moths:lost {n,pos,by?,snatch?} · moths:noticed
            blight:seen {id} · blight:near / blight:far {id} · blight:feed {id} · blight:stall {id}
            blight:cured {id,name,pos,restored?} · blight:reward {id,kind,spots|pos} · spring:heal {hp}
    Dormant until 'loop:start'. Persist key 'moths'.
@@ -383,7 +384,10 @@ function showAll(){
 }
 
 /* ---------------------------------------------------------------- HUD */
-let hudEl=null, hudRow=null, hudFeed=null, hudBar=null, hudFeedTxt=null;
+let hudEl=null, hudRow=null, hudFeed=null, hudBar=null, hudFeedTxt=null, hudLost=null;
+/* the red tick: moths lost in the last moment ("−3"), and the count flushes red */
+let tickN=0, tickT=0;
+G.on('moths:lost',e=>{ const n=(e&&e.n)|0; if(n<=0)return; tickN=(tickT>0?tickN:0)+n; tickT=1.8; });
 function buildHud(){
   if(hudEl)return;
   const st=document.createElement('style');
@@ -398,12 +402,16 @@ function buildHud(){
 .moth-chip .feed{display:flex;align-items:center;gap:7px;font-family:var(--serif,Georgia,serif);font-style:italic;font-size:14px}
 .moth-chip .feed.stall{color:#e9a0a0}
 .moth-chip .bar{width:96px;height:5px;border-radius:3px;background:rgba(20,15,26,.65);border:1px solid rgba(241,233,216,.35);overflow:hidden}
-.moth-chip .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#bfae86,#fbf3de);transition:width .25s}`;
+.moth-chip .bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,#bfae86,#fbf3de);transition:width .25s}
+.moth-chip .lost{font-weight:700;font-variant-numeric:tabular-nums;color:#ff8b84;opacity:0;transition:opacity .7s;text-shadow:0 0 6px rgba(255,60,50,.55),0 1px 3px #000}
+.moth-chip .lost.on{opacity:1;transition:none}
+.moth-chip.hit .txt b:first-of-type{color:#ff9d96;transition:none}
+.moth-chip .txt b:first-of-type{transition:color .6s}`;
   document.head.appendChild(st);
   hudEl=document.createElement('div'); hudEl.className='moth-chip'; hudEl.hidden=true; hudEl.setAttribute('aria-live','off');
-  hudEl.innerHTML=`<div class="row"><svg viewBox="0 0 36 28" aria-hidden="true"><path fill="#efe6cf" d="M18 6c-1 0-1.5 1-1.5 2v14c0 1 .6 2 1.5 2s1.5-1 1.5-2V8c0-1-.5-2-1.5-2zM16 10C12 2 3 1 2 6c-1 4 5 8 13 8zm4 0c4-8 13-9 14-4 1 4-5 8-13 8zm-4 6c-6 0-11 3-10 7 1 3 7 2 11-3zm4 0c6 0 11 3 10 7-1 3-7 2-11-3z"/></svg><span class="txt"></span></div>
+  hudEl.innerHTML=`<div class="row"><svg viewBox="0 0 36 28" aria-hidden="true"><path fill="#efe6cf" d="M18 6c-1 0-1.5 1-1.5 2v14c0 1 .6 2 1.5 2s1.5-1 1.5-2V8c0-1-.5-2-1.5-2zM16 10C12 2 3 1 2 6c-1 4 5 8 13 8zm4 0c4-8 13-9 14-4 1 4-5 8-13 8zm-4 6c-6 0-11 3-10 7 1 3 7 2 11-3zm4 0c6 0 11 3 10 7-1 3-7 2-11-3z"/></svg><span class="txt"></span><span class="lost" aria-hidden="true"></span></div>
   <div class="feed" hidden><span class="ft"></span><span class="bar"><i></i></span></div>`;
-  hudRow=hudEl.querySelector('.txt'); hudFeed=hudEl.querySelector('.feed'); hudFeedTxt=hudEl.querySelector('.ft'); hudBar=hudEl.querySelector('.bar i');
+  hudRow=hudEl.querySelector('.txt'); hudLost=hudEl.querySelector('.lost'); hudFeed=hudEl.querySelector('.feed'); hudFeedTxt=hudEl.querySelector('.ft'); hudBar=hudEl.querySelector('.bar i');
   const host=document.querySelector('#hud .vitals'); if(host)host.appendChild(hudEl);
 }
 let hudKey='', hudShowT=0;
@@ -422,6 +430,8 @@ function updateHud(dt){
   else if(API.swarm>0)k+=` <span class="dot">·</span> <span class="bait">bait gone</span>`;
   if(JAR.owned&&JAR.count>0)k+=` <span class="dot">·</span> jar <b>${JAR.count}</b>`;
   if(k!==hudKey){hudKey=k; hudRow.innerHTML=k;}
+  if(hudLost){ tickT=Math.max(0,tickT-dt); const on=tickT>0, t=on?'−'+tickN:hudLost.textContent;
+    if(hudLost.textContent!==t)hudLost.textContent=t; hudLost.classList.toggle('on',on&&tickT>1.1); hudEl.classList.toggle('hit',on&&tickT>1.2); if(!on)tickN=0; }
   hudFeed.hidden=!fb;
   if(fb){ const n=API.feeding; hudFeed.classList.toggle('stall',fb.stalled);
     const t=fb.stalled?`Too few to feed (${n}) — bring more`:`Feeding · ${n} moths`; if(hudFeedTxt.textContent!==t)hudFeedTxt.textContent=t;
@@ -550,7 +560,37 @@ function updateRegrow(dt){
    site: {id,name,pos:Vector3,radius,needs,cured,progress,feeding,stalled, anchors?:[Vector3], feedTime?, stallBelow?, yRange?,
           onFeed?(s), onStall?(s,n), onStop?(s), onDone?(s)}   — moths on a baited lantern within radius+1 start feeding at `needs`. */
 const sites=[];
+/* site.partial (the Sluice Seal): a swarm smaller than `needs` still feeds, but only eats its share — each moth that has not fed on it
+   yet adds 1/needs to what the site can lose (b.credit); once progress reaches it the moths lift off sated (onSated) and only fresh moths
+   start it again. Progress never decays (it is persisted), so bringing more moths finishes the job. */
+const PARTIAL_START=3;
+function feedTickPartial(b,dt,ms,o){
+  const R=b.radius+1, by=b.pos.y, yr=b.yRange||7, near=(m,r)=>m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<r&&Math.abs(m.p.y-by)<yr;
+  if(!b.fed)b.fed=new Set();
+  if(b.credit==null||b.credit<b.progress)b.credit=b.progress;
+  const join=m=>{ toFeed(m,b); if(!b.fed.has(m)){ b.fed.add(m); b.credit=Math.min(1,b.credit+1/b.needs); } };
+  if(!b.feeding){
+    let n=0, fresh=0; for(const m of ms) if(near(m,R)){ n++; if(!b.fed.has(m))fresh++; }
+    b.near=n; b.fresh=fresh;
+    if(fresh>=Math.min(b.needs,PARTIAL_START)){
+      b.feeding=true; b.stalled=false; b.sated=false;
+      for(const m of ms) if(near(m,R+2))join(m);
+      o.onFeed&&o.onFeed(b);
+    }
+    return 0;
+  }
+  for(const m of ms) if(near(m,R))join(m);
+  let n=0; for(const m of ms) if(m.tgt==='feed'&&m.feedB===b&&!m._rel)n++;
+  b.near=n; b.stalled=false;
+  if(b.credit>.999)b.credit=1;
+  b.progress=Math.min(b.credit,b.progress+dt/(b.feedTime||FEED_TIME)*Math.max(.25,Math.min(1,n/b.needs)));
+  if(b.progress>.9995){ b.progress=1; o.onDone&&o.onDone(b); return n; }
+  if(n===0){ b.feeding=false; o.onStop&&o.onStop(b); return 0; }
+  if(b.progress>=b.credit-1e-4){ b.feeding=false; b.sated=true; liftOff(b); o.onSated&&o.onSated(b,n); o.onStop&&o.onStop(b); }
+  return n;
+}
 function feedTick(b,dt,ms,o){
+  if(b.partial)return feedTickPartial(b,dt,ms,o);
   const R=b.radius+1, by=b.pos.y, yr=b.yRange||7, near=(m,r)=>m.tgt==='lantern'&&Math.hypot(m.p.x-b.pos.x,m.p.z-b.pos.z)<r&&Math.abs(m.p.y-by)<yr;
   if(!b.feeding){
     b.progress=Math.max(0,b.progress-dt*.01);
@@ -580,7 +620,7 @@ function siteDone(s){ if(s.cured)return; s.cured=true; s.feeding=false; s.stalle
 function updateSites(dt,ms){
   let n=0;
   for(const s of sites){ if(s.cured||s.enabled&&!s.enabled())continue;
-    n+=feedTick(s,dt,ms,{onFeed:x=>x.onFeed&&x.onFeed(x),onStall:(x,k)=>x.onStall&&x.onStall(x,k),onStop:x=>x.onStop&&x.onStop(x),onDone:x=>siteDone(x)}); }
+    n+=feedTick(s,dt,ms,{onFeed:x=>x.onFeed&&x.onFeed(x),onStall:(x,k)=>x.onStall&&x.onStall(x,k),onStop:x=>x.onStop&&x.onStop(x),onSated:(x,k)=>x.onSated&&x.onSated(x,k),onDone:x=>siteDone(x)}); }
   return n;
 }
 
@@ -781,12 +821,31 @@ function updateJar(dt){
 }
 let lostKill=0, lostKillPos=V();
 function killOne(m,dust){ if(!m||m.tgt==='gone')return false; lostKillPos.copy(m.p); kill(m,dust); S.lost++; lostKill++; return true; }
+/* a raft raider's snatch: the moth flashes, darts into the claw and is dragged under the water (creatures.js 'snatch' target),
+   then is gone. It leaves the swarm at once, so the HUD count drops (with the red tick) the moment it is taken. */
+function snatch(m,o){
+  if(!m||m.tgt==='gone'||m.tgt==='snatch')return false; o=o||{};
+  const claw=o.claw||m.p, w=isFinite(o.water)?o.water:claw.y-.6;
+  m.tgt='snatch'; m.feedB=null; m._rel=0; m.prey=null; m.next=null; m.delay=0;
+  m.snatch={t0:G.time,claw:V(claw.x,claw.y,claw.z),water:w,mon:o.monster||null};
+  if(G.ink&&G.ink.burst)G.ink.burst(m.p,{n:0,speed:.9,size:[.1,.3],life:[.3,.6],up:.4,embers:7,color:'#fff1cf',alpha:.9});
+  S.lost++;
+  G.emit('moths:lost',{n:1,pos:m.p.clone(),by:o.by||'snatch',snatch:true});
+  return true;
+}
+function updateSnatched(){
+  for(const m of mothList()){ if(m.tgt!=='snatch')continue; const s=m.snatch; if(!s){ kill(m,false); continue; }
+    const e=G.time-s.t0;
+    if(s.mon&&s.mon.alive&&!s.mon.dying&&e<.25){ const mo=s.mon, f=Math.sin(mo.heading), g=Math.cos(mo.heading); s.claw.set(mo.pos.x+f*.45,mo.pos.y+.35,mo.pos.z+g*.45); }
+    if(e>.3&&!s.dunk&&m.p.y<s.water+.15){ s.dunk=true; if(G.ink&&G.ink.burst)G.ink.burst(V(m.p.x,s.water+.04,m.p.z),{n:2,speed:1,size:[.15,.4],life:[.3,.6],up:1.2,embers:1,drops:5,color:'#bcd6dc',alpha:.5}); }
+    if(e>.85){ m.snatch=null; kill(m,false); } }
+}
 
 /* ---------------------------------------------------------------- API */
 const API=G.moths={swarm:0,feeding:0,bait,
   get baited(){return S.baitLeft>0||S.jarLeft>0;},
   addSite(s){ s.progress=s.progress||0; s.feeding=false; s.stalled=false; s.cured=!!s.cured; s.near=0; if(sites.indexOf(s)<0)sites.push(s); return s; },
-  sites, kill:(m,dust=true)=>killOne(m,dust), eat:(m)=>killOne(m,true), toLantern:m=>toLantern(m), release:m=>release(m),
+  sites, kill:(m,dust=true)=>killOne(m,dust), eat:(m)=>killOne(m,true), snatch:(m,o)=>snatch(m,o), toLantern:m=>toLantern(m), release:m=>release(m),
   jar:JAR, jarPos:()=>jarWorld(), get baitLeft(){return S.baitLeft;}, get lost(){return S.lost;},
   get noticed(){return S.noticed;}, get active(){return started;},
   blight:id=>blights.find(b=>b.id===id)||null};
@@ -832,6 +891,7 @@ G.system('moths',{order:32,modes:'always',
       updateBlights(dt);
       updateSpring(dt);
       updateJar(dt);
+      updateSnatched();
       if(lostKill>0){ G.emit('moths:lost',{n:lostKill,pos:lostKillPos.clone()}); lostKill=0; }
       let n=0; for(const m of mothList()) if(m.tgt==='lantern'||m.tgt==='hunt')n++; API.swarm=n; // hunting moths (e.g. on the Undertow) are still the player's swarm
       updateHud(dt);

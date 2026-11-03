@@ -5,9 +5,10 @@
    the Flooding Stair, the raft down the Channel, the blowholes in the Hall of
    Drafts, and a shutter for the cured lantern while underground.
    API: G.cavePuzzles = {anchor(room,name,fallbackLocal), veins, seals, crates, vents,
-          raft:{pos,moths,state,t,lantern}, gust:{phase,next}, lit(room), open(id), debug}
-   Events: cave:lit {room} · cave:seal {id,state:'seen'|'feed'|'stall'|'stop'} · cave:sealOpen {id}
-           cave:raft {state:'loaded'|'drifting'|'slack'|'pushed'|'arrived'|'done'|'taken', bump?}
+          raft:{pos,dir,moths,state,t,lantern,speed,runT,pushes,raiders,aboard}, raid:{wave,crabs}, gust:{phase,next}, lit(room), open(id), debug}
+   Events: cave:lit {room} · cave:seal {id,state:'seen'|'feed'|'stall'|'stop'|'sated'} · cave:sealOpen {id}
+           cave:raft {state:'loaded'|'drifting'|'pushed'|'arrived'|'done'|'taken', bump?}
+           cave:raid {wave,n} (a boarding wave starts; the crabs: brineling:grip → brineling:board → brineling:aboard → brineling:knocked/splash)
            cave:gust {i,pos,phase:'telegraph'|'burst', lead} (telegraph fires `lead` s before the burst)
    Moth jar lives in moths.js (G.moths.jar) — persisted here. Persist key 'cavePuzzles'.
    Dormant until the player is in the cave.
@@ -24,8 +25,13 @@ const VEIN_COST=5;
 const SEALS={ gallery:{anchor:['gallery','seal',[0,3,-46]],needs:20,time:6,name:'The Gallery Seal',gate:'gallery',r:2.4},
               channel:{anchor:['channel','seal',[47,1,-80]],needs:20,time:8,name:'The Sluice Seal',gate:'channel',r:3.6},
               arena:  {anchor:['arena','door',[60,3,-38]],needs:20,time:8,name:'The Undertow Door',gate:'arena',r:2.6} };
-const RAFT_K=21,        // m of drift per unit of tide level change (one full flood ≈ 42 m ≥ the 38 m channel)
-      RAFT_PUSH=3, RAFT_REACH=7;
+/* the raft run (~38 m): a short escort set piece, ~25–35 s with no help. The channel always runs toward the sluice;
+   the tide only adds to it (RAFT_VT at the flood/ebb's fastest, none at slack). Bolts / strikes / a slam on the raft shove it on. */
+const RAFT_V0=1.25, RAFT_VT=.45, TIDE_DL_PEAK=1.343*TAU/300,  // m/s current; tide level's peak rate of change (alchemy.js TIDE)
+      RAFT_CAST=2.5, RAFT_RAMP=1.4,                           // s before it casts off (time to climb to the walkway), s to reach speed
+      RAFT_PUSH_V=2.4, RAFT_PUSH_DECAY=1.3, RAFT_PUSH_MAX=4,  // a shove: +m/s, fading at this rate (≈1.8 m each)
+      RAFT_DRAG=.1, RAFT_HOME_V=4, RAFT_REACH=7;              // each crab aboard slows it 10%; an empty raft swings home at 4 m/s
+const RAID_WAVES=[{at:.24,sides:[1]},{at:.5,sides:[-1,1]},{at:.76,sides:[1,-1]}], RAID_GAP=.7; // boarding waves by raft progress; crabs in a wave .7 s apart
 const GUST_PERIOD=6, GUST_LEAD=1.2, GUST_LEN=.8, GUST_R=3, GUST_PUSH=3.2, CLING_SHUT=.6, CLING_RAFT=1.0;
 const ROOST_N=40, ROOST_REGROW=8;
 
@@ -191,11 +197,13 @@ function buildSeal(id){
     else if(G.addCollider)col=G.addCollider({x:pos.x,z:pos.z,r:R*.9,y0:pos.y-1.5,y1:pos.y+R*1.6});
   }
   const s={id,name:d.name,pos:V(pos.x,pos.y+.6,pos.z),radius:d.r+1.2,needs:d.needs,feedTime:d.time,stallBelow:Math.round(d.needs*.4),yRange:6.5,anchors,
-    root,mat,blob,em,glow,col,blockId,gate:d.gate,boil:-1,flash:0,seen:false,
+    root,mat,blob,em,glow,col,blockId,gate:d.gate,boil:-1,flash:0,seen:false,partial:id==='channel',
     enabled:()=>inside()&&isPlay()&&(id!=='channel'||API.raft.lantern||API.raft.state==='arrived'),
     onFeed(x){ x.flash=1; G.emit('cave:seal',{id,state:'feed'});
       say('sealFeed','The moths settle on the plug and begin to eat. It shudders, and the whole thing draws in a long breath.'); },
     onStall(x,n){ G.emit('cave:seal',{id,state:'stall',n}); },
+    onSated(x,n){ G.emit('cave:seal',{id,state:'sated',n,progress:x.progress});
+      G.ui.say('The moths eat what they can and lift away, gorged. The plug is still breathing — '+Math.round(x.progress*100)+'% eaten. It wants more moths than you brought.',{priority:'high',key:'sated'}); },
     onStop(){ G.emit('cave:seal',{id,state:'stop'}); },
     onDone(){ openSeal(id,false); }};
   API.seals[id]=s;
@@ -353,11 +361,16 @@ function updateCrates(dt){
   }
 }
 
-/* ================================================================ 5. THE RAFT */
-let raftMesh=null, raftA=null, raftB=null, raftLen=1, raftPush=0, raftLat=0, raftLatV=0, raftYaw=0, prevLevel=null, raftSpeed=0, raftDrifting=false, raftInter=null, raftTake=null, raftSaid={};
+/* ================================================================ 5. THE RAFT
+   Load the baited lantern at the jetty → it casts off after RAFT_CAST s → the current carries it down the channel (a bolt, a strike or a
+   slam on the raft shoves it on) → boarding waves at RAID_WAVES (each crab telegraphs 1.5 s on the edge, then climbs aboard and snatches
+   moths until it is knocked off) → it bumps into the plug and the swarm feeds (partial: too few moths only eat their share). */
+let raftMesh=null, raftA=null, raftB=null, raftLen=1, raftPushV=0, raftLat=0, raftLatV=0, raftYaw=0, raftRoll=0, raftPitch=0, prevLevel=null, raftDrifting=false, raftInter=null, raftTake=null, raftSaid={}, raftHB=null;
+const raid={wave:0,crabs:[],rings:[],ringT:0};
+API.raid=raid;
 function buildRaft(){
   raftA=anchor('channel','raftStart',[7,0,-80]); raftB=anchor('channel','raftEnd',[44,0,-80]);
-  raftLen=Math.max(1,Math.hypot(raftB.x-raftA.x,raftB.z-raftA.z));
+  raftLen=Math.max(1,Math.hypot(raftB.x-raftA.x,raftB.z-raftA.z)); API.raft.dir=raftDir(); API.raft.len=raftLen; API.raft.radius=1.4;
   const parts=[], box=(w,h,d,x,y,z,ry=0)=>{const b=new THREE.BoxGeometry(w,h,d); b.rotateY(ry); b.translate(x,y,z); return b;};
   for(let i=0;i<6;i++)parts.push(box(2.3+(rnd()-.5)*.25,.13,.27,(rnd()-.5)*.08,.02*(i%2),-.72+i*.29,(rnd()-.5)*.05));
   for(const z of [-.55,.55])parts.push(box(.18,.16,1.9,0,-.13,0,PI/2+.0),box(2.0,.14,.16,0,-.12,z));
@@ -368,18 +381,29 @@ function buildRaft(){
   raftMesh=new THREE.Mesh(g,G.toon('#ffffff',{vertexColors:true})); raftMesh.castShadow=true; raftMesh.name='raft'; G.scene.add(raftMesh); if(G.outline)G.outline(raftMesh,{thickness:.025});
   placeRaft(0);
   raftInter=G.interact.add({pos:()=>V(API.raft.pos.x,G.player.pos.y,API.raft.pos.z),radius:3.3,priority:3,
-    enabled:()=>inside()&&isPlay()&&!API.raft.lantern&&API.raft.state!=='done'&&lantern()&&lantern().carried,
+    enabled:()=>inside()&&isPlay()&&!API.raft.lantern&&API.raft.state!=='done'&&lantern()&&lantern().carried&&API.raft.t<.05,
     label:()=>{ const L=lantern(); if(!(G.moths&&G.moths.baited))return 'Set the lantern on the raft · bait it first'; if(L.shut)return 'Set the lantern on the raft · open the shutter first'; return 'Set the lantern on the raft'; },
     use:()=>loadRaft()});
   raftTake=G.interact.add({pos:()=>V(API.raft.pos.x,G.player.pos.y,API.raft.pos.z),radius:RAFT_REACH,priority:3,
-    enabled:()=>inside()&&isPlay()&&API.raft.lantern&&lantern()&&!lantern().carried&&(Math.hypot(G.player.pos.x-API.raft.pos.x,G.player.pos.z-API.raft.pos.z)<2.2||API.raft.state==='arrived'||API.raft.state==='done'||!raftDrifting),
+    enabled:()=>inside()&&isPlay()&&API.raft.lantern&&lantern()&&!lantern().carried&&(Math.hypot(G.player.pos.x-API.raft.pos.x,G.player.pos.z-API.raft.pos.z)<2.2||API.raft.state==='arrived'||API.raft.state==='done'),
     label:()=>'Hook the lantern back off the raft', use:()=>takeLantern()});
+  // the raft takes blows: a bolt from the walkway, a strike from the jetty, a slam — each shoves it on toward the sluice.
+  // Lock-on only offers it (and it only takes hits) while no crab is on it or at its edge: then the crabs come first.
+  raftHB={team:'enemy',pos:API.raft.pos,radius:1.25,height:.55,corrupt:false,name:'The raft',lockOffset:.25,raft:true,
+    get targetable(){ return !!(API.raft.lantern&&API.raft.state!=='arrived'&&API.raft.state!=='done'&&!raiders().length); },
+    alive:()=>built&&!!raftMesh&&API.raft.state!=='done'&&inside()&&!raiders().length,   // while a crab is on it or at its edge, blows (and bolts) go to the crab
+    hit:info=>pushRaft(info)};
+  G.combat.add(raftHB);
+  // ripples where a crab grips the edge (the telegraph): a few flat rings on the water
+  const rm=new THREE.MeshBasicMaterial({color:COL('#cfe2e6'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
+  for(let i=0;i<6;i++){ const m=new THREE.Mesh(new THREE.RingGeometry(.82,1,28),rm.clone()); m.rotation.x=-PI/2; m.visible=false; m.renderOrder=3; G.scene.add(m); raid.rings.push({m,t:9,life:1}); }
 }
 function raftDir(){ return V(raftB.x-raftA.x,0,raftB.z-raftA.z).normalize(); }
 function placeRaft(dt){
   const r=API.raft, d=raftDir(), pr=V(-d.z,0,d.x), wy=waterY(), t=G.time;
-  r.pos.set(raftA.x+(raftB.x-raftA.x)*r.t,wy+.08+.04*Math.sin(t*1.3),raftA.z+(raftB.z-raftA.z)*r.t).addScaledVector(pr,raftLat);
-  if(raftMesh){ raftMesh.position.copy(r.pos); raftMesh.rotation.set(.03*Math.sin(t*1.1),Math.atan2(d.x,d.z)+PI/2+raftYaw,.04*Math.cos(t*.9)); }
+  r.pos.set(raftA.x+(raftB.x-raftA.x)*r.t,wy+.08+.04*Math.sin(t*1.3)-.06*Math.abs(raftRoll)*4,raftA.z+(raftB.z-raftA.z)*r.t).addScaledVector(pr,raftLat);
+  r.deckY=r.pos.y+.1;
+  if(raftMesh){ raftMesh.position.copy(r.pos); raftMesh.rotation.set(.03*Math.sin(t*1.1)+raftRoll,Math.atan2(d.x,d.z)+PI/2+raftYaw,.04*Math.cos(t*.9)+raftPitch); }
 }
 function loadRaft(){
   const L=lantern(); if(!L)return;
@@ -387,8 +411,10 @@ function loadRaft(){
   if(L.shut){ G.ui.say('Open the shutter first — the moths need the light to settle by.',{priority:'high',key:'raft'}); return; }
   L.carried=false; L.shut=false; L.pos.set(API.raft.pos.x,API.raft.pos.y+.12,API.raft.pos.z);
   G.emit('lantern:drop',{pos:L.pos.clone(),raft:true});
-  API.raft.lantern=true; API.raft.state='loaded'; raftDrifting=false; G.emit('cave:raft',{state:'loaded'});
-  if(!raftSaid.load){ raftSaid.load=1; setTimeout(()=>G.ui.say('You set the lantern down among the planks. The swarm settles over it like snow on a lamp. When the tide turns, the water will take it.'),300); }
+  const r=API.raft; r.lantern=true; r.state='loaded'; r.runT=0; r.pushes=0; raftDrifting=false; raftPushV=0;
+  raid.wave=RAID_WAVES.findIndex(w=>w.at>r.t); if(raid.wave<0)raid.wave=RAID_WAVES.length;
+  G.emit('cave:raft',{state:'loaded'});
+  if(!raftSaid.load){ raftSaid.load=1; G.ui.say('You set the lantern down among the planks and the swarm settles over it like snow on a lamp. The current is already tugging at the rope. Get up on the walkway.',{priority:'high',key:'raft'}); }
 }
 function takeLantern(){
   const L=lantern(); if(!L||L.carried)return;
@@ -397,46 +423,102 @@ function takeLantern(){
   if(!L.carried){ L.carried=true; L.inCradle=false; G.emit('lantern:pickup',{pos:G.player.pos.clone()}); }
 }
 // taking the lantern back before the sluice is open sends the empty raft home to its mooring (it can't be reached at the far end)
-G.on('lantern:pickup',()=>{ const r=API.raft; if(!r.lantern)return; r.lantern=false; raftDrifting=false; if(r.state!=='done')r.state='idle'; G.emit('cave:raft',{state:'taken'}); });
-G.on('player:attack',()=>{
-  const P=G.player, r=API.raft; if(!built||!raftMesh||!inside()||!P||!P.pos||r.state==='done')return;
-  const dx=r.pos.x-P.pos.x, dz=r.pos.z-P.pos.z, d=Math.hypot(dx,dz); if(d>3||Math.abs(r.pos.y-P.pos.y)>3.2)return;
-  const ax=raftDir(); let s=(dx*ax.x+dz*ax.z)/Math.max(d,.01); s=Math.abs(s)<.3?1:Math.sign(s);
-  raftPush+=s*RAFT_PUSH; G.emit('cave:raft',{state:'pushed',dir:s});
-  if(G.ink&&G.ink.burst)G.ink.burst(r.pos,{n:6,speed:1.5,size:[.3,.8],up:.8,embers:0,color:'#bcd6dc',alpha:.4});
-});
+G.on('lantern:pickup',()=>{ const r=API.raft; if(!r.lantern)return; r.lantern=false; raftDrifting=false; raftPushV=0; if(r.state!=='done')r.state='idle'; G.emit('cave:raft',{state:'taken'}); });
+/** a blow on the raft (its hurtbox): always on toward the sluice — there is nothing to gain by pushing it back */
+function pushRaft(info){
+  const r=API.raft; if(!r.lantern||r.state==='arrived'||r.state==='done')return;
+  raftPushV=Math.min(RAFT_PUSH_MAX,raftPushV+RAFT_PUSH_V*(info&&info.kind==='bolt'?1:.8)); r.pushes=(r.pushes||0)+1;
+  raftPitch=.09; if(r.state==='loaded'&&r.runT<RAFT_CAST)r.runT=RAFT_CAST; // a shove casts it off at once
+  G.emit('cave:raft',{state:'pushed',dir:1,pos:r.pos.clone()});
+  const d=raftDir(); if(G.ink&&G.ink.burst){ G.ink.burst(V(r.pos.x-d.x*1.3,r.pos.y+.05,r.pos.z-d.z*1.3),{n:8,speed:2,size:[.3,.9],life:[.4,.9],up:1.4,embers:0,drops:10,color:'#bcd6dc',alpha:.45}); }
+  if(!raftSaid.push){ raftSaid.push=1; G.ui.say('The raft lurches forward and rides a little faster.',{priority:'low'}); }
+}
+function raiders(){ return raid.crabs.filter(m=>m.alive&&!m.dying); }
+function raftCurrent(dl){ const tk=Math.min(1,Math.abs(dl)/TIDE_DL_PEAK); return RAFT_V0+RAFT_VT*tk; }
 function updateRaft(dt){
   if(!raftMesh)return;
   const r=API.raft, L=lantern(), lv=G.tide?G.tide.level:0;
   const dl=prevLevel==null||dt<=0?0:(lv-prevLevel)/dt; prevLevel=lv;
+  const on=raiders(), aboard=on.filter(m=>m.onRaft).length;
+  r.raiders=on.length; r.aboard=aboard;
   let v=0;
-  if(r.state!=='done'&&r.lantern&&r.state!=='arrived'){
-    v=RAFT_K*Math.abs(dl);                              // flood or ebb, the channel runs toward the sluice (no waiting a whole tide for the right one)
-    const moving=Math.abs(v)>.04;
-    if(moving!==raftDrifting){ raftDrifting=moving; G.emit('cave:raft',{state:moving?'drifting':'slack',speed:+v.toFixed(2)});
-      if(moving&&!raftSaid.drift){ raftSaid.drift=1; G.ui.say(dl>0?'The tide is coming in. The raft turns slowly, then begins to slide down the channel.':'The tide is going out, and the channel drains toward the sluice. The raft turns slowly and goes with it.'); }
-      if(!moving&&!raftSaid.slack){ raftSaid.slack=1; G.ui.say('The water goes still and the raft stops. Slack tide. A shove with the staff would move it.'); } }
+  if(r.lantern&&(r.state==='loaded'||r.state==='drifting')){
+    r.runT=(r.runT||0)+dt;
+    if(r.state==='loaded'&&r.runT>=RAFT_CAST){ r.state='drifting'; raftDrifting=true; G.emit('cave:raft',{state:'drifting',speed:+raftCurrent(dl).toFixed(2)});
+      if(!raftSaid.drift){ raftSaid.drift=1; G.ui.say('The rope slips and the current takes the raft. A bolt against it would hurry it along.',{key:'raft'}); } }
+    if(r.state==='drifting'){ const ramp=Math.min(1,(r.runT-RAFT_CAST)/RAFT_RAMP);
+      v=raftCurrent(dl)*(.15+.85*ramp)*Math.max(.7,1-RAFT_DRAG*aboard); }
   }
-  // an empty raft swings back to its mooring by the jetty (a stray staff strike can't strand it out of reach)
-  if(!r.lantern&&r.state!=='done'&&r.state!=='arrived'&&r.t>0){ raftPush=0; r.t=Math.max(0,r.t-dt*1.2/raftLen); }
-  if(raftPush!==0&&r.state!=='done'){ const k=Math.min(1,dt*3.5), step=raftPush*k; raftPush-=step; if(Math.abs(raftPush)<.01)raftPush=0; r.t+=step/raftLen; }
+  // an empty raft swings back to its mooring by the jetty (a stray blow can't strand it out of reach)
+  if(!r.lantern&&r.state!=='done'&&r.t>0){ raftPushV=0; r.t=Math.max(0,r.t-dt*RAFT_HOME_V/raftLen); if(r.state==='arrived')r.state='idle'; }
+  if(r.lantern&&r.state==='drifting'&&raftPushV>0)v+=raftPushV;
+  raftPushV=Math.max(0,raftPushV-dt*RAFT_PUSH_DECAY*Math.max(1,raftPushV));
   r.t=U.clamp(r.t+v*dt/raftLen,0,1);
-  raftSpeed=v;
+  r.speed=v;
   // bumping along the walls
   raftLatV+=(Math.sin(G.time*.4)*.3-raftLat)*dt*.6+(rnd()-.5)*dt*.6*Math.min(1,Math.abs(v)+.1);
   raftLat+=raftLatV*dt;
   if(Math.abs(raftLat)>.75){ raftLat=Math.sign(raftLat)*.75; raftLatV*=-.5; raftYaw+=(rnd()-.5)*.25;
     if(Math.abs(v)>.04)G.emit('cave:raft',{state:r.state,bump:true}); }
   raftYaw*=1-dt*.4;
+  // the raft dips toward a crab hauling on its edge or sitting on it; a shove pitches it
+  let roll=0; for(const m of on){ if(m.state==='grip')roll+=.07*Math.min(1,m.st/.4)*(m.raid?m.raid.side:1); else if(m.onRaft||m.state==='board')roll+=.035*(m.raid?m.raid.side:1); }
+  raftRoll=U.damp(raftRoll,U.clamp(roll,-.14,.14)+(on.some(m=>m.state==='grip')?.012*Math.sin(G.time*17):0),6,dt);
+  raftPitch=U.damp(raftPitch,0,3,dt);
   placeRaft(dt);
   if(r.lantern&&L&&!L.carried){ L.pos.set(r.pos.x,r.pos.y+.12,r.pos.z); }
-  if(r.state!=='done'&&r.state!=='arrived'&&r.t>=.985){ r.state='arrived'; raftDrifting=false; G.emit('cave:raft',{state:'arrived'});
-    if(!raftSaid.arr){ raftSaid.arr=1; G.ui.say('The raft bumps up against the black at the sluice gate. The moths lift off the lantern and go to it.'); } }
-  if(r.state==='arrived'&&r.t<.95)r.state=r.lantern?'loaded':'idle';
+  if((r.state==='loaded'||r.state==='drifting')&&r.lantern&&r.t>=.985){ r.state='arrived'; raftDrifting=false; raftPushV=0; G.emit('cave:raft',{state:'arrived',runT:+r.runT.toFixed(2)});
+    if(!raftSaid.arr){ raftSaid.arr=1; G.ui.say('The raft bumps up against the black at the sluice gate. The moths lift off the lantern and go to it.',{key:'raft'}); } }
   S.raftT=r.t;
   let n=0; for(const m of mothList()) if(SWARM(m)&&Math.abs(m.p.x-r.pos.x)<3&&Math.abs(m.p.z-r.pos.z)<3&&Math.abs(m.p.y-r.pos.y)<3)n++;
-  r.moths=n; r.speed=v;
+  r.moths=n;
+  updateRaid(dt,on);
 }
+/* ---- the boarding waves ---- */
+function spawnRaider(side){
+  const r=API.raft, d=raftDir(), pr=V(-d.z,0,d.x), along=(rnd()-.5)*1.2, wy=waterY();
+  const x=r.pos.x+d.x*along+pr.x*side*1.7, z=r.pos.z+d.z*along+pr.z*side*1.7, c=W(25,0,-80);
+  if(!G.monsters||!G.monsters.spawn)return null;
+  try{ const m=G.monsters.spawn('brineling',{x,y:wy-.6,z},{zone:{name:'cave-channel',x:c.x,z:c.z,r:24},cave:'channel',raid:{side,along}});
+    if(m){ m.raider=true; if(!raid.crabs.includes(m))raid.crabs.push(m); if(G.ink&&G.ink.burst)G.ink.burst(V(x,wy+.05,z),{n:8,speed:1.6,size:[.3,.8],life:[.4,1],up:1.6,embers:1,drops:10,color:'#bcd6dc',alpha:.5});
+      G.emit('cave:brinelingRises',{pos:V(x,wy,z),raid:true}); }
+    return m; }catch(e){ console.error('raid spawn',e); return null; }
+}
+let raidQ=[];
+function updateRaid(dt,on){
+  const r=API.raft, P=G.player;
+  // waves (only while a lantern rides with moths on it)
+  if(r.lantern&&r.state==='drifting'&&raid.wave<RAID_WAVES.length&&r.t>=RAID_WAVES[raid.wave].at){
+    const w=RAID_WAVES[raid.wave]; raid.wave++;
+    if(r.moths>0){ w.sides.forEach((s,i)=>raidQ.push({at:G.time+i*RAID_GAP,side:s})); G.emit('cave:raid',{wave:raid.wave,n:w.sides.length}); }
+  }
+  for(let i=raidQ.length-1;i>=0;i--){ if(G.time>=raidQ[i].at){ const q=raidQ.splice(i,1)[0]; if(r.lantern&&r.state!=='done')spawnRaider(q.side); } }
+  for(let i=raid.crabs.length-1;i>=0;i--) if(!raid.crabs[i].alive)raid.crabs.splice(i,1);
+  // telegraph: ripples and little splashes round the claws on the edge
+  raid.ringT-=dt;
+  for(const m of on){ if(m.state!=='grip')continue;
+    if(raid.ringT<=0){ const g=raid.rings.find(x=>x.t>=x.life); if(g){ g.t=0; g.life=.9; g.m.position.set(m.pos.x,waterY()+.03,m.pos.z); g.m.visible=true; } raid.ringT=.32; }
+    if(rnd()<dt*5&&G.ink&&G.ink.burst)G.ink.burst(V(m.pos.x+(rnd()-.5)*.5,waterY()+.05,m.pos.z+(rnd()-.5)*.5),{n:1,speed:1,size:[.15,.4],life:[.3,.6],up:1.3,embers:0,drops:3,color:'#bcd6dc',alpha:.45}); }
+  for(const g of raid.rings){ if(g.t>=g.life){ if(g.m.visible)g.m.visible=false; continue; } g.t+=dt; const k=g.t/g.life; g.m.scale.setScalar(.35+k*1.3); g.m.material.opacity=.42*(1-k); g.m.position.y=waterY()+.03; }
+  // the swarm shrinks back from a raider (so the crab reads as a thing among the moths, not swallowed by them)
+  const C=CR(); if(C){ let sh=null; const lp=r.pos;
+    for(const m of on){ if(!(m.onRaft||m.state==='board'||m.state==='grip'))continue; const dx=lp.x-m.pos.x, dz=lp.z-m.pos.z, d=Math.hypot(dx,dz)||1;
+      sh=sh||{x:0,y:0,z:0}; sh.x+=dx/d*.42; sh.z+=dz/d*.42; sh.y=.32; }
+    const cur=C.clingShy||{x:0,y:0,z:0}, k=Math.min(1,dt*5), want=sh||{x:0,y:0,z:0};
+    const nx=U.lerp(cur.x,U.clamp(want.x,-.6,.6),k), ny=U.lerp(cur.y,want.y,k), nz=U.lerp(cur.z,U.clamp(want.z,-.6,.6),k);
+    C.clingShy=Math.abs(nx)+Math.abs(ny)+Math.abs(nz)<.01&&!sh?null:{x:nx,y:ny,z:nz}; }
+}
+G.on('brineling:grip',e=>{ const m=e&&e.monster; if(!built||!m)return;
+  if(!raid.crabs.includes(m))raid.crabs.push(m);   // a channel crab that went for the raft by itself joins the raid (ripples, the dip, cleanup)
+  if(!raftSaid.grip){ raftSaid.grip=1; G.ui.say('Claws hook over the edge of the raft. Something is hauling itself up out of the water — hit it before it gets aboard.',{priority:'high',key:'raid'}); } });
+G.on('brineling:aboard',()=>{ if(!built)return;
+  if(!raftSaid.aboard){ raftSaid.aboard=1; G.ui.say('A brineling hauls itself onto the raft — it’s snatching the moths! Knock it off: lock on and loose a charged bolt from the walkway.',{priority:'high',key:'raid'}); } });
+G.on('brineling:knocked',e=>{ if(!built)return;
+  if(!raftSaid.knock){ raftSaid.knock=1; G.ui.say('Over the side it goes, with a splash. The swarm settles back over the lantern.',{priority:'low',key:'raidOff'}); } });
+G.on('moths:lost',e=>{ if(!built||!(e&&e.snatch))return;
+  if(!raftSaid.snatchToast){ raftSaid.snatchToast=1; G.ui.toast&&G.ui.toast('A moth dragged under','Knock the crab off the raft'); } });
+function clearRaid(){ for(const m of raid.crabs) if(m.alive&&G.monsters&&G.monsters.despawn)G.monsters.despawn(m); raid.crabs.length=0; raidQ.length=0; }
+G.on('cave:exit',()=>clearRaid());
 
 /* ================================================================ 6. THE HALL OF DRAFTS */
 let ventFx=[];
@@ -535,24 +617,35 @@ G.on('cave:exit',()=>{ const L=lantern(); if(L&&L.shut){ L.shut=false; G.emit('l
 
 /* ---------------------------------------------------------------- save / load */
 function save(){ return {v:1,lit:Object.keys(S.lit).filter(k=>S.lit[k]),open:Object.keys(S.open).filter(k=>S.open[k]),
-  prog:Object.fromEntries(Object.entries(S.prog).map(([k,v])=>[k,+(+v).toFixed(3)])),raft:{t:+API.raft.t.toFixed(3),done:S.raftDone},
+  prog:Object.fromEntries(Object.entries(S.prog).map(([k,v])=>[k,+(+v).toFixed(3)])),raft:{t:+API.raft.t.toFixed(3),done:S.raftDone,ride:!!API.raft.lantern&&!S.raftDone},
   bossDead:S.bossDead,said:S.said,jar:G.moths&&G.moths.jar?G.moths.jar._save():null}; }
+/* saved mid-run (the autosave can fire while the lantern rides the raft): the lantern is back in your hand and the raft at its
+   mooring — you set off again from the jetty. Older saves have no `ride`: a lantern left lying over the channel water counts too. */
+function rescueLantern(d){
+  const L=lantern(); if(!L||L.carried||L.inCradle||!L.found)return;
+  const r=d.raft||{}; let ride=!!r.ride&&!r.done;
+  if(!ride&&!r.done&&L.pos){ const l=toLocal(L.pos); ride=l.x>4&&l.x<48&&l.z>-86&&l.z<-76.3&&l.y<2.6&&!(d.open||[]).includes('channel'); }
+  if(ride){ L.carried=true; L.shut=false; }
+}
 function load(d){
   if(!d)return;
+  try{ rescueLantern(d); }catch(e){ console.error('raft rescue',e); }
   if(d.jar&&G.moths&&G.moths.jar)G.moths.jar._load(d.jar);
   if(!built){ pendingLoad=Object.assign({},d,{jar:null}); return; }
   S.bossDead=!!d.bossDead; S.said=Object.assign({},d.said||{});
   for(const id of d.lit||[])lightRoom(id,null,true);
   for(const id of d.open||[])openSeal(id,true);
   for(const id in API.seals){ const s=API.seals[id]; if(!S.open[id])s.progress=Math.max(0,Math.min(.95,(d.prog&&+d.prog[id])||0)); }
-  const r=d.raft||{}; API.raft.t=S.open.channel?1:U.clamp(+r.t||0,0,1); API.raft.lantern=false;
+  const r=d.raft||{}; API.raft.t=S.open.channel?1:0; API.raft.lantern=false; raftPushV=0; clearRaid();   // a run never resumes mid-channel: the raft is back at its mooring
   API.raft.state=S.open.channel?'done':'idle'; S.raftDone=!!S.open.channel; placeRaft(0);
+  const cs=API.seals.channel; if(cs&&!S.open.channel){ cs.credit=cs.progress; cs.fed=new Set(); cs.sated=false; }
 }
 if(G.persist&&G.persist.register)G.persist.register('cavePuzzles',{save,load});
 else G.on('ready',()=>{ if(G.persist&&G.persist.register)G.persist.register('cavePuzzles',{save,load}); });
 
 if(G.debug)API.debug={S,save:()=>save(),load:d=>load(d),build:()=>build(),spendEther,lightRoom:id=>lightRoom(id,null,false),openSeal:id=>openSeal(id,false),
-  W,toLocal,roomOf,gust:()=>({clock:gustClock,phase:gustPhase}),setGust:t=>{gustClock=t;}};
+  W,toLocal,roomOf,gust:()=>({clock:gustClock,phase:gustPhase}),setGust:t=>{gustClock=t;},
+  spawnRaider:s=>spawnRaider(s==null?1:s),raidWaves:RAID_WAVES,raftCurrent:()=>raftCurrent(0),pushRaft:()=>pushRaft({kind:'bolt'})};
 
 G.system('cavePuzzles',{order:36,modes:'always',
   init(){},

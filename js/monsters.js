@@ -20,7 +20,10 @@ const P={
     clawDmg:2,lungeDmg:2,recover:.75,hurt:.4,lightSlow:.6,lightR:5},
   hound:{hp:4,radius:.42,height:1.1,aggro:18,speed:6.5,wander:1.6,circleR:5.5,dashWind:.5,dashSpeed:13,dashMax:.55,biteDmg:1,recover:.6,hurt:.35},
   brineling:{hp:3,radius:.42,height:.7,speed:2.6,scuttle:4.4,wander:1.3,mothR:12,eatR:2,eatRate:2,shyR:3.2,angryT:7,
-    pinchRange:1.35,pinchWind:.45,pinchDmg:1,recover:.6,hurt:.3},
+    pinchRange:1.35,pinchWind:.45,pinchDmg:1,recover:.6,hurt:.3,
+    // raft raiders (cave_puzzles.js runs the waves): claws on the edge for `grip` s (the telegraph), a `climb`, then aboard it
+    // snatches a moth every `snatch` s (the first after `snatch0`) within `reach` m. Any hit knocks a raider off the raft.
+    grip:1.5,climb:.5,snatch0:.8,snatch:1.05,reach:3.4},
   stag:{hp:48,radius:2.0,height:4.8,speed:3.2,chargeWind:1.0,chargeSpeed:17,chargeLen:30,stagger:2.0,sweepWind:.75,stompWind:.95,
     chargeDmg:3,sweepDmg:2,stompDmg:2,ringSpeed:11,ringMax:14}
 };
@@ -603,12 +606,12 @@ function animHound(m,dt){
 }
 
 function animBrineling(m,dt){
-  const c=m.parts, t=G.time, s=m.state, W=s==='windup', A=s==='attack', E=s==='eat', Hh=s==='hurt', B=s==='board';
+  const c=m.parts, t=G.time, s=m.state, W=s==='windup', A=s==='attack', E=s==='eat'||!!(m.raid&&m.raid.snapT>0), Hh=s==='hurt', B=s==='board', Gr=s==='grip';
   const sp=m.speedNow||0; m.phase+=dt*Math.max(sp,0)*7.5;
   const amp=Math.min(1,sp/2.4);
   c.body.position.y=U.damp(c.body.position.y,.3+(W?-.07*m.flare:0)+(B?.05:0)+(sp>.3?Math.abs(Math.sin(m.phase))*.03:Math.sin(t*2.3+m.id)*.008),18,dt);
   c.body.rotation.z=U.damp(c.body.rotation.z,-(m.lat||0)*amp*.14+(Hh?Math.sin(t*40)*.06:0),9,dt);
-  c.body.rotation.x=U.damp(c.body.rotation.x,W?-.22*m.flare:A?.16:E?.1:Hh?-.15:0,12,dt);
+  c.body.rotation.x=U.damp(c.body.rotation.x,Gr?-.55:B?-.35:W?-.22*m.flare:A?.16:E?.1:Hh?-.15:0,12,dt);
   for(const l of c.legs){
     const off=((l.i%2)^(l.s>0?1:0))?PI:0, ph=m.phase+off;
     const lift=sp>.2?Math.max(0,Math.sin(ph))*amp:(B?.6:0);
@@ -618,7 +621,8 @@ function animBrineling(m,dt){
   }
   for(const cl of c.claws){
     let rx=-.15+Math.sin(t*1.3+cl.s)*.06, ry=0, fx=-(.18+.14*Math.max(0,Math.sin(t*2.1+cl.s*1.7)));
-    if(W){ rx=-1.05*m.flare; ry=cl.s*.55*m.flare; fx=-.95*m.flare; }
+    if(Gr){ const k=Math.sin(t*9+cl.s*2); rx=-1.25+.12*k; ry=cl.s*.35; fx=-.85-.15*k; }   // hooked over the raft's edge, working for a grip
+    else if(W){ rx=-1.05*m.flare; ry=cl.s*.55*m.flare; fx=-.95*m.flare; }
     else if(A){ rx=.2; ry=-cl.s*.3; fx=0; }
     else if(E){ const k=Math.max(0,Math.sin(t*13+(cl.s>0?0:PI))); rx=-.45-.5*k; fx=-.6*k; ry=-cl.s*.2*k; }
     else if(Hh){ rx=.5; fx=-.3; }
@@ -633,7 +637,7 @@ function animBrineling(m,dt){
   const k=m.fxK;
   if(m.fx.body)m.fx.body.intensity=k*(1+m.flare*1.4+(sp>.3?.5:0));
   if(m.fx.claws)m.fx.claws.intensity=k*(E?2.2:1);
-  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade)*(m.onRaft||B?0:1);
+  if(m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade)*(m.onRaft||B||Gr||m.knock?0:1);
   if(k>0&&W&&rnd()<dt*16*m.flare)gather(m.pos.x,m.pos.y+.35,m.pos.z,.6,1);
 }
 
@@ -756,7 +760,7 @@ function spawn(kind,pos,opts={}){
   if(kind==='brineling'){ m.eatsMoths=true; m.mothRate=P.brineling.eatRate; }  // moths.js: monsters with eatsMoths do their own eating (don't add the generic kill on top)
   if(opts.cave)m.cave=opts.cave;
   list.push(m);
-  if(opts.board){ const R=raftInfo(); if(R)startBoard(m,R); }
+  if(opts.board||opts.raid){ const R=raftInfo(); if(R)startGrip(m,R,opts.raid&&opts.raid.side,opts.raid&&opts.raid.along); }
   return m;
 }
 function onHit(m,info){
@@ -764,6 +768,7 @@ function onHit(m,info){
   let d=info.damage||1;
   if(m.boss&&m.state==='staggered')d*=2;
   if(m.state==='return'&&!m.boss&&info.kind!=='swarm'){ m.flash=.5; splash(V(m.pos.x,m.pos.y+1,m.pos.z),info.dir||V(0,0,1),.4); setState(m,'chase'); m.aggro=true; return; } // re-engage instead of being farmed while leashing
+  if(m.raid&&info.kind!=='swarm')d=Math.max(d,m.hp); // a raider on (or gripping) the raft: any blow knocks it off into the water
   m.hp-=d; m.flash=1; m.lastHit=G.time;
   m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.55,m.pos.z);
   const dir=info.dir||V(0,0,1);
@@ -777,6 +782,7 @@ function onHit(m,info){
   if(m.boss&&m.state==='staggered')G.ui.shake&&G.ui.shake(.15);
 }
 function die(m,info){
+  if(m.raid)knockOff(m,info);
   m.dying=true; m.hp=0; dropToken(m); m.st=0; m.state='dying';
   m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.55,m.pos.z);
   ash(m.center,m.boss?60:14,m.boss?4:1.2); splash(m.center,(info&&info.dir)||V(0,0,1),m.boss?2:1.2);
@@ -976,7 +982,7 @@ function updateHound(m,dt){
    Hunts moths first: the nearest swarm moth within mothR, eaten at eatRate within eatR. It boards
    the raft (G.cavePuzzles.raft) to get at the moths riding it. It only fights the player when hit
    (angry for angryT s) or crowded (the player stays on top of it while it hunts). */
-const MOTH_SKIP={gone:1,patch:1,wander:1,glass:1,lamp:1,spot:1,roost:1,jar:1};
+const MOTH_SKIP={gone:1,patch:1,wander:1,glass:1,lamp:1,spot:1,roost:1,jar:1,snatch:1};
 function mothsAll(){const c=G.creatures; return (c&&c.moths)||[];}
 function swarmMoth(mo){return !!mo&&!MOTH_SKIP[mo.tgt]&&!mo.hidden&&!mo.undertow;}
 function nearestMoth(pos,R,dyMax){
@@ -1011,12 +1017,92 @@ function crabMove(m,mv,speed,dt){
   for(const d of [.7,-.7,1.4,-1.4]){ if(moveDir(m,mv+d*m.orbit,speed*.8,dt)){m.speedNow=speed*.8;return true;} }
   m.orbit*=-1; m.speedNow=0; return false;
 }
-function startBoard(m,R){
-  const a=rnd()*TAU, rr=Math.sqrt(rnd())*R.r*.6;
-  m.board={from:m.pos.clone(),off:{x:Math.cos(a)*rr,z:Math.sin(a)*rr},dur:.75};
-  m.onRaft=null; setState(m,'board');
-  const I=INK(); I&&I.burst(V(m.pos.x,m.pos.y+.2,m.pos.z),{n:8,speed:1.5,size:[.2,.6],life:[.4,.9],up:1,embers:2,drops:4});
-  G.emit('brineling:board',{pos:m.pos.clone()});
+/* ---- raft raiders ----
+   Every crab that goes for the raft takes the same readable path:
+   grip  — 1.5 s in the water with its claws hooked over the edge, eyes brightening, the raft dipping toward it (the telegraph;
+           cave_puzzles.js adds ripples and splashes). It can be hit off already.
+   climb — it hauls itself up onto the deck (.5 s).
+   raft  — glued to the deck at that edge, it snatches a moth every P.brineling.snatch s (moths.js snatch(): the moth flashes,
+           is dragged into the water, the HUD count drops). It never leaves on its own while the lantern rides the raft.
+   Any hit knocks it off: it tumbles over the side and splashes in (knockOff/updateKnock). Moths never hurt it. */
+const RAIDER_EDGE=.98, RAIDER_DECK=.5;   // across the raft from its centre: in the water at the edge / on the deck
+function raftAxes(R){ const raw=R.raw, d=raw&&raw.dir; const ax=d&&isFinite(d.x)?{x:d.x,z:d.z}:{x:1,z:0}; return {ax,pr:{x:-ax.z,z:ax.x}}; }
+function raiderOff(R,side,along,k){ const {ax,pr}=raftAxes(R), r=k==null?RAIDER_EDGE:k; return {x:ax.x*along+pr.x*side*r,z:ax.z*along+pr.z*side*r}; }
+function startGrip(m,R,side,along){
+  if(side==null){ const {pr}=raftAxes(R); side=((m.pos.x-R.pos.x)*pr.x+(m.pos.z-R.pos.z)*pr.z)>=0?1:-1; }
+  if(along==null)along=(rnd()-.5)*1.3;
+  m.raid={side:side<0?-1:1,along,from:m.pos.clone(),snatchT:P.brineling.snatch0,snapT:0,took:0};
+  m.onRaft=null; m.board=null; m.prey=null; m.flare=0; m.hb.mothPrey=false; setState(m,'grip');
+  const o=raiderOff(R,m.raid.side,along), wy=waterAt(R);
+  G.emit('brineling:grip',{pos:V(R.pos.x+o.x,wy,R.pos.z+o.z),side:m.raid.side,lead:P.brineling.grip,monster:m});
+}
+function startBoard(m,R){ startGrip(m,R); }   // a crab that reaches the raft on its own climbs aboard the same way
+function waterAt(R){ const w=G.cave&&G.cave.waterWorld?G.cave.waterWorld():NaN; return isFinite(w)?w:R.pos.y-.1; }
+function updateRaider(m,dt,R){
+  const p=P.brineling, rd=m.raid;
+  m.noSettle=true; m.kv.set(0,0,0);
+  // the run was called off (the lantern hooked back): nothing to eat, it lets go and drops back into the channel
+  if(!R||!(R.raw&&R.raw.lantern)){
+    if(!m.leaving){ m.leaving=true; m.vy=m.state==='grip'?0:2.2; const a=Math.atan2(rd.side*(R?raftAxes(R).pr.x:0),rd.side*(R?raftAxes(R).pr.z:1)); m.kv.set(Math.sin(a)*2.4,0,Math.cos(a)*2.4); setState(m,'leave'); }
+    m.vy-=12*dt; m.pos.x+=m.kv.x*dt; m.pos.z+=m.kv.z*dt; m.pos.y+=m.vy*dt;
+    if(m.pos.y<(R?waterAt(R):m.pos.y)-.5||m.st>3){ despawn(m,true); }
+    return;
+  }
+  const wy=waterAt(R);
+  switch(m.state){
+    case 'grip':{
+      const k=Math.min(1,m.st/p.grip), o=raiderOff(R,rd.side,rd.along), e=Math.min(1,m.st/.3);
+      m.pos.set(U.lerp(rd.from.x,R.pos.x+o.x,e),U.lerp(rd.from.y,wy-.62+.32*k,e),U.lerp(rd.from.z,R.pos.z+o.z,e));
+      faceTo(m,R.pos.x+raftAxes(R).ax.x*rd.along,R.pos.z+raftAxes(R).ax.z*rd.along,12,dt);
+      m.flare=.25+.75*k; m.speedNow=0;
+      if(m.st>=p.grip){ const d=raiderOff(R,rd.side,rd.along,RAIDER_DECK);
+        m.board={from:m.pos.clone(),off:d,dur:p.climb}; setState(m,'board');
+        const I=INK(); I&&I.burst(V(m.pos.x,wy+.1,m.pos.z),{n:10,speed:1.6,size:[.2,.6],life:[.4,.9],up:1.2,embers:2,drops:8});
+        G.emit('brineling:board',{pos:m.pos.clone(),monster:m}); }
+      break;}
+    case 'board':{
+      const b=m.board, k=Math.min(1,m.st/b.dur), tx=R.pos.x+b.off.x, tz=R.pos.z+b.off.z;
+      m.pos.x=U.lerp(b.from.x,tx,k); m.pos.z=U.lerp(b.from.z,tz,k);
+      m.pos.y=U.lerp(b.from.y,R.deckY,k)+Math.sin(k*PI)*.45; m.flare=1-k*.6; m.speedNow=0;
+      faceTo(m,R.pos.x,R.pos.z,10,dt);
+      if(k>=1){ m.onRaft=b.off; m.board=null; rd.snatchT=p.snatch0; setState(m,'raft');
+        G.emit('brineling:aboard',{pos:m.pos.clone(),monster:m}); }
+      break;}
+    case 'raft':{
+      m.pos.set(R.pos.x+m.onRaft.x,R.deckY,R.pos.z+m.onRaft.z); m.speedNow=0;
+      const lp=R.raw.pos; faceTo(m,lp.x,lp.z,8,dt);
+      rd.snapT=Math.max(0,rd.snapT-dt); m.flare=U.damp(m.flare,rd.snapT>0?.9:.35,6,dt);
+      rd.snatchT-=dt;
+      if(rd.snatchT<=0){
+        const fx=Math.sin(m.heading), fz=Math.cos(m.heading), claw=V(m.pos.x+fx*.45,m.pos.y+.35,m.pos.z+fz*.45);
+        const mo=nearestMoth(claw,p.reach,3);
+        if(mo&&G.moths&&G.moths.snatch){ G.moths.snatch(mo,{by:'brineling',claw,water:wy,monster:m}); rd.took++; m.ate=(m.ate||0)+1; rd.snapT=.45; rd.snatchT=p.snatch*(.9+rnd()*.2); }
+        else if(mo){ eatMoth(mo,m); rd.took++; rd.snapT=.45; rd.snatchT=p.snatch; }
+        else rd.snatchT=.3;
+      }
+      break;}
+    default: setState(m,'raft'); if(!m.onRaft)m.onRaft=raiderOff(R,rd.side,rd.along,RAIDER_DECK);
+  }
+}
+/* any blow sends a raider over the side: it tumbles off the edge it came up and splashes into the channel */
+function knockOff(m,info){
+  const R=raftInfo(), rd=m.raid;
+  let ox=0, oz=1;
+  if(R){ const {pr}=raftAxes(R); ox=pr.x*rd.side; oz=pr.z*rd.side; }
+  const d=info&&info.dir; if(d&&isFinite(d.x)){ const dot=d.x*ox+d.z*oz; if(dot<-.2){ ox=-ox; oz=-oz; } }   // knocked away from the blow, off the near edge
+  const sp=m.state==='grip'?1.2:3.2;
+  m.knock={vx:ox*sp,vz:oz*sp,vy:m.state==='grip'?1.4:3.6,rx:0,rz:0,spin:(rnd()<.5?-1:1)*(7+rnd()*4),splashed:false,water:R?waterAt(R):m.pos.y-1};
+  m.onRaft=null; m.board=null; m.noSettle=true;
+  G.emit('brineling:knocked',{pos:m.pos.clone(),from:rd&&rd.took?'raft':'edge',state:m.state,took:rd?rd.took:0});
+}
+function updateKnock(m,dt){
+  const k=m.knock; k.vy-=14*dt; m.pos.x+=k.vx*dt; m.pos.z+=k.vz*dt; m.pos.y+=k.vy*dt; k.vx*=1-dt*.6; k.vz*=1-dt*.6;
+  k.rz+=k.spin*dt*(k.splashed?.2:1); k.rx+=k.spin*.4*dt*(k.splashed?.2:1);
+  const w=G.cave&&G.cave.waterWorld?G.cave.waterWorld():k.water;
+  if(!k.splashed&&m.pos.y<w){ k.splashed=true; k.vx*=.2; k.vz*=.2; k.vy=-1.2;
+    const I=INK(); I&&I.burst(V(m.pos.x,w+.05,m.pos.z),{n:14,speed:2.4,size:[.3,.9],life:[.5,1.1],up:2.6,embers:2,drops:16,color:'#bcd6dc',alpha:.55});
+    G.emit('brineling:splash',{pos:V(m.pos.x,w,m.pos.z)}); }
+  if(k.splashed)m.pos.y=Math.max(m.pos.y,w-1.4);
 }
 function crabWander(m,dt,p){
   if(!m.wt||U.dist2(m.pos,m.wt)<.6){
@@ -1028,9 +1114,11 @@ function crabWander(m,dt,p){
 }
 function updateBrineling(m,dt){
   const p=P.brineling, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9;
+  const R=raftInfo();
+  if(m.raid){ updateRaider(m,dt,R); return; }
   m.flare=U.damp(m.flare,0,5,dt);
   m.cool-=dt;
-  const R=raftInfo(); if(m.onRaft&&!R)m.onRaft=null;
+  if(m.onRaft&&!R)m.onRaft=null;
   m.scanT=(m.scanT||0)-dt;
   if(m.scanT<=0||(m.prey&&!swarmMoth(m.prey))){ m.scanT=.3; m.prey=nearestMoth(m.pos,m.onRaft?R.r+2.5:p.mothR,m.onRaft?3:6); }
   const angry=!m.onRaft&&G.time-(m.lastHit||-99)<p.angryT;
@@ -1050,7 +1138,7 @@ function updateBrineling(m,dt){
       if((angry||m.crowd>1.2)&&canPinch()){setState(m,'windup');break;}
       const dx=prey.p.x-m.pos.x, dz=prey.p.z-m.pos.z, d=Math.hypot(dx,dz);
       if(d<p.eatR*.85&&prey.p.y-m.pos.y<2.6){m.eatAcc=0;setState(m,'eat');break;}
-      if(R&&!m.onRaft&&Math.hypot(prey.p.x-R.pos.x,prey.p.z-R.pos.z)<R.r+.9&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<R.r+4.5){startBoard(m,R);break;}
+      if(R&&R.raw.lantern&&!m.onRaft&&Math.hypot(prey.p.x-R.pos.x,prey.p.z-R.pos.z)<R.r+.9&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<R.r+4.5){startBoard(m,R);break;}
       const mv=Math.atan2(dx,dz);
       if(m.onRaft){ const o=m.onRaft, s=p.speed*.5*dt; o.x+=Math.sin(mv)*s; o.z+=Math.cos(mv)*s; const l=Math.hypot(o.x,o.z), mx=R.r*.75; if(l>mx){o.x*=mx/l;o.z*=mx/l;} crabFace(m,mv,dt,9); m.speedNow=p.speed*.5; }
       else crabMove(m,mv,d>4?p.scuttle:p.speed,dt);
@@ -1103,11 +1191,8 @@ function updateBrineling(m,dt){
         const I=INK(); I&&I.burst(V(m.pos.x,m.pos.y+.1,m.pos.z),{n:6,speed:1,size:[.2,.5],life:[.3,.7],up:.4,embers:0,drops:5}); }
       break;}
   }
-  // riding the raft: glued to the deck; with nothing left to eat it drops back into the water
-  if(m.onRaft&&R){ m.pos.set(R.pos.x+m.onRaft.x,R.deckY,R.pos.z+m.onRaft.z); m.kv.set(0,0,0);
-    if(!prey){ m.raftIdle=(m.raftIdle||0)+dt; if(m.raftIdle>3.5){ m.onRaft=null; m.leaving=true; m.vy=2.5; const a=Math.atan2(m.pos.x-R.pos.x,m.pos.z-R.pos.z); m.kv.set(Math.sin(a)*3,0,Math.cos(a)*3); } } else m.raftIdle=0; }
+  // (raft riders are raiders now: updateRaider. A crab never leaves the raft on its own.)
   m.noSettle=!!m.onRaft||m.state==='board';
-  if(m.leaving&&m.pos.y<(G.cave&&G.cave.waterWorld?G.cave.waterWorld():-1e9)-.4){ despawn(m,true); return; }
   if(m.state!=='attack'&&!m.noSettle)separation(m,dt);
 }
 
@@ -1266,7 +1351,9 @@ function updateMonster(m,dt){
     for(let k=0;k<Math.round((m.boss?7:2.5)*(.3+loose)*dt*30);k++){const r=P[m.kind].radius*(1+rnd()), a=rnd()*TAU;
       puff(m.pos.x+Math.cos(a)*r,m.pos.y+rnd()*H_,m.pos.z+Math.sin(a)*r,Math.cos(a)*.6,.8+rnd()*1.2,Math.sin(a)*.6,1+rnd(),m.boss?1.2:.5,m.boss?3.2:1.4,.6,cInk,0,1);}
     if(m.fx){ fxIntensity(m,(1+loose)*m.fxK); if(m.fx.pool)m.fx.pool.intensity=m.fade; }
-    if(m.parts.root){ const j=loose*(m.boss?.06:.04); m.parts.root.position.set(m.pos.x+(rnd()-.5)*j,m.pos.y-(m.boss?0:loose*.3),m.pos.z+(rnd()-.5)*j);
+    if(m.knock)updateKnock(m,dt);
+    if(m.parts.root){ const j=loose*(m.boss?.06:.04); m.parts.root.position.set(m.pos.x+(rnd()-.5)*j,m.pos.y-(m.boss||m.knock?0:loose*.3),m.pos.z+(rnd()-.5)*j);
+      if(m.knock){ m.parts.root.rotation.set(m.knock.rx,m.heading,m.knock.rz); }
       if(!m.boss){ m.parts.body.scale.set(1+loose*.35,1-loose*.25,1+loose*.35); } }
     if(m.boss){ G.ui.bossBar('The Hollow Stag',0); animStag(m,dt); }
     else if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else animHound(m,dt);

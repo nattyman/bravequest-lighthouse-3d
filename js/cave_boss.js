@@ -113,6 +113,7 @@ function clearMine(){ for(const m of mine)if(m.alive&&G.monsters.despawn)G.monst
 let surfaceT=6;
 function updateRaftRaiders(dt){
   const cp=G.cavePuzzles, r=cp&&cp.raft; if(!r||!r.lantern||!r.pos||curRoom!=='channel')return;
+  if(cp.raid)return; // cave_puzzles.js runs the boarding waves now (telegraphed, scripted by raft progress)
   if(r.state==='done'||r.state==='arrived')return;
   surfaceT-=dt; if(surfaceT>0)return; surfaceT=12+rnd()*5;
   const C=G.creatures; let n=0; for(const mo of (C&&C.moths)||[]){ if(mo.tgt!=='lantern')continue; if(Math.hypot(mo.p.x-r.pos.x,mo.p.z-r.pos.z)<2.6)n++; }
@@ -774,13 +775,24 @@ function caveGoal(room){
       return ['The Flooding Stair',(G.cave&&G.cave.lowPassageOpen&&G.cave.lowPassageOpen())?'Low water — the passage under the left wall is open':
         (waterY()-origin().y>.9?'High water — the floating crates reach the ledge on the right':'The tide decides the way: low water opens the passage below, high water floats the crates'),null];
     case 'channel':{
-      const r=cp.raft||{};
+      const r=cp.raft||{}, seal=cp.seals&&cp.seals.channel, need=(seal&&seal.needs)||20, pct=seal?Math.round(seal.progress*100):0;
+      const left=seal?Math.max(1,Math.ceil((1-seal.progress)*need-1e-6)):need;
       if(!open('channel')){
-        if(r.state==='arrived')return ['The Sluice Seal','The raft is at the gate — keep the swarm feeding',a('channel','seal'),'Sluice seal'];
-        if(r.lantern)return ['The Channel','Guard the raft from the walkway above — the turning tide carries it to the sluice',null];
+        if(r.state==='arrived'){
+          if(r.aboard)return ['The Sluice Seal','A crab is on the raft, snatching moths — knock it off',a('channel','seal'),'Sluice seal'];
+          if(seal&&seal.sated&&!seal.feeding)return ['The Sluice Seal','The plug is '+pct+'% eaten — too few moths. Hook the lantern back and bring '+left+' more from the roost',a('channel','seal'),'Sluice seal'];
+          return ['The Sluice Seal','The raft is at the gate — the swarm is eating the plug',a('channel','seal'),'Sluice seal'];
+        }
+        if(r.lantern){
+          if(r.aboard)return ['The Channel','A crab is on the raft, snatching moths — knock it off',null];
+          if(r.raiders)return ['The Channel','Claws on the raft’s edge — hit the crab before it climbs aboard',null];
+          if(r.state==='loaded')return ['The Channel','Up onto the walkway — the raft is casting off',a('channel','walkway'),'Walkway'];
+          return ['The Channel','Escort the raft from the walkway — knock off any crab that climbs aboard. A bolt to the raft hurries it',null];
+        }
         if(!(L&&L.carried))return ['The Channel','Pick your lantern up again',null];
-        if(!baited)return ['The Channel','Bait the lantern, then set it on the raft',a('channel','jetty'),'Raft'];
-        return ['The Channel','Set the baited lantern on the raft — the swarm will ride it to the sluice',a('channel','jetty'),'Raft'];
+        const more=pct>0?' — the plug still needs '+left+' moths':'';
+        if(!baited)return ['The Channel','Bait the lantern, then set it on the raft'+more,a('channel','jetty'),'Raft'];
+        return ['The Channel','Set the baited lantern on the raft — the swarm will ride it to the sluice'+more,a('channel','jetty'),'Raft'];
       }
       if(r.lantern&&!(L&&L.carried))return ['The Channel','Hook the lantern back off the raft from the walkway',null];
       return [T,'The sluice is open — on, past the gate at the end of the walkway',a('channel','gate'),'Sluice gate'];
