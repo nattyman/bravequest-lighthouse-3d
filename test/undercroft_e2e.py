@@ -202,6 +202,12 @@ T.people={
 };
 'ok'"""
 PEOPLE=[
+ # discovery: the first time the trapdoor stands open and you're within 40 m — a caption and the quest marker (HUD + map)
+ ("people:discover", "(()=>{ document.getElementById('begin')&&document.getElementById('begin').click(); G.step(1/30,10); if(!(G.loop&&G.loop.active))G.debugStartLoop(); G.step(1/30,10);"
+   " const P=T.people.U(); const before=P.state.discovered; G.undercroft._debug.openDoor(); const d=G.undercroft.door; G.player.teleport(d.x+70,G.world.height(d.x+70,d.z),d.z,0); G.step(1/30,30);"
+   " const far=P.state.discovered; G.player.teleport(d.x+12,G.world.height(d.x+12,d.z),d.z,-Math.PI/2); G.step(1/30,30);"
+   " return {before,far,disc:P.state.discovered,quest:G.quest.step,target:!!G.quest.target,cap:G.ui.messages().some(m=>/trapdoor stands open/.test(m.text)),pin:!!(G.map&&G.map.markers?G.map.markers.find(m=>m.id==='undercroft'):true)}; })()",
+   lambda r: not r['before'] and not r['far'] and r['disc'] and r['quest']=='undercroft' and r['target'] and r['cap']),
  ("people:enter", "(()=>{ document.getElementById('begin')&&document.getElementById('begin').click(); G.step(1/30,10); if(!(G.loop&&G.loop.active))G.debugStartLoop(); G.step(1/30,10);"
    " if(G.devtools)G.devtools.cheats.god=true; G.input.lockPointer=()=>{}; const r=G.debugEnterUndercroft('cellars'); G.step(1/30,20); T.hold(); const P=T.people.U(), u=G.undercroft, out={room:r,built:P.built};"
    " for(const k in P.villagers){ const v=P.villagers[k]; out[k]=[u.room(v.pos),+u.sdf(u.toLocal(v.pos).x,u.toLocal(v.pos).z).toFixed(2)]; } return out; })()",

@@ -405,12 +405,15 @@ function wrenRestored(){
   if(S.wren.saved)return;
   S.wren.saved=true; S.wren.stage='saved'; endDefence();
   G.emit('undercroft:saved',{who:'wren'});
-  const v=villagers.wren; if(v)v.inkK=0;
+  const v=villagers.wren; if(v){ v.inkK=0; warmWren(v); }
   if(G.progress&&G.progress.reward)G.progress.reward({id:'wren',icon:'wing',name:'Wren of Wickham’s End',eyebrow:'Restored',desc:'The moths ate what wasn’t her, and left the rest. Her hands are warm.'});
   else G.ui.toast('Wren of Wickham’s End','Restored');
   later(4.5,()=>G.ui.say('Wren looks at her hands for a long time. Then she laughs, once, as if she’d forgotten she could.',{priority:'high'}));
   if(G.quest&&String(G.quest.step).startsWith('undercroft:wren'))later(5,()=>G.quest.set('undercroft:after','The Hamlet Undercroft','Wren has gone up to the well',null,''));
 }
+/* restored: warm skin and no ink (the same figure, re-coloured) */
+const WARM=pt=>Object.assign({},pt,{ink:false,c:pt.tag==='hand'||pt.tag==='head'||pt.tag==='tips'?'#d9b8a2':pt.c});
+function warmWren(v){ if(!v||v.warm)return; v.warm=true; try{ const sp=splitMerge(DEF.wren().map(WARM)); if(v.toon&&sp.toon){ v.toon.geometry=sp.toon; const ol=v.toon.children.find(c=>c.name==='outline'); if(ol)ol.geometry=sp.toon; } if(v.ink)v.ink.visible=false; }catch(e){ console.error('warm wren',e); } }
 function setWrenQuest(){ const p=wrenPos(); if(G.quest&&p)G.quest.set('undercroft:wren','Bring 20 moths to Wren','On a baited lantern · keep the Nameless off them for ten heartbeats',p.clone().add(V(0,1.4,0)),'Wren'); }
 
 /* ---------------------------------------------------------------- props: pages, register, bells, sluice gates, trap */
@@ -539,9 +542,9 @@ function buildAll(){
   const spots={tamsin:anchor('cellars','tamsin'),corwin:anchor('chapel','corwin'),wren:anchor('chapel','vestry'),hob:anchor('mill','hob')};
   for(const id of ['tamsin','corwin','wren','hob']){
     const at=spots[id]; if(!at)continue; at.y=floorY(at);
-    let yaw=0;
-    if(id==='hob'){ const st=anchor('mill','stone'); if(st)yaw=Math.atan2(st.x-at.x,st.z-at.z); }
-    else { const e=anchor('stair','entry'); if(e)yaw=Math.atan2(e.x-at.x,e.z-at.z); }
+    // who faces what: Hob his stone, Corwin the chapel door, Wren the vestry door, Tamsin the way in
+    const look={hob:anchor('mill','stone'),corwin:anchor('chapel','door')||anchor('chapel','register'),wren:W(-29.6,-4,-50),tamsin:W(0,-2,-16)}[id];
+    let yaw=look?Math.atan2(look.x-at.x,look.z-at.z):0;
     const v=buildVillager(id,at,yaw); v.yaw0=yaw;
     G.interact.add({pos:()=>v.pos,radius:2.4,priority:4,label:()=>(S.names&&!S.named[id]?'Speak to '+WHO[id].name:'Talk to '+WHO[id].name),
       enabled:()=>isPlay()&&!S.rested[id]&&v.root.visible&&!(id==='wren'&&(S.wren.stage==='feeding'))&&inside(),use:()=>talk(id)});
@@ -555,7 +558,7 @@ function applyLoaded(){
   if(!built)return;
   for(const id in villagers){ const v=villagers[id]; const gone=!!S.rested[id]||(id==='wren'&&S.wren.saved&&S.wren.left);
     v.root.visible=!gone; if(v.echo)v.echo.visible=!gone&&!!(G.glass&&G.glass.raised); v.gone=gone; v.tm.opacity=1; if(v.im.uniforms&&v.im.uniforms.uFade)v.im.uniforms.uFade.value=1; }
-  if(villagers.wren&&S.wren.saved){ villagers.wren.inkK=0; }
+  if(villagers.wren&&S.wren.saved){ villagers.wren.inkK=0; warmWren(villagers.wren); }
   if(wrenSite&&S.wren.saved){ wrenSite.cured=true; wrenSite.progress=1; }
   if(S.sluice)millOn();
   syncGates(true); syncHamletWren();
@@ -591,7 +594,7 @@ function wellPos(){ const b=(G.blights||[]).find(b=>b.id==='well'); if(b)return 
 function buildHamletWren(){
   if(hamletWren)return; const w=wellPos(); if(!w)return;
   const at=V(w.x+2.6,0,w.z+1.2); at.y=G.world.height(at.x,at.z);
-  const parts=DEF.wren(), sp=splitMerge(parts.map(pt=>Object.assign({},pt,{ink:false,c:pt.tag==='hand'||pt.tag==='head'||pt.tag==='tips'?'#d9b8a2':pt.c}))); // restored: warm skin, no ink
+  const sp=splitMerge(DEF.wren().map(WARM)); // restored: warm skin, no ink
   const root=new THREE.Group(); const tm=G.toon('#ffffff',{vertexColors:true}); const m=new THREE.Mesh(sp.toon,tm); m.castShadow=true; root.add(m); if(G.outline)G.outline(m,{thickness:.012});
   root.position.copy(at); root.rotation.y=Math.atan2(w.x-at.x,w.z-at.z)+.6; G.scene.add(root);
   hamletWren={root,pos:at,phase:0,yaw0:root.rotation.y};
@@ -679,6 +682,25 @@ G.on('progress:reward',e=>{ if(e&&e.id&&/ledger/i.test(e.id))grantNames(); });
 function pollLedger(){ if(S.names)return; const B=G.undercroftBoss; if(B&&(B.ledger===true||(B.state&&B.state.ledger)))grantNames(); }
 G.on('glass:raise',e=>{ if(e&&e.on&&!S.glassFound)S.glassFound=true; });
 
+/* ---------------------------------------------------------------- the objective underground, for the People agent's beats */
+let objT=0, objKey='';
+function updateObjective(dt){
+  if(!inside()||!G.quest)return; objT-=dt; if(objT>0)return; objT=1;
+  const step=String(G.quest.step||'');
+  if(step==='undercroft:boss'||step==='undercroft:wren'||(step==='undercroft:names'&&!['tamsin','corwin','wren','hob'].every(k=>S.named[k])))return;
+  const u=UC(), room=u&&u.room?u.room(P().pos):null; if(room==='store')return;
+  let g;
+  if(S.wren.saved&&['tamsin','corwin','hob'].every(k=>S.named[k]))g=['The Hamlet Undercroft','Everyone who could be named has been. Wren has gone up to the well'];
+  else if(S.wren.saved)g=['Speak their names','Wren is restored · the others are still waiting'];
+  else if(S.names)return;
+  else if(!glassOwned())g=['The Hamlet Undercroft','Listen to the people who are left · ring the chapel bells in the old count'];
+  else if(!S.sluice)g=['The Hamlet Undercroft','Set the mill’s sluice gates by Hob’s count, and turn the stone'];
+  else if(!S.bossDead)g=['The Hamlet Undercroft','The store portcullis is up. Crane keeps the tithe below'];
+  else return;
+  const key=g.join('|'); if(key===objKey&&step==='undercroft:people')return; objKey=key;
+  G.quest.set('undercroft:people',g[0],g[1],null,'');
+}
+
 /* ---------------------------------------------------------------- small timers (game time, so a paused game waits) */
 const pend=[];
 function later(s,fn){ pend.push({t:s,fn}); }
@@ -689,6 +711,7 @@ G.system('undercroftPeople',{order:62,
   update(dt){
     updateLater(dt); updateDiscovery(dt); pollLedger();
     if(!built&&inside())buildAll();
+    updateObjective(dt);
     if(built){ updateVillagers(dt); updateProps(dt); updateRest(dt); updateDefence(dt); }
     if(hamletWren&&hamletWren.root.visible){ hamletWren.phase+=dt; hamletWren.root.scale.y=1+Math.sin(hamletWren.phase*1.5)*.01; }
     if(S.wren.left&&!hamletWren)buildHamletWren();

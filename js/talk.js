@@ -141,7 +141,7 @@ function open(o){
   const mode=G.state.mode;
   if(mode!=='play'&&mode!=='paused')return false;
   if(G.map&&G.map.isOpen)return false;
-  T.open=o; T.from=mode; T.wasLocked=!!(G.input&&G.input.locked);
+  T.open=o; T.from=mode; T.wasLocked=!!(G.input&&G.input.locked); T.openedAt=performance.now();
   if(mode==='play'){ G.setMode('paused'); try{G.input.unlockPointer();}catch(_){} }
   root.hidden=false; document.body.classList.add('talk-open');
   T.last=performance.now(); padPrev=padButtons(readPad()); padNav=''; keyHeld.clear();
@@ -245,7 +245,7 @@ function close(how){
   root.hidden=true; document.body.classList.remove('talk-open'); textEl.textContent=''; listEl.innerHTML='';
   if(T.glass&&glassUp()&&G.glass.raise)try{ G.glass.raise(false); }catch(_){}   // a Glass raised inside the talk goes down with it
   T.glass=false; root.classList.remove('glass');
-  if(T.from==='play'&&G.state.mode==='paused'){ G.setMode('play'); if(!G.isMobile&&T.wasLocked)try{ G.input.lockPointer(); }catch(_){} }
+  if(T.from==='play'&&G.state.mode==='paused'){ G.setMode('play'); if(!G.isMobile&&T.wasLocked&&performance.now()-T.openedAt>300)try{ G.input.lockPointer(); }catch(_){} }   // (a card shut as fast as it opened: the unlock is still in flight; flow.js would read the relock as a pause)
   if(G.headless)G.headless.draw(2);
   try{ o.onClose&&o.onClose(how||'close'); }catch(e){ console.error('talk onClose',e); }
   G.emit('talk:close',{who:o.who,how:how||'close'});
@@ -302,14 +302,14 @@ function readPad(){ try{ for(const g of (navigator.getGamepads?navigator.getGame
 function padButtons(g){ const out=[]; if(!g)return out; for(let i=0;i<17;i++){ const b=g.buttons[i]; out[i]=b?(typeof b==='object'?(b.pressed||b.value>.5):b>.5):false; } return out; }
 function padTick(dt){
   const g=readPad(); if(!g){ padPrev=[]; return; }
-  const btn=padButtons(g), edge=i=>btn[i]&&!padPrev[i]; padPrev=btn;
+  const btn=padButtons(g), prev=padPrev, edge=i=>btn[i]&&!prev[i]; padPrev=btn;
   const ly=+(g.axes&&g.axes[1])||0;
   if(edge(0)){ advance(); return; }
   if(edge(1)){ close('leave'); return; }
   if(edge(3)){ toggleGlass(); return; }
   const choosing=T.choices.length&&!listEl.hidden;
   const dir=(btn[12]||ly<-.55)?'up':(btn[13]||ly>.55)?'down':'';
-  if(!choosing){ if(dir==='down'&&padNav!=='down'&&btn[13])advance(); padNav=dir; return; }
+  if(!choosing){ if(dir==='down'&&padNav!=='down'&&btn[13])advance(); padNav=dir; padNavT=.38; return; }   // a held D-pad down that brings up the choices doesn't also move through them
   if(dir!==padNav){ padNav=dir; padNavT=.38; if(dir)select(T.sel+(dir==='up'?-1:1),true); }
   else if(dir){ padNavT-=dt; if(padNavT<=0){ padNavT=.16; select(T.sel+(dir==='up'?-1:1),true); } }
 }
