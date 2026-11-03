@@ -466,11 +466,11 @@ refreshPadUI();
 
 /* ---------- the Remembering Glass (glass.js owns the tool): touch button beside the lantern's, legend rows once it's yours ---------- */
 const GLASS_CSS=`
-.touch [data-act=glass]{--s:50px;--x:-150px;--y:-212px;display:grid;place-items:center;border-color:rgba(214,188,255,.65);background:rgba(40,24,64,.55)}
+.touch [data-act=glass]{--s:50px;--x:-158px;--y:-118px;display:grid;place-items:center;border-color:rgba(214,188,255,.65);background:rgba(40,24,64,.55)}
 .touch [data-act=glass][hidden]{display:none}
 .touch [data-act=glass] svg{width:24px;height:24px;pointer-events:none}
 .touch [data-act=glass].up{background:rgba(145,80,255,.5);box-shadow:0 0 14px rgba(170,120,255,.6)}
-@media (orientation:landscape){ .touch [data-act=glass]{--x:-226px;--y:-60px} }
+@media (orientation:landscape){ .touch [data-act=glass]{--x:-150px;--y:-168px} }   /* beside the lantern shutter */
 `;
 const GLASS_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="10" r="7" fill="rgba(214,188,255,.18)" stroke="#f1e9d8" stroke-width="1.8"/><circle cx="10" cy="10" r="8.6" fill="none" stroke="#c8a24c" stroke-width="1"/><path d="M15.2 15.2L21 21" stroke="#c8a24c" stroke-width="2.4" stroke-linecap="round"/><path d="M7 6.5l3 2-1.4 3.2M10 8.5l3.4-.6" fill="none" stroke="#f1e9d8" stroke-width=".9" opacity=".75"/></svg>';
 let glassBtn=null, glassLegend=false;
