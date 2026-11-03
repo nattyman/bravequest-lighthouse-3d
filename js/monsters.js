@@ -1099,10 +1099,10 @@ function updateKnock(m,dt){
   const k=m.knock; k.vy-=14*dt; m.pos.x+=k.vx*dt; m.pos.z+=k.vz*dt; m.pos.y+=k.vy*dt; k.vx*=1-dt*.6; k.vz*=1-dt*.6;
   k.rz+=k.spin*dt*(k.splashed?.2:1); k.rx+=k.spin*.4*dt*(k.splashed?.2:1);
   const w=G.cave&&G.cave.waterWorld?G.cave.waterWorld():k.water;
-  if(!k.splashed&&m.pos.y<w){ k.splashed=true; k.vx*=.2; k.vz*=.2; k.vy=-1.2;
-    const I=INK(); I&&I.burst(V(m.pos.x,w+.05,m.pos.z),{n:14,speed:2.4,size:[.3,.9],life:[.5,1.1],up:2.6,embers:2,drops:16,color:'#bcd6dc',alpha:.55});
+  if(!k.splashed&&m.pos.y<w){ k.splashed=true; k.vx*=.2; k.vz*=.2; k.vy=0;
+    const I=INK(); I&&I.burst(V(m.pos.x,w+.05,m.pos.z),{n:24,speed:2.2,size:[.4,1.1],life:[.5,1.2],up:3,embers:0,drops:6,color:'#e8f3f5',alpha:.8});
     G.emit('brineling:splash',{pos:V(m.pos.x,w,m.pos.z)}); }
-  if(k.splashed)m.pos.y=Math.max(m.pos.y,w-1.4);
+  if(k.splashed){ k.vy=-.45; m.pos.y=Math.max(m.pos.y,w-1.4); }   // it wallows at the surface a moment, then sinks as it comes apart
 }
 function crabWander(m,dt,p){
   if(!m.wt||U.dist2(m.pos,m.wt)<.6){

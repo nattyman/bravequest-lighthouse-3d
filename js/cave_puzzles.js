@@ -366,7 +366,7 @@ function updateCrates(dt){
    slam on the raft shoves it on) → boarding waves at RAID_WAVES (each crab telegraphs 1.5 s on the edge, then climbs aboard and snatches
    moths until it is knocked off) → it bumps into the plug and the swarm feeds (partial: too few moths only eat their share). */
 let raftMesh=null, raftA=null, raftB=null, raftLen=1, raftPushV=0, raftLat=0, raftLatV=0, raftYaw=0, raftRoll=0, raftPitch=0, prevLevel=null, raftDrifting=false, raftInter=null, raftTake=null, raftSaid={}, raftHB=null;
-const raid={wave:0,crabs:[],rings:[],ringT:0};
+const raid={wave:0,crabs:[],rings:[],ringT:0,glints:[],sprays:[]};
 API.raid=raid;
 function buildRaft(){
   raftA=anchor('channel','raftStart',[7,0,-80]); raftB=anchor('channel','raftEnd',[44,0,-80]);
@@ -396,7 +396,12 @@ function buildRaft(){
   G.combat.add(raftHB);
   // ripples where a crab grips the edge (the telegraph): a few flat rings on the water
   const rm=new THREE.MeshBasicMaterial({color:COL('#cfe2e6'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide});
-  for(let i=0;i<6;i++){ const m=new THREE.Mesh(new THREE.RingGeometry(.82,1,28),rm.clone()); m.rotation.x=-PI/2; m.visible=false; m.renderOrder=3; G.scene.add(m); raid.rings.push({m,t:9,life:1}); }
+  for(let i=0;i<10;i++){ const m=new THREE.Mesh(new THREE.RingGeometry(.82,1,28),rm.clone()); m.rotation.x=-PI/2; m.visible=false; m.renderOrder=3; G.scene.add(m); raid.rings.push({m,t:9,life:1,big:1}); }
+  // a cold glint on a crab gripping the edge (reads at walkway distance), and the white spray of one going over the side
+  for(let i=0;i<4;i++){ const g=glowSprite('#e6d4ff',1.7,0); g.visible=false; G.scene.add(g); raid.glints.push(g); }
+  const crownG=new THREE.CylinderGeometry(.8,.32,1,18,1,true); crownG.translate(0,.5,0);
+  for(let i=0;i<4;i++){ const g=new THREE.Mesh(crownG,new THREE.MeshBasicMaterial({color:COL('#e9f4f6'),transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide}));
+    g.visible=false; g.renderOrder=4; G.scene.add(g); raid.sprays.push({s:g,t:9,life:.75,pos:V()}); }
 }
 function raftDir(){ return V(raftB.x-raftA.x,0,raftB.z-raftA.z).normalize(); }
 function placeRaft(dt){
@@ -485,6 +490,9 @@ function spawnRaider(side){
     return m; }catch(e){ console.error('raid spawn',e); return null; }
 }
 let raidQ=[];
+function ring(p,life,big,delay){ const g=raid.rings.find(x=>x.t>=x.life); if(!g)return; g.t=-(delay||0); g.life=life; g.big=big||1; g.m.position.set(p.x,waterY()+.03,p.z); g.m.visible=!delay; }
+G.on('brineling:splash',e=>{ if(!built||!e||!e.pos)return; ring(e.pos,1.1,1.6); ring(e.pos,1.2,2.2,.15);
+  const sp=raid.sprays.find(x=>x.t>=x.life); if(sp){ sp.t=0; sp.pos.copy(e.pos); } });
 function updateRaid(dt,on){
   const r=API.raft, P=G.player;
   // waves (only while a lantern rides with moths on it)
@@ -497,9 +505,15 @@ function updateRaid(dt,on){
   // telegraph: ripples and little splashes round the claws on the edge
   raid.ringT-=dt;
   for(const m of on){ if(m.state!=='grip')continue;
-    if(raid.ringT<=0){ const g=raid.rings.find(x=>x.t>=x.life); if(g){ g.t=0; g.life=.9; g.m.position.set(m.pos.x,waterY()+.03,m.pos.z); g.m.visible=true; } raid.ringT=.32; }
+    if(raid.ringT<=0){ ring(m.pos,.9,1); raid.ringT=.32; }
     if(rnd()<dt*5&&G.ink&&G.ink.burst)G.ink.burst(V(m.pos.x+(rnd()-.5)*.5,waterY()+.05,m.pos.z+(rnd()-.5)*.5),{n:1,speed:1,size:[.15,.4],life:[.3,.6],up:1.3,embers:0,drops:3,color:'#bcd6dc',alpha:.45}); }
-  for(const g of raid.rings){ if(g.t>=g.life){ if(g.m.visible)g.m.visible=false; continue; } g.t+=dt; const k=g.t/g.life; g.m.scale.setScalar(.35+k*1.3); g.m.material.opacity=.42*(1-k); g.m.position.y=waterY()+.03; }
+  for(const g of raid.rings){ if(g.t>=g.life){ if(g.m.visible)g.m.visible=false; continue; } g.t+=dt; if(g.t<0)continue; g.m.visible=true; const k=g.t/g.life; g.m.scale.setScalar((.35+k*1.3)*g.big); g.m.material.opacity=.48*(1-k); g.m.position.y=waterY()+.03; }
+  let gi=0; for(const m of on){ if(m.state!=='grip'||gi>=raid.glints.length)continue; const g=raid.glints[gi++], k=Math.min(1,m.st/.5);
+    g.visible=true; g.position.set(m.pos.x,waterY()+.45,m.pos.z); g.material.opacity=k*(.38+.26*Math.sin(G.time*11)); g.scale.setScalar(1.3+.4*k); }
+  for(;gi<raid.glints.length;gi++) if(raid.glints[gi].visible)raid.glints[gi].visible=false;
+  for(const sp of raid.sprays){ if(sp.t>=sp.life){ if(sp.s.visible)sp.s.visible=false; continue; } sp.t+=dt; const k=sp.t/sp.life;
+    sp.s.visible=true; sp.s.position.set(sp.pos.x,waterY()-.05,sp.pos.z); const h=Math.sin(Math.min(1,k*1.6)*PI*.5)*(1-Math.max(0,k-.55)*1.6);   // a crown of spray: up, then falling back
+    sp.s.scale.set(.8+k*1.1,.15+1.25*Math.max(.05,h),.8+k*1.1); sp.s.material.opacity=.5*(1-k); }
   // the swarm shrinks back from a raider (so the crab reads as a thing among the moths, not swallowed by them)
   const C=CR(); if(C){ let sh=null; const lp=r.pos;
     for(const m of on){ if(!(m.onRaft||m.state==='board'||m.state==='grip'))continue; const dx=lp.x-m.pos.x, dz=lp.z-m.pos.z, d=Math.hypot(dx,dz)||1;
