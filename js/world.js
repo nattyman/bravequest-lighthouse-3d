@@ -184,6 +184,10 @@ G.floorProviders.push((x,z,y)=>{const lx=x-COT.x-COT.doorX,lz=z-COT.z; if(Math.a
 const FOOT=[{x:158,z:24,hw:5,hd:3.8,yaw:0},{x:150,z:33,hw:2.6,hd:2.1,yaw:.15}];
 const HAMLET=[{x:-31,z:21,yaw:.2},{x:-9,z:19,yaw:-.12},{x:-28,z:41,yaw:.35},{x:-7,z:39,yaw:-.28}];
 for(const h of HAMLET)FOOT.push({x:h.x,z:h.z,hw:4,hd:3,yaw:h.yaw});
+/* UNDERCROFT hook (undercroft.js, Place agent): the cellar trapdoor in the floor of the hamlet ruin nearest the well
+   (HAMLET[3]), on its well side, clear of the fallen roof. yaw = the ruin's. */
+{ const h=HAMLET[3], px=-2.2, pz=-1.5, cs=Math.cos(h.yaw), sn=Math.sin(h.yaw), x=h.x+px*cs+pz*sn, z=h.z-px*sn+pz*cs;
+  LM.undercroftDoor={x,y:height(x,z),z,yaw:h.yaw}; }
 function inFoot(x,z,pad=0){
   for(const f of FOOT){const cs=Math.cos(f.yaw),sn=Math.sin(f.yaw),dx=x-f.x,dz=z-f.z;
     const lx=dx*cs-dz*sn, lz=dx*sn+dz*cs; if(Math.abs(lx)<f.hw+pad&&Math.abs(lz)<f.hd+pad)return true;}
