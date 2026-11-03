@@ -634,12 +634,12 @@ function save(){ return {v:1,lit:Object.keys(S.lit).filter(k=>S.lit[k]),open:Obj
   prog:Object.fromEntries(Object.entries(S.prog).map(([k,v])=>[k,+(+v).toFixed(3)])),raft:{t:+API.raft.t.toFixed(3),done:S.raftDone,ride:!!API.raft.lantern&&!S.raftDone},
   bossDead:S.bossDead,said:S.said,jar:G.moths&&G.moths.jar?G.moths.jar._save():null}; }
 /* saved mid-run (the autosave can fire while the lantern rides the raft): the lantern is back in your hand and the raft at its
-   mooring — you set off again from the jetty. Older saves have no `ride`: a lantern left lying over the channel water counts too. */
+   mooring — you set off again from the jetty. (flow.js has already put an uncarried cured lantern back in the lamp's cradle.)
+   Older saves have no `ride` flag: a raft saved out in the channel (t > 0, not done) with the lantern not in hand counts too. */
 function rescueLantern(d){
-  const L=lantern(); if(!L||L.carried||L.inCradle||!L.found)return;
-  const r=d.raft||{}; let ride=!!r.ride&&!r.done;
-  if(!ride&&!r.done&&L.pos){ const l=toLocal(L.pos); ride=l.x>4&&l.x<48&&l.z>-86&&l.z<-76.3&&l.y<2.6&&!(d.open||[]).includes('channel'); }
-  if(ride){ L.carried=true; L.shut=false; }
+  const L=lantern(), r=d.raft||{}; if(!L||L.carried||!L.found||r.done)return;
+  const ride=r.ride===true||(r.ride==null&&(+r.t||0)>.02);
+  if(ride){ L.carried=true; L.inCradle=false; L.shut=false; }
 }
 function load(d){
   if(!d)return;

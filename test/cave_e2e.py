@@ -1,7 +1,7 @@
 """Plays the Drowned Keepers' Cave end to end, headless, through the real controller (virtual stick/buttons + interact):
 new loop -> recruit island moths -> the sandbar at low tide -> enter (swarm transfer) -> mouth vein -> gallery (roost, brinelings,
 vein, page 1, seal) -> death + rise -> save/reload/Continue inside -> stair (low passage at low tide, crates/ledge at high tide)
--> channel (raft run with boarders, walkway, page 2, sluice) -> drafts (lantern shut between gusts) -> door seal -> the Undertow
+-> channel (raft run: 25-35 s, telegraphed boarders knocked off with bolts from the walkway, page 2, sluice) -> drafts (lantern shut between gusts) -> door seal -> the Undertow
 (shut lantern, moths reveal it, lashes/surges/drag, lens) -> defeat (jar, page 3, wall, Wound, arena lit, shortcut) ->
 save/reload/Continue after the boss -> shortcut -> mouth -> out (swarm transfer) -> jar -> cure the Black Tide Pool.
 Then, in a fresh session, the soft-lock guards (SOFTLOCK: rising never behind a seal/grate, the draught out, the keeper's bench,
@@ -183,27 +183,29 @@ STEPS=[
  ("channelLight", r"""(()=>{ const f=T.fight({room:'channel',max:900}); const r=T.walk([[-6,-86],[-6.1,-89.4]],{local:true}); const lab=T.label(); const u=T.use(/vein/i); T.wait(1);
    return {ok:G.cave.isLit('channel')&&G.alchemy.etherUnits===5,fight:f,lab,ether:G.alchemy.etherUnits,swarm:T.swarm()}; })()"""),
  ("loadRaft", r"""(()=>{ const back=T.walk([[-2,-84],[1,-81.5]],{local:true}); const ich=G.inv.count('ichor');
-   const tw=T.guard(()=>Math.abs(G.tide.level)<.97,12000);
-   const r=T.walk([[4.6,-80.4]],{local:true}); const lab=T.label(); const u=T.use(/raft/i); T.wait(1);
-   const R=G.cavePuzzles.raft;
-   return {ok:u==='Set the lantern on the raft'&&R.lantern&&R.state!=='idle'&&!G.items.lantern.carried,tideWait:tw,level:+G.tide.level.toFixed(2),lab,state:R.state,raftMoths:R.moths,swarm:T.swarm(),bait:Math.round(G.moths.baitLeft),ichorUsed:ich-G.inv.count('ichor'),hud:T.hud()}; })()"""),
- ("raftRun", r"""(()=>{ const R=G.cavePuzzles.raft, O=G.cave.origin; const log=[]; let shots=0, page=null, steps=0, boarded=0; G.on('brineling:board',()=>boarded++);
-   const r0=T.walk([[0,-82.5],[-6,-83.4],[-10,-85],[-10,-86],[-3,-86],[4,-86]],{local:true});
-   const sw0=T.swarm(); let shotAt=-1;
-   while(R.state!=='arrived'&&R.state!=='done'&&steps<5000){
-     const b=G.monsters.list.filter(m=>m.alive&&!m.dying&&m.kind==='brineling'&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<4.5);
-     if(b.length){ T.bolt(b[0]); shots++; steps+=46; if(shotAt<0){ shotAt=steps; window._raftShot=1; } continue; }
-     const tx=Math.min(R.pos.x-O.x,45), px=G.player.pos.x-O.x;
+   const r=T.walk([[4.6,-80.4]],{local:true}); const lab=T.label(); const u=T.use(/raft/i); G.step(1/30,2);
+   const R=G.cavePuzzles.raft;   // no waiting on the tide: the channel always runs toward the sluice
+   return {ok:u==='Set the lantern on the raft'&&R.lantern&&R.state==='loaded'&&!G.items.lantern.carried&&R.moths>=20,level:+G.tide.level.toFixed(2),lab,state:R.state,raftMoths:R.moths,swarm:T.swarm(),bait:Math.round(G.moths.baitLeft),ichorUsed:ich-G.inv.count('ichor'),hud:T.hud()}; })()"""),
+ ("raftRun", r"""(()=>{ const R=G.cavePuzzles.raft, O=G.cave.origin; const log=[]; let shots=0, page=null, steps=0, boarded=0, gripped=0, knocked=0;
+   G.on('brineling:board',()=>boarded++); G.on('brineling:grip',()=>gripped++); G.on('brineling:knocked',()=>knocked++);
+   const r0=T.walk([[0,-82.5],[-6,-83.4],[-10,-85],[-10,-86],[-3,-86],[4,-86]],{local:true,sprint:true});
+   const sw0=T.swarm(), at0=+R.runT.toFixed(1);
+   while(R.state!=='arrived'&&R.state!=='done'&&steps<2400){
+     const b=G.monsters.list.filter(m=>m.alive&&!m.dying&&m.raid);   // crabs gripping the edge or aboard: a charged bolt from the walkway
+     if(b.length){ T.bolt(b[0]); shots++; steps+=46; continue; }
+     const tx=Math.min(R.pos.x-O.x,44.5)-1, px=G.player.pos.x-O.x;
      if(!page&&Math.abs(px-31)<1.5){ T.walk([[31,-86.4]],{local:true}); page=T.use(/page/i); continue; }
-     if(Math.abs(tx-px)>1.5)T.steer(tx+O.x,O.z-86.1); else T.keys(new Set());
+     if(Math.abs(tx-px)>1.2)T.steer(tx+O.x,O.z-86.1); else T.keys(new Set());
      G.step(1/30,1); steps++; T.top();
-     if(steps%300===0)log.push([steps,+R.t.toFixed(2),R.moths,T.swarm()].join('/')); }
-   T.release();
-   return {ok:r0.ok&&(R.state==='arrived'||R.state==='done')&&page==='Read the page'&&G.caveBoss.pages.includes(2)&&T.swarm()>=G.cavePuzzles.seals.channel.needs&&boarded>=1&&shots>=1,
-     steps,boarded,shots,swarmStart:sw0,swarm:T.swarm(),lost:T.losses.channel||0,log,pages:G.caveBoss.pages,at:T.where()}; })()"""),
+     if(steps%150===0)log.push([+R.runT.toFixed(1),+R.t.toFixed(2),R.moths,T.swarm(),R.raiders|0].join('/')); }
+   T.release(); const runT=+R.runT.toFixed(1), pushes=R.pushes|0;
+   return {ok:r0.ok&&(R.state==='arrived'||R.state==='done')&&page==='Read the page'&&G.caveBoss.pages.includes(2)&&T.swarm()>=G.cavePuzzles.seals.channel.needs
+       &&gripped>=3&&boarded>=1&&knocked>=1&&shots>=1&&runT<=35&&(pushes>0||runT>=25),
+     runT,pushes,atWalkway:at0,gripped,boarded,knocked,shots,swarmStart:sw0,swarm:T.swarm(),lost:T.losses.channel||0,log,pages:G.caveBoss.pages,at:T.where()}; })()"""),
  ("sluice", r"""(()=>{ const s=G.cavePuzzles.seals.channel; const t=T.wait(20,{until:()=>s.cured}); T.wait(3);
+   const crabs=G.monsters.list.filter(m=>m.alive&&!m.dying&&m.raid).length;
    const lab=T.label(); const u=T.use(/lantern/i); T.wait(1);
-   return {ok:s.cured&&G.cave.gate('channel')&&G.items.lantern.carried,t,gate:G.cave.gate('channel'),lab,swarm:T.swarm(),hud:T.hud()}; })()"""),
+   return {ok:s.cured&&t<=12&&G.cave.gate('channel')&&G.items.lantern.carried&&crabs===0,t,crabs,gate:G.cave.gate('channel'),lab,swarm:T.swarm(),hud:T.hud()}; })()"""),
  ("shot:channel-lit",None),
  # ---------------------------------------------------------------- the hall of drafts
  ("drafts", r"""(()=>{ const r=T.walk([[46,-86.3],[52,-86.5]],{local:true}); const L=G.items.lantern; if(!L.shut)T.tap('shutter',3); const shut=L.shut;
