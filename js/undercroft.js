@@ -167,6 +167,8 @@ const Sat=(x,z)=>bil(gS,x,z,10), Fat=(x,z)=>bil(gF,x,z,-20), Cat=(x,z)=>bil(gC,x
 /* ---------- blockers: physics-only boxes (local), switchable ---------- */
 const blockers={};
 blockers.stairSteps={x:0,z:2.75,hw:1.2,hd:1.95,y0:-2,y1:6};
+// the loft's front faces (ledges stop a body's centre, these keep its shoulders out of the stone); only below the loft floor
+blockers.loftS={x:14.5,z:-44.2,hw:.5,hd:.2,y0:-8,y1:-3.3}; blockers.loftS2={x:18.55,z:-44.2,hw:1.05,hd:.2,y0:-8,y1:-3.3}; blockers.loftE={x:19.8,z:-42.1,hw:.2,hd:2.3,y0:-8,y1:-3.3};
 blockers.raceN={x:(RACE.x0+RACE.x1)/2,z:-44.1,hw:(RACE.x1-RACE.x0)/2,hd:4.8,y0:-12,y1:2};   // the race, but for the plank bridge (z -51.1 .. -48.9)
 blockers.raceS={x:(RACE.x0+RACE.x1)/2,z:-55.85,hw:(RACE.x1-RACE.x0)/2,hd:4.75,y0:-12,y1:2};
 function setGate(id,open){ open=!!open; S.gates[id]=open;
@@ -328,11 +330,11 @@ function flagCanvas(g,s){
   // courses of irregular flags: each course its own height, each slab its own width, corners knocked round
   let y=0; const H=[.17,.22,.19,.24,.18];
   for(let row=0;y<s-2;row++){ const h=Math.min(s-y,Math.round(s*H[row%H.length])); let x=-r()*s*.2;
-    while(x<s){ const w=s*(.16+r()*.22), l=44+r()*12, hue=24+r()*18, sat=5+r()*8;
+    while(x<s){ const w=s*(.16+r()*.22), l=44+r()*12, hue=20+r()*14, sat=4+r()*6;
       for(const ox of [0,-s,s]){ const x0=x+ox+2.5, y0=y+2.5, x1=x+ox+w-2.5, y1=y+h-2.5, k=4+r()*5;
         g.fillStyle=`hsl(${hue},${sat}%,${l}%)`; g.beginPath(); g.moveTo(x0+k,y0); g.lineTo(x1-k*.6,y0+r()*1.5); g.quadraticCurveTo(x1,y0,x1,y0+k); g.lineTo(x1-r()*1.5,y1-k*.7);
         g.quadraticCurveTo(x1,y1,x1-k,y1); g.lineTo(x0+k*.8,y1); g.quadraticCurveTo(x0,y1,x0,y1-k); g.lineTo(x0+r()*1.5,y0+k); g.quadraticCurveTo(x0,y0,x0+k,y0); g.fill();
-        const gr=g.createRadialGradient(x0+w*.4,y0+h*.4,2,x0+w*.5,y0+h*.5,Math.max(w,h)*.7); gr.addColorStop(0,'rgba(255,245,230,.06)'); gr.addColorStop(1,'rgba(0,0,0,.12)'); g.fillStyle=gr; g.fill(); }
+        const gr=g.createRadialGradient(x0+w*.4,y0+h*.4,2,x0+w*.5,y0+h*.5,Math.max(w,h)*.7); gr.addColorStop(0,'rgba(240,236,232,.025)'); gr.addColorStop(1,'rgba(0,0,0,.1)'); g.fillStyle=gr; g.fill(); }
       x+=w; }
     y+=h; }
   for(let i=0;i<2600;i++){ g.fillStyle=r()<.5?'rgba(20,16,14,.07)':'rgba(240,230,210,.045)'; g.fillRect(r()*s,r()*s,1+r()*2,1+r()*2); }

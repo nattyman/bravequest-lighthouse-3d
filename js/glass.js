@@ -251,7 +251,11 @@ function buildNiche(){
   const glow=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#ffcf8a'),transparent:true,opacity:.5,depthWrite:false,blending:THREE.AdditiveBlending}));
   glow.scale.set(1.1,1.1,1); glow.position.set(0,.33,0); root.add(glow); NV.glow=glow;
   // the stone that seals the niche until the bells ring true
-  const slab=new THREE.Mesh(new THREE.BoxGeometry(.18,1.9,2.0),G.toon('#7a7068')); slab.position.set(-1.0,-.25,0); root.add(slab); NV.slab=slab;
+  const slab=new THREE.Group(); const sm=G.toon('#5f5852'), dm=G.toon('#3f3a37');
+  const face=new THREE.Mesh(new THREE.BoxGeometry(.18,1.9,2.0),sm); slab.add(face);
+  for(const [y,z,w,h] of [[.35,0,.02,1.95],[-.3,0,1.96,.02],[.5,-.55,.02,.02],[0,.4,.9,.02]]){ const l=new THREE.Mesh(new THREE.BoxGeometry(.2,h===.02?.025:h,w===.02?.025:w),dm); l.position.set(-.005,y,z); slab.add(l); }
+  const cross=new THREE.Mesh(new THREE.BoxGeometry(.2,.5,.08),dm); cross.position.set(-.01,.35,0); slab.add(cross); const cb=new THREE.Mesh(new THREE.BoxGeometry(.2,.08,.32),dm); cb.position.set(-.01,.45,0); slab.add(cb);
+  slab.position.set(-1.0,-.25,0); root.add(slab); NV.slab=slab;
   G.interact.add({pos:()=>NV.root.position.clone().setY(NV.root.position.y-1.25),radius:1.9,priority:5,label:'Take the Remembering Glass',
     enabled:()=>!!(G.undercroft&&G.undercroft.inside)&&!S.owned&&nicheOpen()&&NV.slabK>.9, use:()=>{ API.give(); }});
 }

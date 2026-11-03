@@ -102,14 +102,97 @@ BOSS=[
    lambda r: r['api'] and r['names']==7),
 ]
 
+# ============================================================== PLACE (Place agent): the trapdoor, enter/exit, candles, the Glass doorway + stair,
+#   echoes, checkpoints, the stranded fallback, persistence, the waystone, the island outlines, draw calls
+PLACE_HELP="""
+T.place={
+  O:()=>G.undercroft.origin,
+  L:()=>{ const o=G.undercroft.origin, p=G.player.pos; return [+(p.x-o.x).toFixed(2),+(p.y-o.y).toFixed(2),+(p.z-o.z).toFixed(2)]; },
+  at(x,y,z,yaw){ const o=G.undercroft.origin; G.player.teleport(o.x+x,o.y+y,o.z+z,yaw==null?0:yaw); G.step(1/30,4); },
+  walk(n,dir){ G.input.setVirtual(dir||'forward',true); G.step(1/30,n); G.input.setVirtual(dir||'forward',false); G.step(1/30,2); },
+  use(re){ T.play(); G.step(1/30,2); const c=G.interact.pick(G.player.pos), lab=c&&G.interact.label(c); if(!c||(re&&!re.test(lab)))return 'NOPE:'+lab; c.use(); G.step(1/30,2); return lab; },
+  glass(on,n){ G.input.setVirtual('glass',!!on); G.step(1/30,n||15); return G.glass.raised; },
+  trans(){ for(let i=0;i<80&&G.undercroft._debug.S.trans;i++)G.step(1/30,1); G.step(1/30,4); },
+};
+'ok'"""
+PLACE=[
+ # the trapdoor stays bound until the Choked Well is cured; then it opens (and the waystone waits for the first visit)
+ ("place:door", "(()=>{ document.getElementById('begin')&&document.getElementById('begin').click(); G.step(1/30,10); if(!(G.loop&&G.loop.active))G.debugStartLoop(); G.step(1/30,10);"
+   " const before=G.undercroft.open; let ev=null; G.on('undercroft:open',e=>ev=e); G.moths._debug.cure('well'); G.step(1/30,90); const d=G.undercroft.door;"
+   " G.player.teleport(d.x+1.4,null,d.z,-Math.PI/2); G.step(1/30,8); const c=G.interact.pick(G.player.pos);"
+   " return {before,open:G.undercroft.open,ev:!!ev,lab:c&&G.interact.label(c),wp:G.map.waypoints.find(w=>w.id==='undercroft')}; })()",
+   lambda r: r['before'] is False and r['open'] and r['ev'] and r['lab']=='Go down into the undercroft' and r['wp'] and not r['wp']['unlocked']),
+ ("place:enter", "(()=>{ T.place.use(/Go down/); T.place.trans(); return {inside:G.undercroft.inside,room:G.undercroft.room(G.player.pos),L:T.place.L(),dark:G.atmo.darkTarget,fog:G.fog.depth(G.player.pos),"
+   " cp:G.state.checkpointName,wp:G.map.waypoints.find(w=>w.id==='undercroft').unlocked,island:G.scene.children.find(c=>c.name==='world').children.filter(c=>c.visible&&!c.isLight).length}; })()",
+   lambda r: r['inside'] and r['room']=='stair' and r['dark']==1 and r['fog']==0 and r['cp']=='the trapdoor stair' and r['wp']),
+ # candles: the first is free; then 5 ether each (no vials: refused); a lit room stays lit
+ ("place:candles", "(()=>{ const C=G.undercroft.candles, s0=C.find(c=>c.id==='stair:0'); G.player.teleport(s0.pos.x+.9,null,s0.pos.z,-Math.PI/2); G.step(1/30,4); const l1=T.place.use(/candle/);"
+   " const lit1=G.undercroft.isLit('stair'); G.inv.take('vial',G.inv.count('vial')); G.alchemy.etherUnits=0; T.place.at(-13.9,-2,-23.8,-Math.PI/2); const l2=T.place.use(/candle/); const lit2=G.undercroft.isLit('cellars');"
+   " G.inv.add('vial',1,{silent:true}); G.alchemy.etherUnits=12; G.step(1/30,2); const l3=T.place.use(/candle/); G.step(1/30,10);"
+   " return {l1,lit1,l2,lit2,l3,lit3:G.undercroft.isLit('cellars'),ether:G.alchemy.etherUnits,dark:G.atmo.darkTarget}; })()",
+   lambda r: r['lit1'] and r['l1']=='Light the candle' and not r['lit2'] and 'needs 5 ether' in r['l2'] and r['lit3'] and r['ether']==7 and r['dark']<1),
+ # the collapsed east wall: solid in the present
+ ("place:wall", "(()=>{ T.place.at(13.6,-2,-24,Math.PI/2); T.place.walk(45); return {L:T.place.L(),room:G.undercroft.room(G.player.pos)}; })()",
+   lambda r: r['L'][0]<15 and r['room']=='cellars'),
+ # the Glass: raised, the past doorway is walkable (slow walk, vignette); lowered mid-way you're eased back, never trapped
+ ("place:glassDoor", "(()=>{ G.glass.give({silent:true}); T.place.at(13.6,-2,-24,Math.PI/2); const st0=G.player.stamina; const up=T.place.glass(true); const sp=G.player.speedMul; T.place.walk(28);"
+   " const mid=T.place.L(); const vig=+getComputedStyle(document.getElementById('glassVig')).opacity; let push=null; G.on('undercroft:pastPush',e=>push=e); T.place.glass(false,35);"
+   " const back=T.place.L(), ctl=G.player.inputEnabled; T.place.glass(true); T.place.walk(90); const through=T.place.L(), room=G.undercroft.room(G.player.pos); T.place.glass(false);"
+   " return {up,sp,mid,vig,push:!!push,back,ctl,through,room,stam:+(G.player.stamina-st0).toFixed(2)}; })()",
+   lambda r: r['up'] and r['sp']<.5 and 15<r['mid'][0]<16.6 and r['vig']>.5 and r['push'] and r['back'][0]<15 and r['ctl'] and r['through'][0]>18 and r['room']=='mill' and r['stam']>=0),
+ # the stair to the mill loft that was: up with the Glass; lowered on it, back to the present floor
+ ("place:pastStair", "(()=>{ T.place.at(16.25,-6,-49.5,0); T.place.glass(true); T.place.walk(75); const top=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(40); const mid=T.place.L(); T.place.glass(false,40);"
+   " const after=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(75); const noGlass=T.place.L(); return {top,mid,after,noGlass}; })()",
+   lambda r: abs(r['top'][1]+3)<.2 and r['mid'][1]>-5.6 and abs(r['after'][1]+6)<.2 and abs(r['noGlass'][1]+6)<.2 and r['noGlass'][2]<-44.0),
+ # an echo: the Glass raised at the chapel altar plays 'the bargain' (a caption + glass:echo)
+ ("place:echo", "(()=>{ const e=G.undercroft.echoes.find(q=>q.id==='bargain'); G.debugEnterUndercroft('chapel'); G.step(1/30,4); G.player.teleport(e.pos.x+.6,e.pos.y,e.pos.z+2.2,Math.PI); G.step(1/30,4); let ev=null; G.on('glass:echo',x=>{ if(x.id==='bargain')ev=x; });"
+   " T.place.glass(true,40); const fig=G.glass._debug.echoes.find(q=>q.id==='bargain'); const vis=!!(fig&&fig.root&&fig.root.visible); G.step(1/30,40); T.place.glass(false,20);"
+   " return {ev:!!ev,first:ev&&ev.first,vis,n:G.glass.echoes.length,msg:G.ui.messages().some(m=>/ledger open/.test(m.text))}; })()",
+   lambda r: r['ev'] and r['vis'] and r['n']>=9 and r['msg']),
+ # checkpoints: the deepest room stood in with an open way back; the stranded fallback when there's none
+ ("place:checkpoint", "(()=>{ G.debugEnterUndercroft('mill'); G.step(1/30,40); const cp=G.state.checkpointName, reached=G.undercroft.reached();"
+   " G.glass._debug.S.owned=false; G.step(1/30,10); const str=G.undercroft.stranded(), cp2=G.state.checkpointName; const lab=T.place.use(/draught/); T.place.trans();"
+   " const room=G.undercroft.room(G.player.pos); G.glass._debug.S.owned=true; G.step(1/30,10); return {cp,reached,str,cp2,lab,room,str2:G.undercroft.stranded()}; })()",
+   lambda r: r['cp']=='the mill-race' and 'mill' in r['reached'] and r['str'] and r['cp2']!='the mill-race' and r['room']=='stair' and not r['str2']),
+ # persistence: a save made inside comes back inside, lit, with the Glass
+ ("place:persist", "(()=>{ const save=JSON.parse(JSON.stringify({u:G.persist?null:null})); const snap=G.flow&&G.flow.snapshot?G.flow.snapshot():null; return {keys:G.persist.keys.filter(k=>k==='undercroft'||k==='glass'),"
+   " u:snap&&snap.mods&&snap.mods.undercroft,g:snap&&snap.mods&&snap.mods.glass}; })()",
+   lambda r: len(r['keys'])==2 and (r['u'] is None or ('stair' in r['u']['lit'] and r['u']['open'])) and (r['g'] is None or r['g']['owned'])),
+ # out through the trapdoor; the Glass on the island: an echo in the hamlet square, a shard/cache outline within 25 m
+ ("place:exit", "(()=>{ const a=G.undercroft.rooms.stair.anchors.exit; G.player.teleport(a.x,a.y,a.z-.6,0); G.step(1/30,4); const lab=T.place.use(/Climb up/); T.place.trans(); const d=G.undercroft.door;"
+   " return {lab,inside:G.undercroft.inside,dist:+Math.hypot(G.player.pos.x-d.x,G.player.pos.z-d.z).toFixed(2),cam:G.camera.far}; })()",
+   lambda r: r['lab'] and not r['inside'] and r['dist']<3 and r['cam']>500),
+ ("place:island", "(()=>{ const e=G.glass.echo('square'); G.player.teleport(e.pos.x+1,null,e.pos.z+1,0); G.step(1/30,6); let ev=null; G.on('glass:echo',x=>{ if(x.id==='square')ev=x; }); T.place.glass(true,40); const echo=!!ev;"
+   " const PR=G.progress, s=PR.spots.find(q=>!q.cave&&!PR.state.shards[q.id]&&(!q.when||q.when())); let ring=null; if(s){ G.player.teleport(s.pos.x+12,null,s.pos.z,0); G.step(1/30,25); ring=G.glass._debug?G.scene.children.filter(c=>c.isSprite&&c.renderOrder===20&&c.visible).length:0; }"
+   " T.place.glass(false,20); return {echo,shard:s&&s.id,ring}; })()",
+   lambda r: r['echo'] and (r['shard'] is None or r['ring']>=1)),
+ # the 8th waystone: travel straight down to the stair (the same blocking rules)
+ ("place:travel", "(()=>{ const lh=G.world.lighthouse; G.player.teleport(lh.doorOut.x-3,null,lh.doorOut.z,-Math.PI/2); G.step(1/30,6); const why=G.map.travelBlock('undercroft'); const ok=G.map.travel('undercroft',{force:true});"
+   " for(let i=0;i<120&&G.map.traveling;i++)G.step(1/30,1); G.step(1/30,10); return {why,ok,inside:G.undercroft.inside,room:G.undercroft.room(G.player.pos),mode:G.state.mode}; })()",
+   lambda r: r['ok'] and r['inside'] and r['room']=='stair' and r['mode']=='play'),
+ # the root cellar's rotten boards give way into the pit (survivable); rubble steps climb back out (last: the pit's Nameless are cleared)
+ ("place:trap", "(()=>{ let ev=null; G.on('undercroft:trap',e=>ev=e); G.debugEnterUndercroft('cellars'); G.step(1/30,4); T.hold(); T.place.at(-20,-2,-17.5,-Math.PI/2); G.step(1/30,45); T.hold();"
+   " const down=T.place.L(), sprung=G.undercroft.trapSprung, alive=G.player.alive; const clear=()=>{ for(const m of G.monsters.list.slice())if(m.alive&&!m.dying&&m.pos.distanceTo(G.player.pos)<25)G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)}); };"
+   " clear(); G.step(1/30,30); clear(); T.place.at(-21.3,-5.2,-19.7,0); T.hold(); T.place.walk(70); T.hold(); clear(); return {ev:!!ev,sprung,down,alive,out:T.place.L()}; })()",
+   lambda r: r['ev'] and r['sprung'] and r['down'][1]<-5 and r['alive'] and abs(r['out'][1]+2)<.15),
+ # performance: the interior's own draw calls, and the past layer's (the Traveler, monsters and villagers aren't counted)
+ ("place:perf", "(()=>{ ['stair','cellars','chapel','mill','store'].forEach(r=>G.undercroft.lightCandle(r)); G.debugEnterUndercroft('cellars'); G.step(1/30,10); const n=G.undercroft._debug.stats();"
+   " let past=0; G.glass.pastLayer.traverse(o=>{ if((o.isMesh||o.isPoints)&&o.visible)past++; }); return {interior:n,past,stats:G.undercroft.stats}; })()",
+   lambda r: r['interior']<=60 and r['past']<=30),
+]
+PLACE_SHOTS={'place:door':'trapdoor','place:candles':'candle','place:glassDoor':'glass-door','place:echo':'echo','place:perf':'cellars-lit'}
+
 # ============================================================== PEOPLE (People agent): talk (mouse + controller), lies, puzzles, names, saving Wren
 PEOPLE_HELP="""
 T.people={
   U:()=>G.undercroftPeople,
   near(id,d){ const v=G.undercroftPeople.villagers[id], p=v.pos; G.player.teleport(p.x+Math.sin(v.yaw)*(d||1.6),p.y+.1,p.z+Math.cos(v.yaw)*(d||1.6),v.yaw+Math.PI); G.step(1/30,8); },
-  use(re){ G.step(1/30,2); const c=G.interact.pick(G.player.pos), lab=c&&G.interact.label(c); if(!c||(re&&!re.test(lab)))return 'NOPE:'+lab; c.use(); G.step(1/30,2); return lab; },
+  use(re){ if(G.talk.isOpen)G.talk.close(); T.play(); T.hold(); G.step(1/30,2); const c=G.interact.pick(G.player.pos), lab=c&&G.interact.label(c); if(!c||(re&&!re.test(lab)))return 'NOPE:'+lab; c.use(); G.step(1/30,2); return lab; },
   at(p){ G.player.teleport(p.x,p.y+.1,p.z,0); G.step(1/30,6); },
-  glass(){ if(!G.glass){ G.glass={_stub:true,owned:true,raised:false,raise(on){ this.raised=!!on; G.emit('glass:raise',{on:!!on}); },canSee:()=>true}; } G.glass.owned=true; return !!G.glass._stub; },
+  glass(){ if(!G.glass){ G.glass={_stub:true,owned:true,raised:false,raise(on){ this.raised=!!on; G.emit('glass:raise',{on:!!on}); },canSee:()=>true}; } else if(G.glass.give)G.glass.give({silent:true}); return !!G.glass._stub; },
+  // the card: advance to the choices / through to the end (pick: the choice index each time choices come up)
+  toChoices(){ let n=0; while(G.talk.isOpen&&!G.talk.state().choices.length&&n<30){ G.talk.advance(); n++; } return G.talk.state(); },
+  finish(pick){ let n=0; while(G.talk.isOpen&&n<60){ const s=G.talk.state(); if(s.choices.length)G.talk.choose(typeof pick==='function'?pick(s):(pick||0)); else G.talk.advance(); n++; } G.step(1/30,2); return !G.talk.isOpen; },
   // a pretend controller (standard mapping) the game reads through navigator.getGamepads
   pad(){ if(window.__pad)return; window.__pad={id:'Test pad (STANDARD GAMEPAD)',index:0,connected:true,mapping:'standard',timestamp:0,axes:[0,0,0,0],buttons:Array.from({length:17},()=>({pressed:false,value:0,touched:false}))};
     Object.defineProperty(navigator,'getGamepads',{configurable:true,value:()=>[window.__pad]}); },
@@ -120,7 +203,7 @@ T.people={
 'ok'"""
 PEOPLE=[
  ("people:enter", "(()=>{ document.getElementById('begin')&&document.getElementById('begin').click(); G.step(1/30,10); if(!(G.loop&&G.loop.active))G.debugStartLoop(); G.step(1/30,10);"
-   " const r=G.debugEnterUndercroft('cellars'); G.step(1/30,20); T.hold(); const P=T.people.U(), u=G.undercroft, out={room:r,built:P.built};"
+   " if(G.devtools)G.devtools.cheats.god=true; G.input.lockPointer=()=>{}; const r=G.debugEnterUndercroft('cellars'); G.step(1/30,20); T.hold(); const P=T.people.U(), u=G.undercroft, out={room:r,built:P.built};"
    " for(const k in P.villagers){ const v=P.villagers[k]; out[k]=[u.room(v.pos),+u.sdf(u.toLocal(v.pos).x,u.toLocal(v.pos).z).toFixed(2)]; } return out; })()",
    lambda r: r['built'] and r['tamsin'][0]=='cellars' and r['corwin'][0]=='chapel' and r['wren'][0]=='chapel' and r['hob'][0]=='mill' and all(r[k][1]<-.3 for k in ['tamsin','corwin','wren','hob'])),
  # never hurt: a staff strike passes through a villager (no hurtbox), with an ash puff
@@ -165,35 +248,37 @@ PEOPLE=[
    lambda r: r['solved'] and r['ev'] and r['mill'] and r['port']),
  # the register: read it; its echo (the clerk carries the page to the store) moves Wren's story on
  ("people:register", "(()=>{ G.debugEnterUndercroft('chapel'); G.step(1/30,10); const P=T.people.U(); T.people.at(P.debug.props.register.at); const lab=T.people.use(/register/);"
-   " G.emit('glass:echo',{id:'register'}); G.step(1/30,200); T.people.near('wren'); T.people.use(/Wren/); const s=G.talk.state(); G.talk.close(); G.step(1/30,2); return {lab,reg:P.state.register,echo:P.state.registerEcho,line:s&&s.line}; })()",
+   " T.people.near('wren'); T.people.use(/Wren/); T.people.finish(s=>s.choices.length-1); G.emit('glass:echo',{id:'register',first:true}); G.step(1/30,200); T.people.near('wren'); T.people.use(/Wren/); const s=G.talk.state(); G.talk.close(); G.step(1/30,2); return {lab,reg:P.state.register,echo:P.state.registerEcho,line:s&&s.line}; })()",
    lambda r: r['reg'] and r['echo'] and r['line'] and 'Where did my page go' in r['line']),
  # a page (letter / logbook): three of the People agent's in the dungeon
  ("people:page", "(()=>{ const P=T.people.U(); const o=P.debug.props.pages.sexton; T.people.at(o.pos); const lab=T.people.use(/note/); return {lab,n:Object.keys(P.PAGES).length,read:!!P.state.pages.sexton}; })()",
    lambda r: r['read'] and r['n']>=3),
  # names: after the boss and the ledger, a talk choice speaks each name; Tamsin rests in a drift of pale moths
  ("people:names", "(()=>{ G.emit('undercroft:bossDead',{}); G.emit('undercroft:ledger',{taken:true}); G.step(1/30,90); G.debugEnterUndercroft('cellars'); G.step(1/30,10); T.people.near('tamsin'); const lab=T.people.use(/Tamsin/);"
-   " const s=G.talk.state(); return {names:T.people.U().state.names,lab,choices:s&&s.choices}; })()",
+   " const s=T.people.toChoices(); return {names:T.people.U().state.names,lab,choices:s&&s.choices}; })()",
    lambda r: r['names'] and r['choices'] and r['choices'][0]=='“Wickham Tamsin Rowe.”'),
- ("people:rest", "(()=>{ let rest=null; G.on('undercroft:rest',e=>rest=e); G.talk.choose(0); let n=0; while(G.talk.isOpen&&G.talk.state().choices.length===0&&n<12){ G.talk.advance(); G.talk.advance(); n++; } const last=G.talk.state(); G.talk.choose(0); G.step(1/30,60);"
+ ("people:rest", "(()=>{ let rest=null; G.on('undercroft:rest',e=>rest=e); G.talk.choose(0); const last=T.people.toChoices(); G.talk.choose(0); G.step(1/30,60);"
    " const v=T.people.U().villagers.tamsin; const mid={vis:v.root.visible,k:+v.resting.toFixed(2)}; G.step(1/30,120); return {rest,last:last&&last.choices,mid,gone:!v.root.visible,rested:T.people.U().state.rested.tamsin}; })()",
    lambda r: r['rest'] and r['rest']['who']=='tamsin' and r['mid']['k']>0 and r['gone'] and r['rested']),
  ("people:restShot", "(()=>1)()", lambda r: True),
  # saving Wren: her name, then 20 moths feed on her ~10 s while the Nameless crawl up for them
- ("people:wrenName", "(()=>{ G.debugEnterUndercroft('chapel'); G.step(1/30,10); T.people.near('wren'); T.people.use(/Wren/); G.talk.choose(0); let n=0; while(G.talk.isOpen&&n<14){ if(G.talk.state().choices.length)G.talk.choose(0); else G.talk.advance(); n++; }"
-   " G.step(1/30,30); return {stage:T.people.U().state.wren.stage,quest:G.quest.step}; })()",
+ ("people:wrenName", "(()=>{ G.debugEnterUndercroft('chapel'); G.step(1/30,10); const B=G.undercroftBoss; if(B&&B.debug&&B.debug.clearMine)B.debug.clearMine(); G.step(1/30,2); T.people.near('wren'); const lab=T.people.use(/Wren/); const s=T.people.toChoices(); T.people.finish(0);"
+   " G.step(1/30,30); return {lab,ch:s&&s.choices,stage:T.people.U().state.wren.stage,quest:G.quest.step}; })()",
    lambda r: r['stage']=='named' and r['quest']=='undercroft:wren'),
  ("people:wrenFeed", "(()=>{ T.hold(); const f=T.people.feedNear('wren'); let spawned=0, saved=false, t=0, feedAt=null; const site=T.people.U().debug.wrenSite();"
    " for(let i=0;i<30*24&&!saved;i++){ G.step(1/30,1); T.hold(); t+=1/30; if(site.feeding&&feedAt==null)feedAt=t; const d=T.people.U().debug.defence(); if(d)spawned=Math.max(spawned,d.list.length);"
    "  if(i%15===0){ for(const m of G.monsters.list)if(m.alive&&!m.dying&&m.undercroft==='wren'&&m.pos.distanceTo(G.player.pos)<30)G.combat.strike({x:m.pos.x,y:m.pos.y+1,z:m.pos.z,radius:.8,team:'player',damage:1,kind:'melee'}); }"
    "  saved=T.people.U().state.wren.saved; }"
-   " return {f,feedAt:feedAt&&+feedAt.toFixed(1),spawned,saved,t:+t.toFixed(1),ink:+T.people.U().villagers.wren.inkK.toFixed(2),card:(document.getElementById('rewardCard')||{}).textContent||''}; })()",
+   " const st={}; for(const m of G.creatures.moths)st[m.tgt]=(st[m.tgt]||0)+1; const L=G.items.lantern;"
+   " const diag={st,en:site.enabled(),stage:T.people.U().state.wren.stage,near:site.near,cured:site.cured,dP:+G.player.pos.distanceTo(site.pos).toFixed(1),lit:L.lit(),carried:L.carried,mode:G.state.mode,talk:G.talk.isOpen};"
+   " return {diag,f,feedAt:feedAt&&+feedAt.toFixed(1),spawned,saved,t:+t.toFixed(1),ink:+T.people.U().villagers.wren.inkK.toFixed(2),card:(document.getElementById('rewardCard')||{}).textContent||''}; })()",
    lambda r: r['saved'] and r['spawned']>=3 and r['feedAt'] is not None and r['t']-r['feedAt']>=9),
  ("people:wrenShot", "(()=>{ G.step(1/30,40); return {card:document.body.innerText.includes('Wren of Wickham’s End')}; })()", lambda r: r['card']),
  # afterwards: Wren lives at the cured well; her loaf (+1 heart for a glowcap); Halloran hears of it
  ("people:hamlet", "(()=>{ T.settle(90); G.undercroft.exit({instant:true}); G.step(1/30,30); const P=T.people.U(); const w=P.debug.hamletWren();"
    " if(!w)return {w:false}; G.player.teleport(w.pos.x+1.6,w.pos.y+.2,w.pos.z,-Math.PI/2); G.step(1/30,8); const lab=T.people.use(/Wren/); const s=G.talk.state();"
-   " G.inv.add('glowcap',2,{silent:true}); const p=G.player; p.hp=p.maxHp-2; const hp0=p.hp; let n=0; while(G.talk.isOpen&&!G.talk.state().choices.length&&n<8){ G.talk.advance(); G.talk.advance(); n++; }"
-   " const ch=G.talk.state()&&G.talk.state().choices; G.talk.choose(0); const after=p.hp; G.talk.close(); G.step(1/30,2);"
+   " G.inv.add('glowcap',2,{silent:true}); const p=G.player; p.hp=p.maxHp-2; const hp0=p.hp; T.people.toChoices();"
+   " const ch=G.talk.state()&&G.talk.state().choices; G.talk.choose(0); const after=p.hp; T.people.finish(s=>s.choices.length-1);"
    " return {w:true,vis:w.root.visible,lab,title:s&&s.name,ch,healed:after-hp0,left:P.state.wren.left}; })()",
    lambda r: r['w'] and r['vis'] and r['left'] and r['healed']==2 and r['ch'] and 'loaf' in r['ch'][0]),
  ("people:halloran", "(()=>{ const C=G.creatures; const hooks=(C.halloranHooks||[]).length; const lines=[]; const off=G.on('talk',e=>{ if(e.who==='Halloran')lines.push(e.line); }); C.talk(); C.talk(); off&&off(); return {hooks,lines}; })()",
@@ -218,7 +303,8 @@ async def _people_click_leave(pg):
     return {'open':await pg.evaluate('G.talk.isOpen')}, True
 async def _people_pad(pg):
     async def press(i):
-        await pg.evaluate(f'T.people.btn({i},true)'); await pg.wait_for_timeout(110); await pg.evaluate(f'T.people.btn({i},false)'); await pg.wait_for_timeout(110)
+        # headless Chrome barely runs frames while the game is paused, so step the systems (talk.js reads the pad in its update)
+        await pg.evaluate(f'T.people.btn({i},true); G.step(1/30,2); T.people.btn({i},false); G.step(1/30,2)')
     seen=[]
     for i in range(20):
         s=await pg.evaluate('G.talk.state()')
@@ -241,7 +327,7 @@ async def _people_lie_glass(pg):
     return {'raised':await pg.evaluate('!!G.glass.raised')}, True
 PEOPLE_SPECIAL={'CLICK_TO_CHOICES':_people_click_to_choices,'CLICK_LEAVE':_people_click_leave,'PAD_DRIVE':_people_pad,'LIE_GLASS':_people_lie_glass}
 
-SECTIONS={'boss':(BOSS_HELP,BOSS),'people':(PEOPLE_HELP,PEOPLE)}
+SECTIONS={'place':(PLACE_HELP,PLACE),'boss':(BOSS_HELP,BOSS),'people':(PEOPLE_HELP,PEOPLE)}
 SPECIAL={**PEOPLE_SPECIAL}   # python-driven steps (real mouse clicks, a pretend controller): js = the key
 
 
@@ -286,7 +372,7 @@ async def main():
                     print(('ok  ' if ok else 'FAIL'), name, ':', json.dumps(r)[:700], flush=True)
                     if not ok: fails.append(name)
                 else: await run(pg,name,js,check,fails)
-                if SHOTS.get(name) or PEOPLE_SHOTS.get(name): await shot(pg,f'/tmp/claude-0/undercroft-{sec}/{SHOTS.get(name) or PEOPLE_SHOTS[name]}.png')
+                if SHOTS.get(name) or PEOPLE_SHOTS.get(name) or PLACE_SHOTS.get(name): await shot(pg,f'/tmp/claude-0/undercroft-{sec}/{SHOTS.get(name) or PEOPLE_SHOTS.get(name) or PLACE_SHOTS[name]}.png')
         real=[e for e in errs if '404' not in e]
         for e in real[:10]: print('  ERR',e[:300])
         if real: fails.append('console errors')
