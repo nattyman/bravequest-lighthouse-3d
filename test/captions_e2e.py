@@ -80,6 +80,19 @@ async def main():
             and seq[3]['text'].startswith('The lamp') and seq[3]['q']==0 and seq[4]['text'].startswith('The lamp') and not seq[4]['typing'] and seq[5] is None)
         check('advance-key', ok, {'start':s0,'seq':seq})
 
+        # 4b. controller: D-pad down finishes typing, then advances; it no longer walks the player backward; the hint shows the D-pad glyph
+        r=await ev(pg,f"""(()=>{{ const P={{id:'Fake Xbox controller',index:0,connected:true,mapping:'standard',timestamp:0,axes:[0,0,0,0],buttons:Array.from({{length:17}},()=>({{pressed:false,touched:false,value:0}}))}};
+          const old=navigator.getGamepads; navigator.getGamepads=()=>[P];
+          const btn=(i,on)=>{{ P.buttons[i]={{pressed:!!on,touched:!!on,value:on?1:0}}; P.timestamp++; }};
+          T.reset('hold'); G.ui.say({json.dumps(LONG)},'Halloran'); G.ui.say('Pad line two.'); G.step(1/30,3);
+          const p0=G.player.pos.clone(); btn(13,true); G.step(1/30,2); const mv=G.input.move();
+          const a={{typing:G.ui.captions().cur.typing, hint:document.querySelector('#cap .capnext').innerHTML.includes('D-pad down'), mag:mv.mag}};
+          btn(13,false); G.step(1/30,2); btn(13,true); G.step(1/30,2); btn(13,false); G.step(1/30,2);
+          const c=G.ui.captions(); const moved=G.player.pos.distanceTo(p0);
+          const legend=document.getElementById('keys').innerHTML.includes('next message');
+          navigator.getGamepads=old||(()=>[]); return {{...a, next:c.cur&&c.cur.text, moved:+moved.toFixed(3), legend, device:G.input.device}}; }})()""")
+        check('dpad-down', not r['typing'] and r['hint'] and r['mag']==0 and r['next']=='Pad line two.' and r['moved']<.05 and r['legend'], r)
+
         # 5. clicking the caption advances it and never attacks
         # (while the mouse is captured for camera look, a click is a strike, as before; with the cursor free a click on the caption is "next")
         await ev(pg,"(()=>{ G.input.lockPointer=()=>{}; document.exitPointerLock(); })()"); await pg.wait_for_timeout(400)

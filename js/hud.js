@@ -167,7 +167,7 @@ let capChip=null; // last hint state drawn, so the chip only re-renders when it 
 const capHint=document.createElement('span'); capHint.className='capnext'; capHint.setAttribute('aria-hidden','true');
 const capBar=document.createElement('i'); capBar.className='captime';
 capEl.append(capHint,capBar);
-function hintKey(){ const d=G.input.device; return d==='gamepad'?'':d==='touch'||(G.isMobile&&d!=='keyboard')?'<span class="tap">Tap</span>':'<kbd>Enter</kbd>'; }
+function hintKey(){ const d=G.input.device; return d==='gamepad'?glyph('Down'):d==='touch'||(G.isMobile&&d!=='keyboard')?'<span class="tap">Tap</span>':'<kbd>Enter</kbd>'; }
 function drawChip(){
   const typing=cur.i<cur.t.length, n=queue.length, key=hintKey();
   const want=(typing?'t':'s')+n+key;
@@ -276,7 +276,7 @@ function renderLog(){
   pzList.innerHTML=h;
 }
 G.on('mode',e=>{ if(e.mode==='paused'&&pauseSheet){ syncCapSeg(); renderLog(); if(pzTab==='msgs')pzList.scrollTop=0; } });
-/* controller: the right stick (or D-pad up/down while a tab has focus) scrolls the log */
+/* controller: the right stick (or D-pad up/down while a tab has focus) scrolls the log; in play, D-pad down advances captions */
 function padScrollLog(dt){
   if(!pzList||pzTab!=='msgs'||$('pause').hidden||!navigator.getGamepads)return;
   let g=null; try{ for(const p of navigator.getGamepads()||[]){ if(p&&p.connected!==false){g=p;break;} } }catch(_){ return; }
@@ -353,13 +353,14 @@ function updateWorldUI(dt){
 const promptEl=$('prompt'); let lastPrompt='';
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 /* controller glyphs: Xbox face buttons as coloured badges, bumpers/triggers/menu as dark pills */
-const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X',H:'Up',Drink:'Up'};
+const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X',H:'Up',Drink:'Up',Enter:'Down'};
 function glyph(n){
   const face={A:'a',B:'b',X:'x',Y:'y'}[n];
   if(face)return `<span class="pad pad-${face}" role="img" aria-label="${n} button">${n}</span>`;
   if(n==='LS'||n==='RS')return `<span class="pad pad-stick" role="img" aria-label="${n==='LS'?'Left':'Right'} stick">${n[0]}</span>`;
   if(n==='Menu')return `<span class="pad pad-pill" role="img" aria-label="Menu button">&#9776;</span>`;
   if(n==='Up')return `<span class="pad pad-pill" role="img" aria-label="D-pad up">&#9650;</span>`;
+  if(n==='Down')return `<span class="pad pad-pill" role="img" aria-label="D-pad down">&#9660;</span>`;
   return `<span class="pad pad-pill" role="img" aria-label="${n}">${esc(n)}</span>`;
 }
 G.ui.glyph=glyph;
@@ -433,7 +434,7 @@ function updatePotionsUI(dt){
 
 /* ---------- controller legend + notices ---------- */
 const keysEl=$('keys'), keysHTML=keysEl?keysEl.innerHTML:'';
-const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Menu','pause']];
+const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['Menu','pause']];
 const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(t)}</span>`).join('');
 const BLOCKED_MSG='Your browser blocked controller access in this view. Open the game on its own page, or run the local copy.';
 let keysFade=0, padHint=false;

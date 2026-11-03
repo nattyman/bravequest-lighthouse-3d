@@ -273,7 +273,7 @@ G.setInvertY=(on)=>{
    pressed/held/released sets as keys; sticks feed move() and look(). While a menu/card is up,
    the pad drives the card's buttons instead, and any button used there is ignored by gameplay
    until it is released (so A on "Begin" doesn't also jump). */
-const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'pause',9:'pause',10:'sprint',11:'lock',12:'potion'}; // 12 = D-pad up: drink a draught
+const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'pause',9:'pause',10:'sprint',11:'lock',12:'potion',13:'advance'}; // 12 = D-pad up: drink a draught; 13 = D-pad down: next message
 /* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
    so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
 const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,trigger:.5,navDelay:.38,navRepeat:.14};
@@ -390,7 +390,7 @@ function pollPad(dt){
     // left stick: radial deadzone, rescaled to 0..1 (the last 5% counts as full, for worn sticks)
     let mx=0,my=0,mm=0; const lm=Math.hypot(lx,ly);
     if(lm>PAD.moveDead){ const k=U.clamp((lm-PAD.moveDead)/(.95-PAD.moveDead),0,1); mx=lx/lm*k; my=-ly/lm*k; mm=k; }
-    else if(btn[13]||btn[14]||btn[15]){ mx=(btn[15]?1:0)-(btn[14]?1:0); my=-(btn[13]?1:0); /* D-pad up drinks a draught, so it no longer walks */ const n=Math.hypot(mx,my); if(n>0){mx/=n;my/=n;mm=1;} }
+    else if(btn[14]||btn[15]){ mx=(btn[15]?1:0)-(btn[14]?1:0); my=0; /* D-pad up drinks a draught and D-pad down advances messages, so neither walks */ const n=Math.hypot(mx,my); if(n>0){mx/=n;my/=n;mm=1;} }
     // right stick: radial deadzone + response curve
     let rx=0,ry=0; const rm=Math.hypot(rx0,ry0);
     if(rm>PAD.lookDead){ const k=Math.pow(U.clamp((rm-PAD.lookDead)/(.95-PAD.lookDead),0,1),PAD.lookCurve); rx=rx0/rm*k; ry=ry0/rm*k; }
