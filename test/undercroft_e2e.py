@@ -58,7 +58,7 @@ BOSS=[
    " const f=B.figures; return {phase:B.phase,hp:B.hp,alive:f.filter(x=>x.alive).length,real:f.filter(x=>x.real).length,kinds:f.map(x=>x.kind)}; })()",
    lambda r: r['phase']==2 and r['alive']==4 and r['real']==1 and r['hp']<=24),
  # the copies: through the Glass the real one is warm and solid, the copies empty; without it, his shadow lags his feet
- ("boss:copies", "(()=>{ const B=G.undercroftBoss; B.debug.hold(); if(!G.glass)G.glass={owned:true,raised:false,canSee:()=>true,_stub:true}; const g=G.glass; g.raised=false; G.step(1/30,30);"
+ ("boss:copies", "(()=>{ const B=G.undercroftBoss; B.debug.hold(); if(!G.glass)G.glass={owned:true,raised:false,canSee:()=>true,_stub:true}; const g=G.glass; if(g.give)g.give({silent:true}); if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,30);"
    " const lag=B.figures.map(f=>({real:f.real,d:+Math.hypot(f.shadow.position.x-f.pos.x,f.shadow.position.z-f.pos.z).toFixed(2)}));"
    " const was=g.raised; if(g.raise)g.raise(true); else g.raised=true; G.step(1/30,30); const look=B.figures.map(f=>({real:f.real,op:+f.mats.ink.opacity.toFixed(2),warm:+f.mats.warm.opacity.toFixed(2)}));"
    " if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,3); return {lag,look}; })()",
@@ -363,8 +363,13 @@ async def main():
         await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         await pg.evaluate(HELP)
+        first=True
         for sec,(helpjs,steps) in SECTIONS.items():
             if ONLY and sec not in ONLY: continue
+            if not first:   # each section starts from a fresh page (the boss section kills Crane and takes the ledger, etc.)
+                await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
+                await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await pg.evaluate(HELP)
+            first=False
             await pg.evaluate(helpjs)
             for name,js,check in steps:
                 if js=='WAIT_RISE':
