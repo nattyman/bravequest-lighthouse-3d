@@ -1,4 +1,4 @@
-<title>Brave Quest Lighthouse</title>
+<title>Brave Quest: Lighthouse</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -148,6 +148,36 @@ kbd{font-family:var(--body);font-weight:700;font-size:11.5px;min-width:21px;heig
 .setting{display:grid;gap:6px;font-size:14px;color:#3d2f33}
 .setting small{color:#6c5a5f;font-size:12.5px}
 .savenote{font-size:13px;color:#6c3f5f;min-height:1.2em}
+/* title screen: the series mark over the game name, a short menu, the studio line (the tower turns slowly on the right) */
+#title{background:linear-gradient(90deg,rgba(10,7,14,.88) 0%,rgba(10,7,14,.55) 42%,rgba(10,7,14,0) 72%)}
+#title .title-sheet{background:none;box-shadow:none;padding:0 0 0 clamp(4px,4vw,64px);gap:14px;max-width:520px;color:var(--bone)}
+#title .logo{display:grid;justify-items:start;gap:2px;margin-bottom:2px}
+#title .series{display:flex;align-items:center;gap:12px;font:500 clamp(13px,1.6vw,16px) var(--body);letter-spacing:.42em;text-transform:uppercase;color:var(--ether-hi);padding-left:.2em}
+#title .series i{display:block;width:clamp(22px,4vw,44px);height:1px;background:linear-gradient(90deg,transparent,var(--ether-hi))}
+#title .series i:last-child{background:linear-gradient(90deg,var(--ether-hi),transparent)}
+#title .game{font-family:var(--display);font-weight:400;font-size:clamp(56px,11vw,124px);line-height:.88;color:var(--bone);letter-spacing:.01em;
+  text-shadow:0 2px 0 rgba(0,0,0,.35),0 0 40px rgba(165,108,255,.28),0 6px 30px rgba(0,0,0,.7)}
+#title .hook{font-family:var(--serif);font-style:italic;font-size:clamp(17px,2vw,20px);color:#d9cfe0;margin:0 0 10px;text-shadow:0 1px 8px rgba(0,0,0,.8)}
+#title .menu{display:grid;gap:10px;justify-items:start;margin-top:4px}
+#title .menu .btn{min-width:220px;text-align:left;padding:12px 22px;font-size:17px;border-radius:2px}
+#title .menu .btn.ghost{color:var(--bone);border-color:rgba(241,233,216,.28);background:rgba(20,14,26,.35)}
+#title .menu .btn.ghost:hover{border-color:rgba(214,188,255,.6)}
+#title .loading{font-size:13px;letter-spacing:.06em;color:#b9adc4}
+#title .savenote{color:#cbbfd6;font-size:13px;max-width:44ch}
+#title .padnote{color:#b9adc4!important}
+#title .dt-entry button{color:#cbbfd6}
+#title .studio{position:absolute;left:max(24px,calc(env(safe-area-inset-left,0px) + 24px));bottom:calc(18px + env(safe-area-inset-bottom,0px));
+  font:500 12px var(--body);letter-spacing:.32em;text-transform:uppercase;color:rgba(241,233,216,.62)}
+#title .studio span{letter-spacing:.16em;text-transform:none;font-family:var(--serif);font-style:italic;font-size:14px}
+.card.sub{background:rgba(10,7,14,.6);justify-content:center}
+.card.sub .sheet{max-width:620px;width:100%}
+.touchnote{font-size:14px!important;color:#5a4a4e!important}
+.credits-sheet .roll{display:grid;gap:14px}
+.credits-sheet h3{margin:0 0 2px;font:600 12px var(--body);letter-spacing:.2em;text-transform:uppercase;color:#6c3f5f}
+.credits-sheet .roll p{font-size:16px;line-height:1.45}
+.credits-sheet .fine{font-size:12.5px;color:#6c5a5f}
+@media (max-height:520px){ #title .game{font-size:clamp(44px,9vw,84px)} #title .menu{grid-template-columns:repeat(2,auto)} #title .menu .btn{min-width:170px;padding:9px 16px} #title .hook{margin-bottom:2px} #title .studio{display:none} }
+@media (max-width:480px){ #title .title-sheet{padding-left:4px} #title .menu .btn{min-width:200px} }
 /* parchment cards (title, pause, death, ending) */
 .card{position:fixed;inset:0;display:flex;align-items:center;justify-content:flex-start;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
@@ -264,11 +294,30 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
 <div id="fade"></div>
 
 <div class="card" id="title">
+  <div class="sheet title-sheet">
+    <div class="logo" role="heading" aria-level="1" aria-label="Brave Quest: Lighthouse">
+      <span class="series"><i aria-hidden="true"></i>Brave Quest<i aria-hidden="true"></i></span>
+      <span class="game">Lighthouse</span>
+    </div>
+    <p class="hook">The great lamp is dark. The fog is coming in.</p>
+    <div class="actions menu">
+      <button class="btn" id="continue" type="button" hidden>Continue</button>
+      <button class="btn" id="begin" type="button">Begin</button>
+      <button class="btn ghost" id="controlsBtn" type="button">Controls</button>
+      <button class="btn ghost" id="creditsBtn" type="button">Credits</button>
+    </div>
+    <span class="loading" id="loading">Building the island…</span>
+    <p class="savenote" id="saveInfo" hidden></p>
+    <p class="savenote cloudnote" id="cloudNote" hidden></p>
+    <p class="padnote" id="padNote" hidden></p>
+  </div>
+  <div class="studio" aria-label="A Numinex Studio game"><span>A</span> Numinex Studio <span>game</span></div>
+</div>
+
+<div class="card sub" id="controlsCard" data-pad-back="controlsBack" hidden>
   <div class="sheet">
-    <span class="eyebrow">The Gentle Gothic · Brave Quest</span>
-    <h1>The Lighthouse at the Edge of the Fog</h1>
-    <p>You wake at the foot of a dead lighthouse, high on a sea cliff. Fog is coming in off the water. The great lamp is dark, the doorway darker still, and somewhere past the moor there is a forest that is not entirely empty.</p>
-    <div class="rule"></div>
+    <span class="eyebrow">Brave Quest · Lighthouse</span>
+    <h2>Controls</h2>
     <div class="controls" data-kb-legend>
       <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> move</span>
       <span>Mouse look</span>
@@ -282,9 +331,26 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
       <span><kbd>Enter</kbd> next message</span>
     </div>
     <div class="padlegend" data-pad-legend hidden></div>
-    <div class="actions"><button class="btn" id="continue" type="button" hidden>Continue</button><button class="btn" id="begin" type="button">Begin</button><span class="loading" id="loading">Building the island…</span></div>
-    <p class="savenote" id="saveInfo" hidden></p>
-    <p class="padnote" id="padNote" hidden></p>
+    <p class="touchnote">On a phone or tablet: the left thumb moves, drag on the right to look, and the buttons on the right do the rest.</p>
+    <div class="actions"><button class="btn" id="controlsBack" type="button">Back</button></div>
+  </div>
+</div>
+
+<div class="card sub" id="credits" data-pad-back="creditsBack" hidden>
+  <div class="sheet credits-sheet">
+    <span class="eyebrow">Brave Quest · Lighthouse</span>
+    <h2>Credits</h2>
+    <div class="roll">
+      <section><h3>A Numinex Studio game</h3><p>Created, written and directed by <b>Heath</b></p></section>
+      <section><h3>Music &amp; sound</h3><p>Heath, made with Suno</p></section>
+      <section><h3>Built with</h3><p>Claude, by Anthropic, as development partner</p>
+        <p><b>three.js</b> r128 — © 2010–2021 three.js authors, MIT License</p></section>
+      <section><h3>Type</h3><p><b>IM Fell English</b> — Igino Marini, SIL Open Font License</p>
+        <p><b>Alegreya Sans</b> — Juan Pablo del Peral, Huerta Tipográfica, SIL Open Font License</p></section>
+      <section><h3>Thank you</h3><p>To everyone who carried a lantern into the fog for us.</p></section>
+    </div>
+    <p class="fine">© 2026 Numinex Studio. Brave Quest is a Numinex Studio series.</p>
+    <div class="actions"><button class="btn" id="creditsBack" type="button">Back</button></div>
   </div>
 </div>
 
@@ -336,7 +402,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
     <span class="eyebrow">The lamp burns</span>
     <h2>They were never after the light.</h2>
     <p id="endText">The tower is cured and the fog has pulled back from the cliff. Out on the moor and in the forest there are still black places in the grass, and more of the Unmade than there were this morning. But tonight the light holds.</p>
-    <div class="actions"><button class="btn" id="keep" type="button">Keep exploring</button><button class="btn ghost" id="again" type="button">Play again</button></div>
+    <div class="actions"><button class="btn" id="keep" type="button">Keep exploring</button><button class="btn ghost" id="again" type="button">Play again</button><button class="btn ghost" id="endCredits" type="button">Credits</button></div>
   </div>
 </div>
 
@@ -375,4 +441,5 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
 <script src="js/talk.js"></script>
 <script src="js/undercroft_people.js"></script>
 <script src="js/undercroft_boss.js"></script>
+<script src="js/cloud.js"></script>
 <script>window.G&&G.start();</script>

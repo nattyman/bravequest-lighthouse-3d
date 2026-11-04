@@ -273,6 +273,7 @@ function snapshot(){
 function writeSave(){
   if(G.state.mode!=='play'&&G.state.mode!=='paused'&&G.state.mode!=='ending')return false;
   try{ localStorage.setItem(saveKey(),JSON.stringify(snapshot())); }catch(e){ return false; }
+  G.emit('save:written',{test:!!G.testSaves});
   if(savedEl){ savedEl.classList.add('show'); clearTimeout(savedEl._t); savedEl._t=setTimeout(()=>savedEl.classList.remove('show'),1600); }
   return true;
 }
@@ -348,21 +349,33 @@ document.addEventListener('pointerlockchange',()=>{
 
 /* ---------- system ---------- */
 if(G.debug)G.debugStartLoop=()=>{ if(G.lighthouse&&G.lighthouse.restoreCured&&!G.lighthouse.cured){G.lighthouse.restoreCured();G.emit('lamp:cured',{restored:true});} G.items.staff.owned=true; if(G.lighthouse&&G.lighthouse.restoreStaff)G.lighthouse.restoreStaff(); G.emit('staff:pickup',{restored:true}); if(G.items.cloak){G.items.cloak.owned=true; G.player.setCloak&&G.player.setCloak(true);} const T=storm(); if(T.pos&&!T.spent){T.found=T.failed=T.spent=true;T.carried=false;} stagDead=true; bossDead=true; finaleArmed=false; startLoop(false); };
+/* the title's Continue button and save line, from whatever save is in this browser (cloud.js calls it again after pulling a newer save) */
+function refreshTitle(){
+  const sv=readSave(), c=$('continue'), b=$('begin'), info=$('saveInfo'); if(!c||!b||!info)return;
+  c.hidden=!sv; b.textContent=sv?'New game':'Begin'; b.classList.toggle('ghost',!!sv);
+  info.hidden=!sv; info.textContent=sv?'Saved '+ago(sv.at)+' · '+(sv.objective||'')+'. Starting a new game replaces this save once it auto-saves.':'';
+}
 /* hooks for devtools.js (test start points build a save object and play it through applySave, the same path as Continue) */
-G.flow={begin, applySave, snapshot, writeSave, readSave, startLoop, keys:{save:SAVE_KEY,test:TEST_KEY}, get bossDead(){return bossDead;}, get stagDead(){return stagDead;},
+G.flow={begin, refreshTitle, applySave, snapshot, writeSave, readSave, startLoop, keys:{save:SAVE_KEY,test:TEST_KEY}, get bossDead(){return bossDead;}, get stagDead(){return stagDead;},
   stagEdge, halTowerSpot};
 G.system('flow',{order:60,modes:'always',
   init(){
     initShrooms();
     savedEl=$('saved');
-    const sv=readSave();
-    if(sv){ $('continue').hidden=false; $('begin').textContent='New game'; $('begin').classList.add('ghost');
-      $('saveInfo').hidden=false; $('saveInfo').textContent='Saved '+ago(sv.at)+' · '+(sv.objective||'')+'. Starting a new game replaces this save once it auto-saves.'; }
+    refreshTitle();
     $('continue').addEventListener('click',()=>begin(true));
     $('begin').addEventListener('click',()=>begin(false));
+    // title sub-screens: Controls and Credits (B / Esc / Back return to the card that opened them: the title, or the ending)
+    const sub=(id,backId,openers)=>{ const card=$(id), back=$(backId); if(!card||!back)return;
+      const close=()=>{ const from=card.dataset.from||'title'; card.hidden=true; if($(from))$(from).hidden=false; const b=$(card.dataset.opener||''); if(b)try{b.focus();}catch(_){} };
+      for(const [btnId,from] of openers){ const btn=$(btnId); if(!btn)continue;
+        btn.addEventListener('click',()=>{ card.dataset.from=from; card.dataset.opener=btnId; $(from).hidden=true; card.hidden=false; try{back.focus();}catch(_){} G.emit('title:sub',{id}); }); }
+      back.addEventListener('click',close);
+      document.addEventListener('keydown',e=>{ if(!card.hidden&&(e.key==='Escape'||e.key==='Backspace')){ e.preventDefault(); close(); } }); };
+    sub('controlsCard','controlsBack',[['controlsBtn','title']]); sub('credits','creditsBack',[['creditsBtn','title'],['endCredits','ending']]);
     $('pauseBtn').addEventListener('click',e=>{ e.preventDefault(); if(G.state.mode==='play')pause(); else if(G.state.mode==='paused')resume(); });
-    $('saveBtn').addEventListener('click',()=>{ $('saveNote').textContent=writeSave()?'Saved. You can close the game and pick up here later.':'Couldn’t save: this browser is blocking storage.'; });
-    $('quitBtn').addEventListener('click',()=>{ writeSave(); location.reload(); });
+    $('saveBtn').addEventListener('click',()=>{ $('saveNote').textContent=writeSave()?(G.cloud&&G.cloud.state==='on'&&!G.testSaves?'Saved, and it will follow you to your other devices.':'Saved. You can close the game and pick up here later.'):'Couldn’t save: this browser is blocking storage.'; if(G.cloud&&G.cloud.flush)G.cloud.flush(); });
+    $('quitBtn').addEventListener('click',()=>{ writeSave(); const done=()=>location.reload(); const f=G.cloud&&G.cloud.flush?G.cloud.flush():null; if(f&&f.then){ Promise.race([f,new Promise(r=>setTimeout(r,3000))]).then(done,done); } else done(); });
     document.querySelectorAll('#qualitySeg button').forEach(b=>b.addEventListener('click',()=>{ G.setQuality(b.dataset.q); syncQuality(); }));
     document.querySelectorAll('#invertSeg button').forEach(b=>b.addEventListener('click',()=>{ G.setInvertY(b.dataset.invert==='1'); syncQuality(); }));
     G.on('mode',e=>{ $('pauseBtn').hidden=!(e.mode==='play'||e.mode==='paused'); });
