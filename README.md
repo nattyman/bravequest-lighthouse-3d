@@ -19,7 +19,7 @@ python3 -m http.server 8800
 
 Halloran points you to his **storm lantern** on the oil shed; its plain flame gets you through the black doorway and up the
 stair (the Keeper's Staff on the way). Set in the lamp's cradle, the ink on the lens drinks it — you've seen the lock before
-you have the key (dead moth husks and Maren's logbook on the sill: *"They always came to the lamp. I thought it was the light
+you have the key (dead moth husks outside the glass and Maren's logbook on the sill: *"They always came to the lamp. I thought it was the light
 they wanted."*). Halloran waits at the tower foot and sends you west; the **Hollow Stag** guards Maren's violet lantern at the
 Resisting Tree. The swarm follows it home and eats the ink; the anti-light beam the dead lamp has been turning since the first
 second becomes the warm beam, and the fog answers with the finale boss (the Gloaming, `js/finale_boss.js`). Spec: `ACT1.md`.

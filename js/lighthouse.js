@@ -6,7 +6,7 @@
    lamp-room cure sequence (blob, lens, beam, G.atmo.cured).
    Act 1 (v12): Halloran's storm lantern (G.items.storm, hangs on the oil shed)
    gets you up the stair; set in the cradle it fails (the ink drinks the flame),
-   the ink then pulses at you; dead moth husks + Maren's logbook on the sill.
+   the ink then pulses at you; Maren's logbook on the sill; dead moth husks outside the glass.
    Before the cure the lamp turns an anti-light beam; G.lighthouse.beam = {yaw(), lit}.
    Ported from the-moth-climb.html (getFloor / constrain / cure).
    ===================================================================== */
@@ -635,17 +635,25 @@ function buildSill(){
   const P=interiorGroup||root;
   const sillMat=stoneMat(STEP,[6,.3],'#8f8778');
   add(new THREE.RingGeometry(GLASS_R-.32,GLASS_R+.01,56,1).rotateX(-PI/2),sillMat,CX,GLASS_Y0+.012,CZ,P);
-  // husks: dry, dusty moths on their backs along the sill and a few on the floor (the moths that died against the lamp)
+  // husks: the moths that died trying to reach the lamp never got in. They lie OUTSIDE the glass: dry, dusty, on their backs
+  // in drifts on the gallery against the parapet (thickest by the logbook, so you see them through the glass as you read),
+  // a thinner scatter round the rest of the gallery, and a few still pressed flat to the outside of the panes.
   const hg=new THREE.PlaneGeometry(.26,.18); hg.rotateX(-PI/2);
   const hm=G.toon('#7a6e62',{map:G.tex.moth,alphaTest:.45,side:THREE.DoubleSide,transparent:false});
-  const N=26, inst=new THREE.InstancedMesh(hg,hm,N), r=U.rng(91), m4=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler();
+  const N=40, PANE=7, inst=new THREE.InstancedMesh(hg,hm,N), r=U.rng(91), m4=new THREE.Matrix4(), q=new THREE.Quaternion(), e=new THREE.Euler();
   for(let i=0;i<N;i++){
-    const onSill=i<18, a=LOG_A+(r()-.5)*(onSill?2.4:1.6), rr=onSill?GLASS_R-.08-r()*.2:GLASS_R-.35-r()*.7;
-    const y=(onSill?GLASS_Y0+.02:TOP+.02);
-    e.set((r()-.5)*.5,r()*TAU,(r()-.5)*.5); q.setFromEuler(e); const sc=.8+r()*.45;
-    m4.compose(V(wx(a,rr),y,wz(a,rr)),q,V(sc,sc,sc)); inst.setMatrixAt(i,m4);
+    let pos;
+    if(i<PANE){                                            // pressed to the pane, wings flat to the glass, just outside it
+      const a=LOG_A+(r()-.5)*1.1, y=GLASS_Y0+.35+r()*1.6, rr=GLASS_R+.035;
+      pos=V(wx(a,rr),y,wz(a,rr)); const nrm=V(pos.x-CX,0,pos.z-CZ).normalize();
+      q.setFromUnitVectors(V(0,1,0),nrm).multiply(new THREE.Quaternion().setFromAxisAngle(V(0,1,0),r()*TAU));
+    }else{
+      const drift=i<28, a=drift?LOG_A+(r()-.5)*2.2:r()*TAU, rr=GLASS_R+.12+Math.pow(r(),drift?2:1)*(drift?.55:.9);
+      e.set((r()-.5)*.5,r()*TAU,(r()-.5)*.5); q.setFromEuler(e); pos=V(wx(a,rr),TOP+.02+(drift?r()*.03:0),wz(a,rr));
+    }
+    const sc=.8+r()*.45; m4.compose(pos,q,V(sc,sc,sc)); inst.setMatrixAt(i,m4);
   }
-  P.add(inst);
+  inst.instanceMatrix.needsUpdate=true; root.add(inst);
   // the logbook: open on the sill, a leather cover with two pale pages
   const book=new THREE.Group(); P.add(book);
   book.position.set(wx(LOG_A,GLASS_R-.17),GLASS_Y0+.02,wz(LOG_A,GLASS_R-.17)); book.rotation.y=thOf(LOG_A)+PI;
@@ -657,7 +665,7 @@ function buildSill(){
     label:'Read the logbook on the sill',
     enabled:()=>inRoom(G.player.pos)&&!S.fail,
     use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook',{priority:'high',key:'logbook'});
-      if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Under the sill the dead moths lie in drifts.'),400); }
+      if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Outside the glass, the dead moths lie in drifts against the parapet.'),400); }
       G.flag('logbook',true); G.emit('logbook:read'); }});
 }
 
