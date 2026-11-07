@@ -507,7 +507,10 @@ const L=G.items.lantern, ST=G.items.staff;
 let R=null, lanternObj=null, staffObj=null, reticle=null;
 const tmp=new V3(), tmp2=new V3(), tmp3=new V3(), up=new V3(0,1,0);
 const hv=new V3();            // horizontal velocity
-let vy=0, coyote=0, jumpBuf=0, airT=0, fallTop=0, jumpHeld=false, wasGliding=false, glideT=0;
+let vy=0, coyote=0, jumpBuf=0, airT=0, fallTop=0, jumpHeld=false, wasGliding=false, glideT=0, glideV0=0, glideSink=4;
+/* the glide (Jacob: more lift): ≈1.6 m flown per metre of height lost at full stick; entry speed above the glide speed is
+   kept and bleeds off over `bleed` s. Stamina still drains, so it's a glide, not flight. */
+const GLIDE={speedIdle:5, speedMin:5.4, speed:7.6, sinkIdle:3.1, sinkMin:3.4, sink:4.6, bleed:1.5, catch:6, stamina:.038};
 let rollT=-1, rollDur=.5, rollKind='roll'; const rollDir=new V3();
 let hurtT=0, iframes=0, deadT=0, landT=0, landHeavy=0, stunT=0, interactT=0, stopT=0, shoveT=0;
 let staminaDelay=0, attackHeld=0, staffDrawnT=0, staffDrawn=false, sprinting=false;
@@ -640,6 +643,7 @@ function updateCloakEquip(dt){
 P.setCloak=function(b){ G.items.cloak=G.items.cloak||{owned:false}; G.items.cloak.owned=!!b; if(!b)P.gliding=false; CK.t=-1; CK.unfurl=1;
   applyCloak(!!b); if(R){R.hood.scale.copy(R.hoodBase); R.cape.scale.set(1,1,.82);} };
 P.hasCloak=hasCloak;
+P.GLIDE=GLIDE; // glide tuning (tests, docs)
 /** put the staff on the back (another module needs the right hand, e.g. to drink) */
 P.sheathe=function(){ if(staffDrawn)sheathe(); };
 G.on('cloak:found',()=>{ if(CK.t<0&&CK.worn&&CK.done)return; CK.done=true; equipFlourish(); });
@@ -1286,15 +1290,18 @@ function airControl(dt,wish,mag,ctl){
   const h=P.pos.y-G.floorAt(P.pos.x,P.pos.z,P.pos.y);
   // glide: hold jump while falling
   const wantGlide=hasCloak()&&ctl&&I.down('jump')&&!P.exhausted&&P.stamina>0&&h>1.1&&(vy<-1||airT>.32||P.gliding)&&rollT<0&&!mv.id&&!(djUsed&&vy>0);
-  if(wantGlide&&!P.gliding){P.gliding=true; glideT=0; cancelCombat();}
+  if(wantGlide&&!P.gliding){P.gliding=true; glideT=0; glideV0=Math.hypot(hv.x,hv.z); cancelCombat(); G.emit('player:glide',{pos:P.pos.clone()});}
   if(P.gliding&&(!wantGlide)){P.gliding=false; fallTop=P.pos.y;}
   if(P.gliding){
     glideT+=dt;
-    P.stamina=Math.max(0,P.stamina-spend(dt*.038)); staminaDelay=.6;
+    P.stamina=Math.max(0,P.stamina-spend(dt*GLIDE.stamina)); staminaDelay=.6;
     if(P.stamina<=0){P.exhausted=true; P.gliding=false; fallTop=P.pos.y;}
     if(mag>.08)P.heading=U.dampAngle(P.heading,Math.atan2(wish.x,wish.z),2.4,dt);
-    const ff=P.facing(); const gs=mag>.08?lerp(5,7.2,mag):4.6;
-    hv.x=damp(hv.x,ff.x*gs,1.6,dt); hv.z=damp(hv.z,ff.z*gs,1.6,dt);
+    // forward speed from the stick; speed you came in with above that (a sprint, a double jump) bleeds off over GLIDE.bleed s
+    const k=mag>.08?smooth(.08,1,mag):0, base=mag>.08?lerp(GLIDE.speedMin,GLIDE.speed,k):GLIDE.speedIdle;
+    const gs=base+Math.max(0,glideV0-base)*Math.max(0,1-glideT/GLIDE.bleed);
+    glideSink=mag>.08?lerp(GLIDE.sinkMin,GLIDE.sink,k):GLIDE.sinkIdle;
+    const ff=P.facing(); hv.x=damp(hv.x,ff.x*gs,1.6,dt); hv.z=damp(hv.z,ff.z*gs,1.6,dt);
   }else if(mag>.08){
     const cur=Math.max(hv.length(),4.2);
     hv.x=damp(hv.x,wish.x*cur,2.6,dt); hv.z=damp(hv.z,wish.z*cur,2.6,dt);
@@ -1313,8 +1320,10 @@ function verticalStep(dt,ctl){
     let g=vy>0?(jumpHeld?21:36):30;
     if(rollT>=0&&rollKind!=='roll')g=22;
     const ov=moveVy(dt);
-    if(ov!=null)vy=ov; else vy-=g*dt;
-    if(P.gliding)vy=damp(vy,-1.9,5,dt);
+    // gliding: the cloak holds a steady sink (no gravity once you're sinking at it), so the glide is the same at any frame rate
+    if(ov!=null)vy=ov;
+    else if(P.gliding&&vy<=-glideSink)vy=damp(vy,-glideSink,GLIDE.catch,dt);
+    else{ vy-=g*dt; if(P.gliding)vy=Math.max(vy,-glideSink); }
     vy=Math.max(vy,-42);
     P.pos.y+=vy*dt;
     if(P.gliding)fallTop=P.pos.y; else fallTop=Math.max(fallTop,P.pos.y);

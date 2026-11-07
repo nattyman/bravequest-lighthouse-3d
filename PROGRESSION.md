@@ -63,7 +63,12 @@ caches found (x/8), shards found (x/12), negatives freed (x/8), blights cured, b
 
 ## 8. Placement (as built — `js/progression.js`, verified by script)
 Movement kit measured in-game (30 fps steps): **jump peak 1.15 m**, **double jump peak ≈1.8 m** (needs the cloak),
-**glide ≈ 1 m of height lost per metre flown** (≈7 m/s forward), **max step 0.65 m**. Perches (built rock tops, the stone crown,
+**glide ≈ 1.65 m flown per metre of height lost** (Jacob's feedback; was ≈1 m per metre), 7.6 m/s forward at full stick, sinking
+4.6 m/s; speed you come in with above that (a sprint, 8.4 m/s) bleeds off over 1.5 s; stamina drains 0.038/s (`G.player.GLIDE`),
+**max step 0.65 m**. Measured (`test/glide_e2e.py`, test platform 40 m up) — metres flown by the time you've dropped 10 m:
+standing jump 17.0 (was 10.6) · walk 19.5 · sprint 22.9 (was 15.7) · sprint + double jump 25.7 (was 18.2). The best **no-glide**
+chain (sprint, jump, double jump, aerial spin, air roll — the late double jump and air roll each reset your fall) reaches
+12.7 m level, 19.3 m at a 10 m drop, 22 m at 18 m. Perches (built rock tops, the stone crown,
 the loft) only catch a jump from above: you have to clear the top to within 0.35 m, and walking never steps up onto one.
 Sea-facing cliffs (headland N/E/S) are walls you can't leave; the headland's **west** face is a steep slope you can run off.
 Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar under the south cliff only exists in the core loop).
@@ -73,7 +78,7 @@ Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar un
 | # | id | where (x, y, z) — y = the footing | how you reach it | route check |
 |---|---|---|---|---|
 | 1 | `stones` | crown of the shortest standing stone, NE side of the circle (45.3, 14.40, −28.4); ground 11.9 | jump onto the broken-off chunk at its foot (top 12.75), then **double jump** | ground→DJ fails · chunk→single fails · chunk→DJ ✓ |
-| 2 | `spire` | top of an 11 m stone spire by the foot of the cliff path (101.5, 28.1, 10) | from the headland top run west off the steep edge at (118, 40.6, 10), **glide** straight at it, let go over it | glide ✓ · ground DJ fails |
+| 2 | `spire` | top of a 10 m stone spire out on the moor below the headland's west face (86, 23, 12); ground 13.3 | from the headland top run west off the edge's lip at (114, 40.6, 12), **glide** straight at it, let go over it (pull back) | glide ✓ (standing jump, walk, sprint + DJ) · every no-glide chain from the edge and the cliff path's high points falls ≥3.5 m short |
 | 3 | `stack` | shelf at the foot of a sea stack off the south beach (46, −0.54, 84.75); sand −1.79 | **low tide only**: wade out across the sand, single jump up | high tide: sand + shelf not walkable · low: ✓ |
 | 4 | `attic` | loft floorboards in the NW hamlet ruin (−29.4, 16.11, 42.5); ruin floor 13.5 | jump onto the heap of fallen slates (−27.6, 14.46, 40.2), then **double jump** | ground DJ fails · heap single fails · heap DJ ✓ |
 | 5 | `roots` | in the Resisting Tree's roots, far (west) side (−171.2, 10.35, 2.4) | walk round the trunk (the Stag's clearing) | walk ✓ |
@@ -86,6 +91,15 @@ Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar un
 | 12 | `needle` | stone needle on the headland's north side (150, 43.85, −30); ground 42 | **double jump** from the grass | single fails · DJ ✓ |
 Each shard glints (violet sprite + twinkle, glow grows with distance so it reads from far off) and chimes softly within 12 m.
 The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lighthouse.js), so it isn't reachable.
+**Glide audit** (after the stronger glide): only the spire depends on glide distance, and it moved out to stay glide-only. The
+glide can't gain height, so the double-jump spots (stones, attic, outcrop, needle) and the cave/Undercroft height gates are
+unchanged. New glide-only routes it opens, all harmless: the needle from the lighthouse's outside gallery (66 m, ≈38 m away);
+the outcrop and the tidepool were already reachable by dropping/gliding off the headland top. No spot can be overshot by
+accident: you let go of jump to drop.
+**Teaching the glide**: the cloak's pickup toast says *jump again in the air to flutter · hold jump while falling to glide*, and
+one caption (progression.js, `S.said.glide`, saved) the first time you stand on the edge above the spire with the cloak (*"The
+wind off the edge tugs at the cloak, as if it wants to fly. Hold jump while you fall and it will carry you — far enough, from up
+here, to reach that spire out on the moor."*) or fall more than 4 m with it without gliding. Never shown once you've glided.
 
 ### Keeper's Caches (8; each = 1 Mark + materials)
 | id | where (x, y, z) | loot | note |
