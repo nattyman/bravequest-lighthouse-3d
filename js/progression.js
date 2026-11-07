@@ -210,14 +210,17 @@ function buildSpots(){
     G.addCollider({x:rb.x,z:rb.z,r:.75,y0:gr-1,y1:tr-.35});
     SPOTS.push({id:'stones',name:'The standing stones',how:'On the crown of the shortest standing stone (north-east side of the circle), 2.5 m up: too tall for a double jump from the grass. Jump onto the broken-off chunk at its foot, then double jump.',
       pos:V(s1.x,t1+.55,s1.z),from:V(rb.x,tr,rb.z)}); }
-  /* 2. The moor spire: a ~11 m stone spire on the moor at the foot of the headland's west face, beside the bottom of the cliff
-     path. Too tall to climb: glide to it off the headland's west edge (the sea-facing cliffs are walls; this face is a steep
-     slope you can run off). */
-  { const x=101.5, z=10, g=H(x,z), top=Math.max(g+10,26);   // ~13 m out from the edge: the cloak sinks about 1 m per metre flown
+  /* 2. The moor spire: a ~10 m stone spire out on the moor below the headland's west face. Too tall to climb and too far
+     out to jump to: glide to it off the headland's west edge (the sea-facing cliffs are walls; this face is a steep slope you
+     can run off). Placed (Jacob's feedback) against the measured kit (PROGRESSION.md §8): from the edge's lip (114, 40.6, 12) the
+     perch rim is 26.3 m out and 17.6 m down — a standing-jump glide crosses the rim 1.8 m above the top (a walk-off 2.9 m, a
+     sprint and double jump far more); the best no-glide chain (sprint, jump, double jump, aerial spin, air roll) covers ≈22 m
+     for that drop, and from the cliff path's high bends it stays short too. test/glide_e2e.py proves both with real inputs. */
+  { const x=86, z=12, g=H(x,z), top=23;
     addPerch({x,z,r:1.7,top}); pillar(root,x,z,g-.5,top,1.7,{flare:1.7});
     for(let i=0;i<3;i++){ const a=i*2.1+.4, rx=x+Math.cos(a)*3.4, rz=z+Math.sin(a)*3.4; const r=new THREE.Mesh(rockGeo(.4,.7,.9,i+31),M.stoneDark); r.position.set(rx,H(rx,rz)+.3,rz); root.add(r); }
-    SPOTS.push({id:'spire',name:'The moor spire',how:'On top of an 11 m stone spire beside the foot of the cliff path. Too tall to climb: from the headland top, run west off the steep edge just north of where the cliff path starts down (z ≈ 10), glide straight at the spire and let go over it.',
-      pos:V(x,top+.55,z),from:V(118,H(118,10),10)}); }
+    SPOTS.push({id:'spire',name:'The moor spire',how:'On top of a 10 m stone spire out on the moor below the headland’s west face, too far out to jump to. From the headland top, run west off the edge above it (z ≈ 12), hold jump to glide straight at the spire and let go over it (pull back to drop onto it).',
+      pos:V(x,top+.55,z),from:V(114,H(114,12),12)}); }
   /* 3. Sea stack at low tide: a shelf at the foot of a stack off the south beach, under water except at low tide. */
   { const x=46; let z=80; for(;z<100;z+=.25){ if(H(x,z)<-1.75)break; }
     const sand=H(x,z), top=sand+1.25;   // sand ~-1.75 (dry only at low tide); the shelf top ~-0.5: above low water, under high water
@@ -707,6 +710,26 @@ function renderJournal(){
   <span class="eyebrow sec">Bosses</span><div class="jr-list">${d.bosses.map(b=>`<span class="${b.done?'on':''}">${b.done?check:''}${esc(b.name)}</span>`).join('')}</div>`;
 }
 
+/* ---------------------------------------------------------------- teaching the glide (Jacob never found it on his own)
+   One caption, once per save (S.said.glide): the first time you stand on the headland's west edge above the moor spire with
+   the cloak, or the first time you fall a long way with it without gliding. Never if you've already glided. */
+const GLIDE_EDGE={x:115,z:12,r:7,minY:38};   // the headland top above the moor spire (its `from` is the lip, x 114)
+const glideHint={peak:null,lastY:null};
+function sayGlide(k,text){ if(S.said.glide)return false; S.said.glide=k; G.ui.say(text,null,{key:'glide'}); G.emit('progress:hint',{id:'glide',via:k}); return true; }
+function updateGlideHint(){
+  const p=P(); if(!p||!p.pos||S.said.glide||!(p.hasCloak&&p.hasCloak())||!p.inputEnabled||reward.active||(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)){ glideHint.peak=null; return; }
+  const y=p.pos.y; if(glideHint.lastY!=null&&Math.abs(y-glideHint.lastY)>3)glideHint.peak=null; glideHint.lastY=y;   // a teleport, not a fall
+  if(p.gliding){ S.said.glide='glided'; return; }   // found it on their own: nothing to teach
+  if(p.grounded){ glideHint.peak=null;
+    if(y>GLIDE_EDGE.minY&&Math.hypot(p.pos.x-GLIDE_EDGE.x,p.pos.z-GLIDE_EDGE.z)<GLIDE_EDGE.r)
+      sayGlide('edge','The wind off the edge tugs at the cloak, as if it wants to fly. Hold jump while you fall and it will carry you — far enough, from up here, to reach that spire out on the moor.');
+    return; }
+  glideHint.peak=glideHint.peak==null?y:Math.max(glideHint.peak,y);
+  const below=y-G.floorAt(p.pos.x,p.pos.z,y);
+  if(glideHint.peak-y>4&&below>4)sayGlide('fall','The cloak snaps and billows as you fall: it catches the wind. Hold jump while you fall, and it will carry you.');
+}
+G.on('player:glide',()=>{ if(!S.said.glide)S.said.glide='glided'; });
+
 /* ---------------------------------------------------------------- persistence */
 function autosave(){ try{ G.flow&&G.flow.writeSave&&setTimeout(()=>{ if(isPlay())G.flow.writeSave(); },600); }catch(e){} }
 let reconcileT=-1;
@@ -780,6 +803,7 @@ G.system('progress',{order:62,modes:'always',
     updatePanel();
     const sweep=!API.debug.noSweep; // tests that build a state by hand switch the automatic grants off
     if(reconcileT>0){ reconcileT-=dt; if(reconcileT<=0&&sweep)reconcile(true); }
+    if(mode==='play')updateGlideHint();
     if(mode==='play'||mode==='dead'){ updateWorld(dt); updateFx(dt); if(G.player&&G.player.pos)updateDrops(dt,G.player); }
     updateReward(mode==='play'?dt:0);
     if(card){ const vis=mode==='play'?'':'hidden'; if(card.style.visibility!==vis)card.style.visibility=vis; }

@@ -980,7 +980,7 @@ addEventListener('keyup',e=>keyHeld.delete(e.code),true);
 addEventListener('blur',()=>keyHeld.clear());
 /* the controller, read directly (core gives a paused game's pad to menus; the map has none of core's cards) */
 let padPrev=[];
-function readPad(){ try{ const l=navigator.getGamepads?navigator.getGamepads():[]; for(const g of l||[])if(g&&g.connected!==false&&(g.mapping==='standard'||true))return g; }catch(_){} return null; }
+function readPad(){ try{ const s=G.input&&G.input.padState?G.input.padState():null; return s?{buttons:s.B,axes:s.A,connected:true}:null; }catch(_){} return null; } // core picks the pad in use and maps non-standard layouts
 function padButtons(g){ const out=[]; if(!g)return out; for(let i=0;i<17;i++){ const b=g.buttons[i]; out[i]=b?(typeof b==='object'?(b.pressed||b.value>.5):b>.5):false; } return out; }
 /* core maps View to 'pause' while playing; the frame the map opens on that press, flow.js must not see it (it would resume) */
 let swallowPause=false;

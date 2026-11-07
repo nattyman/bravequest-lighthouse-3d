@@ -278,7 +278,7 @@ const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',
 /* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
    so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
 const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,trigger:.5,navDelay:.38,navRepeat:.14};
-const pad={connected:false,id:'',blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0,yT:-1};
+const pad={connected:false,id:'',index:-1,mapping:'',count:0,blocked:false,blockError:'',policy:null,last:null,prev:[],sup:[],acts:new Set(),mx:0,my:0,mmag:0,navDir:'',navT:0,yT:-1,rest:null,map:null};
 try{ const fp=document.featurePolicy||document.permissionsPolicy; if(fp&&fp.allowsFeature)pad.policy=!!fp.allowsFeature('gamepad'); }catch(_){}
 let device=isMobile?'touch':'keyboard';
 function setDevice(d){
@@ -290,34 +290,81 @@ addEventListener('keydown',()=>setDevice('keyboard'),true);
 addEventListener('mousedown',e=>{ if(!e.sourceCapabilities||!e.sourceCapabilities.firesTouchEvents)setDevice(isMobile?'touch':'keyboard'); },true);
 addEventListener('mousemove',e=>{ if(Math.abs(e.movementX)+Math.abs(e.movementY)>3&&!isMobile)setDevice('keyboard'); },true);
 addEventListener('touchstart',()=>setDevice('touch'),{capture:true,passive:true});
-const padName=id=>/xbox|045e/i.test(id||'')?'Xbox Wireless Controller':String(id||'Controller').replace(/\s*\((?:STANDARD GAMEPAD\s*)?Vendor:.*$/i,'').trim()||'Controller';
+const padName=id=>/xbox|045e|xinput/i.test(id||'')?'Xbox Wireless Controller':String(id||'Controller').replace(/\s*\((?:STANDARD GAMEPAD\s*)?Vendor:.*$/i,'').replace(/^[0-9a-f]{4}-[0-9a-f]{4}-/i,'').trim()||'Controller';
 function padConnect(g){
-  if(pad.connected&&pad.id===g.id)return;
-  pad.connected=true; pad.id=g.id||''; setDevice('gamepad');
-  try{ G.ui.toast('Controller connected',padName(g.id)); }catch(_){}
-  G.emit('input:pad',{connected:true,id:pad.id,name:padName(pad.id)});
+  if(pad.connected&&pad.id===g.id&&pad.index===g.index)return;
+  const fresh=!pad.connected||pad.id!==g.id;
+  pad.connected=true; pad.id=g.id||''; pad.index=g.index==null?-1:g.index; pad.mapping=g.mapping||''; pad.rest=null; pad.map=null;
+  pad.prev=[]; pad.sup=[]; // a different pad: its buttons start fresh (and any held one waits for a release)
+  try{ padMap(g); }catch(_){} // reads its rest position and settles pad.map before anyone shows the status
+  setDevice('gamepad');
+  if(fresh){ try{ G.ui.toast('Controller connected',padName(g.id)); }catch(_){} }
+  G.emit('input:pad',{connected:true,id:pad.id,name:padName(pad.id),mapping:pad.mapping});
 }
 function padDisconnect(){
   if(!pad.connected)return;
-  pad.connected=false; pad.last=null; padActs(new Set()); pad.prev=[]; pad.sup=[]; pad.mx=pad.my=pad.mmag=0;
+  pad.connected=false; pad.last=null; padActs(new Set()); pad.prev=[]; pad.sup=[]; pad.mx=pad.my=pad.mmag=0; pad.index=-1; pad.rest=null; pad.map=null;
   if(device==='gamepad')setDevice(isMobile?'touch':'keyboard');
   G.emit('input:pad',{connected:false,id:pad.id});
 }
 function padBlock(e){
   if(pad.blocked)return; pad.blocked=true; pad.blockError=(e&&(e.name||e.message))||'blocked';
+  if(e&&e.name&&e.message&&e.message!==e.name)pad.blockError=e.name+': '+e.message;
   console.warn('Gamepad API blocked in this frame ('+pad.blockError+'). Open the game on its own page to use a controller.');
   G.emit('input:padblocked',{error:pad.blockError});
 }
 try{
-  addEventListener('gamepadconnected',e=>{ try{ if(e.gamepad)padConnect(e.gamepad); }catch(_){} });
-  addEventListener('gamepaddisconnected',e=>{ try{ if(!e.gamepad||!pad.id||e.gamepad.id===pad.id)padDisconnect(); }catch(_){} });
+  addEventListener('gamepadconnected',e=>{ try{ if(e.gamepad&&!pad.connected)padConnect(e.gamepad); }catch(_){} });
+  addEventListener('gamepaddisconnected',e=>{ try{ if(!e.gamepad||!pad.id||(e.gamepad.id===pad.id&&(e.gamepad.index==null||e.gamepad.index===pad.index)))padDisconnect(); }catch(_){} });
 }catch(_){}
+const btnDown=b=>b!=null&&(typeof b==='object'?(!!b.pressed||+b.value>.5):+b>.5);
+/* Which pad to read. getGamepads() can hold several entries: nulls, a stale entry from a previous connection, a virtual pad
+   (Steam Input, DS4Windows), or a headset/keyboard that reports itself as a gamepad. The pad in use stays in use while it is
+   listed; any other pad takes over the moment one of its buttons is pressed. With nothing pressed, prefer a standard mapping.
+   (Was: always the first standard-mapping entry, so an idle ghost entry listed first could swallow the real controller.) */
 function readPad(){
   if(pad.blocked||!navigator.getGamepads)return null;
   let list; try{ list=navigator.getGamepads(); }catch(e){ padBlock(e); return null; }
+  const all=[], n=list&&list.length|0; // an array in current browsers, a GamepadList (not iterable everywhere) in older ones
+  for(let i=0;i<n;i++){ const g=list[i]; if(g&&g.connected!==false)all.push(g); }
+  pad.count=all.length;
+  if(!all.length)return null;
   let pick=null;
-  for(const g of list||[]){ if(!g||g.connected===false)continue; if(g.mapping==='standard'){pick=g;break;} if(!pick)pick=g; }
+  if(pad.connected)for(const g of all) if(g.id===pad.id&&(g.index==null||g.index===pad.index)){pick=g;break;}
+  const act=all.filter(g=>{ const B=g.buttons; if(!B)return false; for(let i=0;i<B.length;i++) if(btnDown(B[i]))return true; return false; });
+  if(act.length&&(!pick||!act.includes(pick)))pick=act.find(g=>g.mapping==='standard')||act[0];
+  if(!pick)pick=all.find(g=>g.mapping==='standard')||all[0];
   return pick;
+}
+/* Pads without the 'standard' mapping (mapping ''; Firefox on Linux/macOS, some Bluetooth stacks) list their buttons and axes in
+   the driver's own order. On an Xbox pad that order has the triggers on axes 2 and 5, resting at -1: read as the standard layout,
+   the camera spun on its own and LT/RT did nothing. Known Xbox layouts are remapped; anything else keeps its button order, and
+   axes that rest far from 0 (triggers) are kept off the sticks. Returns {B:[{pressed,value}x17], A:[lx,ly,rx,ry]}. */
+const XPAD_BTN=[0,1,2,3,4,5,8,9,16,10,11]; // Linux xpad / Firefox: A B X Y LB RB View Menu Guide LS RS -> standard indices
+function padMap(g){
+  const B=g.buttons||[], A=g.axes||[];
+  if(g.mapping==='standard'||(!g.mapping&&A.length<=4)){ pad.map=null; return {B,A}; }
+  const out=[]; for(let i=0;i<17;i++)out[i]={pressed:false,value:0};
+  const set=(i,v)=>{ if(i==null||!out[i])return; v=U.clamp(+v||0,0,1); if(v>out[i].value)out[i]={pressed:v>.5,value:v}; };
+  const val=b=>b==null?0:typeof b==='object'?Math.max(+b.value||0,b.pressed?1:0):+b||0;
+  if(!pad.rest||pad.rest.length!==A.length)pad.rest=A.map(v=>+v||0); // first reading = rest position
+  const trig=a=>Math.abs(pad.rest[a])>.6; // rests near ±1: a trigger, not a stick
+  if(/xbox|045e|xinput|x-box/i.test(g.id||'')&&A.length>=6){
+    pad.map='xpad';
+    XPAD_BTN.forEach((s,i)=>set(s,val(B[i])));
+    const tv=a=>(pad.rest[a]<-.5||+A[a]<-.05)?((+A[a]||0)+1)/2:(+A[a]||0); // -1..1 (or 0..1 before first touched)
+    set(6,tv(2)); set(7,tv(5));
+    if(A.length>=8){ set(14,-A[6]); set(15,+A[6]); set(12,-A[7]); set(13,+A[7]); }
+    return {B:out,A:[+A[0]||0,+A[1]||0,+A[3]||0,+A[4]||0]};
+  }
+  pad.map='generic';
+  for(let i=0;i<Math.min(B.length,17);i++)set(i,val(B[i]));
+  const sticks=[]; let nt=0;
+  for(let a=0;a<A.length;a++){
+    if(trig(a)){ if(nt<2)set(6+nt,((+A[a]||0)-pad.rest[a])/(pad.rest[a]<0?2:-2)); nt++; continue; } // trigger: 0 at rest, 1 fully pulled
+    if(sticks.length<4)sticks.push(+A[a]||0); }
+  while(sticks.length<4)sticks.push(0);
+  return {B:out,A:sticks};
 }
 function padActs(next){
   for(const a of next) if(!pad.acts.has(a))pressed.add(a);
@@ -379,9 +426,9 @@ function pollPad(dt){
     const g=readPad();
     pad.mx=pad.my=pad.mmag=0;
     if(!g){ if(pad.connected&&navigator.getGamepads&&!pad.blocked)padDisconnect(); return; }
-    if(!pad.connected||pad.id!==g.id)padConnect(g);
+    if(!pad.connected||pad.id!==g.id||(g.index!=null&&pad.index!==g.index))padConnect(g);
     pad.last=g;
-    const B=g.buttons||[], A=g.axes||[];
+    const M=padMap(g), B=M.B, A=M.A;
     const btn=[];
     for(let i=0;i<17;i++){ const b=B[i]; let v=0,p=false;
       if(b!=null){ if(typeof b==='object'){v=+b.value||0;p=!!b.pressed;} else {v=+b||0;p=v>.5;} }
@@ -433,8 +480,12 @@ G.input={
     return {x,y,mag:Math.min(1,m)}; },
   /** last-used device: 'keyboard' | 'touch' | 'gamepad' */
   get device(){return device;},
-  /** {connected, id, name, blocked, error, policy} */
-  get gamepad(){return {connected:pad.connected,id:pad.id,name:pad.connected?padName(pad.id):'',blocked:pad.blocked,error:pad.blockError,policy:pad.policy};},
+  /** {connected, id, name, blocked, error, policy, supported, count, index, mapping, remap}. policy: false when the page's
+      permissions policy forbids 'gamepad' (an embedding iframe), null when the browser can't say. count: pads listed now. */
+  get gamepad(){return {connected:pad.connected,id:pad.id,name:pad.connected?padName(pad.id):'',blocked:pad.blocked,error:pad.blockError,policy:pad.policy,
+    supported:!!navigator.getGamepads,count:pad.count,index:pad.index,mapping:pad.connected?pad.mapping:'',remap:pad.connected?pad.map:null};},
+  /** the pad in use this frame in the standard layout ({B:[{pressed,value}], A:[lx,ly,rx,ry]}), or null (hud.js scrolls the log with it) */
+  padState(){ const g=pad.last; if(!pad.connected||!g)return null; try{ return padMap(g); }catch(_){ return null; } },
   padConfig:PAD,
   /** controller rumble, strength 0..1 for ms milliseconds; no-op without a rumble-capable pad */
   rumble(strength=.5,ms=200){

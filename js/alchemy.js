@@ -706,7 +706,7 @@ function closePanel(){
 }
 function padBack(){
   // B / Back / Menu on a pad closes the panel (core.js only maps B for the pause card)
-  let gp=null; try{ const l=navigator.getGamepads?navigator.getGamepads():[]; for(const g of l||[]) if(g&&g.connected!==false){gp=g;break;} }catch(_){ return; }
+  let gp=null; try{ gp=(G.input&&G.input.padState)?(()=>{ const s=G.input.padState(); return s?{buttons:s.B,axes:s.A}:null; })():null; }catch(_){ return; } // core picks the pad in use and maps non-standard layouts
   if(!gp)return; const b=i=>{const x=gp.buttons&&gp.buttons[i]; return !!x&&(typeof x==='object'?x.pressed:x>.5);};
   const now=b(1)||b(8)||b(9);
   if(now&&!padPrevB&&performance.now()-panelOpenAt>250)closePanel();

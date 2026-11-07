@@ -1360,8 +1360,8 @@ function takeCloak(){
   const had=c.owned; c.owned=true;
   if(had)return;
   G.emit('cloak:found');
-  try{G.ui.toast('The Traveler’s Cloak','Hold jump in the air to glide');}catch(e){}
-  try{G.ui.say('Deep violet wool, with gold leaves stitched all along the hem. You swing it around your shoulders and pull up the hood. It fits as if it has been waiting for you.');}catch(e){}
+  try{G.ui.toast('The Traveler’s Cloak','Jump again in the air to flutter · hold jump while falling to glide');}catch(e){}
+  try{G.ui.say('Deep violet wool, with gold leaves stitched all along the hem. You swing it around your shoulders and pull up the hood. It fits as if it has been waiting for you. When you turn, the hem lifts and fills like a sail: hold jump while you fall, and it will carry you on the wind.');}catch(e){}
 }
 function updateCottage(dt){
   if(!CS.hinge)return;

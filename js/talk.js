@@ -298,7 +298,7 @@ addEventListener('keyup',e=>{ if(T.open){ e.stopPropagation(); } keyHeld.delete(
 /* ---------------------------------------------------------------- controller (read directly; core gives a paused game's pad to menus,
    and the talk card is not one of core's cards) */
 let padPrev=[], padNav='', padNavT=0, yDown=0;
-function readPad(){ try{ for(const g of (navigator.getGamepads?navigator.getGamepads():[])||[])if(g&&g.connected!==false)return g; }catch(_){} return null; }
+function readPad(){ try{ const s=G.input&&G.input.padState?G.input.padState():null; return s?{buttons:s.B,axes:s.A,connected:true}:null; }catch(_){} return null; } // core picks the pad in use and maps non-standard layouts
 function padButtons(g){ const out=[]; if(!g)return out; for(let i=0;i<17;i++){ const b=g.buttons[i]; out[i]=b?(typeof b==='object'?(b.pressed||b.value>.5):b>.5):false; } return out; }
 function padTick(dt){
   const g=readPad(); if(!g){ padPrev=[]; return; }

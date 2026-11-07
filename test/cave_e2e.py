@@ -180,7 +180,9 @@ STEPS=[
    return {ok:a[2]>1.6&&b[2]>1.6&&c[2]>1.6&&onLedge&&r.ok&&G.cave.room(G.player.pos)==='channel',crate1:a,crate2:b,crate3:c,ledge:d,r,swarm:T.swarm()}; })()"""),
  # ---------------------------------------------------------------- the channel
  ("shot:channel-dark",None),
- ("channelLight", r"""(()=>{ const f=T.fight({room:'channel',max:900}); const r=T.walk([[-6,-86],[-6.1,-89.4]],{local:true}); const lab=T.label(); const u=T.use(/vein/i); T.wait(1);
+ ("channelLight", r"""(()=>{ const f=T.fight({room:'channel',max:900});
+   // the fight can end out by the raft (east); come back round the walkway rather than straight through the crates
+   const back=G.cave.toLocal(G.player.pos).x>-1?T.walk([[1,-81.5],[-2,-84]],{local:true}):null; const r=T.walk([[-6,-86],[-6.1,-89.4]],{local:true}); const lab=T.label(); const u=T.use(/vein/i); T.wait(1);
    return {ok:G.cave.isLit('channel')&&G.alchemy.etherUnits===5,fight:f,lab,ether:G.alchemy.etherUnits,swarm:T.swarm()}; })()"""),
  ("loadRaft", r"""(()=>{ const back=T.walk([[-2,-84],[1,-81.5]],{local:true}); const ich=G.inv.count('ichor');
    const r=T.walk([[4.6,-80.4]],{local:true}); const lab=T.label(); const u=T.use(/raft/i); G.step(1/30,2);

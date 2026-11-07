@@ -10,6 +10,31 @@ const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- captions ---------- */
 const capEl=$('cap'), capText=$('capText'), capWho=$('capWho');
+/* the stack: lines waiting behind the one on screen show as the edges of cards behind it (index.html .capstack / .capback);
+   decoration only, the queue itself is unchanged. When the front card goes and the next one is waiting, it slides away. */
+const capStack=$('capStack'), capCount=$('capCount'), capBacks=capStack?[...capStack.querySelectorAll('.capback')].reverse():[]; // [b1, b2]
+let stackKey='';
+function drawStack(){
+  const vis=!!cur&&capEl.classList.contains('show'), n=vis?queue.length:0, depth=Math.min(n,2);
+  const key=depth+'|'+n+'|'+(depth?queue.slice(0,depth).map(q=>q.who).join('|'):'');
+  if(key===stackKey||!capStack)return; stackKey=key;
+  capStack.dataset.depth=String(depth);
+  capBacks.forEach((b,i)=>{ const on=i<depth; b.classList.toggle('on',on); const sp=b.firstChild; if(on&&sp){ const w=queue[i].who||''; if(sp.textContent!==w)sp.textContent=w; } }); // off: the name stays while it fades
+  if(capCount){ capCount.hidden=n<3; if(n>=3)capCount.textContent='+'+n; }
+}
+/* the front card leaves: a copy of it slides off down-left and fades while the real one (now the next line) comes forward
+   from the first back card's place. Reduced motion: an instant swap. */
+function capSlide(){
+  if(reduceMotion||!capStack||!capEl.animate||!capEl.classList.contains('show')||!capText.textContent)return;
+  const r=capEl.getBoundingClientRect(); if(!r.width||!r.height)return;
+  const old=capEl.cloneNode(true); old.removeAttribute('id'); old.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));
+  old.classList.add('leaving'); old.classList.remove('waiting','held'); old.setAttribute('aria-hidden','true');
+  old.style.left=r.left+'px'; old.style.top=r.top+'px'; old.style.width=r.width+'px'; old.style.height=r.height+'px';
+  document.body.appendChild(old);
+  const a=old.animate([{transform:'none',opacity:1},{transform:'translate(-26px,16px) rotate(-1.2deg)',opacity:0}],{duration:340,easing:'cubic-bezier(.4,0,.7,.2)',fill:'forwards'});
+  const done=()=>old.remove(); a.onfinish=done; setTimeout(done,700);
+  try{ capEl.animate([{transform:'translate(9px,-13px)',opacity:.55},{transform:'none',opacity:1}],{duration:300,easing:'cubic-bezier(.2,.7,.3,1)'}); }catch(_){}
+}
 const queue=[]; let cur=null;
 /* Caption pacing. say(text, who?, {priority:'high'|'normal'|'low', key}) — the old say(text, who) call is 'normal'.
    - high (boss/quest beats, danger): interrupts the current line at once (a current high line keeps its minimum time first)
@@ -58,6 +83,7 @@ function capEnd(byPlayer){
   cur=null;
 }
 function capShow(it){
+  if(!it.inPlace)capSlide(); // a card on screen gives way to the next: slide it away (a same-key update just rewrites it)
   if(cur&&cur!==it)capEnd(false);
   const T=capTimes(it.t);
   cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log};
@@ -124,7 +150,7 @@ G.ui={
     const d=queue.findIndex(q=>q.t===text); if(d>=0){ queue[d].log=it.log; if(queue[d].pri<it.pri){queue.splice(d,1);capEnqueue(it);} return; }
     if(it.key){
       const k=queue.findIndex(q=>q.key===it.key); if(k>=0)capMissed(queue.splice(k,1)[0]); // a newer line for the same thing replaces the waiting one
-      if(cur&&cur.key===it.key&&it.pri>=cur.pri){ capShow(it); return; }   // ...or the one on screen
+      if(cur&&cur.key===it.key&&it.pri>=cur.pri){ it.inPlace=true; capShow(it); return; }   // ...or the one on screen
     }
     if(it.pri>=2&&cur&&!(cur.pri>=2&&cur.el<cur.min)){
       // interrupt now; a line cut off early (under half read) comes back once afterwards
@@ -186,6 +212,7 @@ function updateCaption(dt){
     if(!cur&&!queue.length)capEl.classList.remove('show');
   }
   if(!cur&&queue.length)capShow(queue.shift());
+  drawStack();
   if(!cur)return;
   cur.i+=dt*(queue.length?CAP.TYPE*1.6:CAP.TYPE); const n=Math.min(cur.t.length,Math.floor(cur.i));
   if(n!==cur.shown){capText.textContent=cur.t.slice(0,n);cur.shown=n;}
@@ -204,7 +231,10 @@ capEl.addEventListener('contextmenu',e=>e.preventDefault());
 /* for tests and devtools: what is on screen and waiting */
 G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
   queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)})), speed:CAP.speed});
-G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); };
+G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); drawStack(); };
+/** for tests: the stack as drawn — {depth (back cards showing, 0-2), count ('+N' badge text or ''), who:[names on the back cards]} */
+G.ui.captionStack=()=>({depth:+(capStack&&capStack.dataset.depth||0),count:capCount&&!capCount.hidden?capCount.textContent:'',
+  who:capBacks.filter(b=>b.classList.contains('on')).map(b=>b.firstChild?b.firstChild.textContent:''),leaving:document.querySelectorAll('.caption.leaving').length});
 /** reading time: 'relaxed' (default) | 'standard' | 'hold'. Persisted in localStorage 'bq-captions'. */
 G.ui.setCaptionSpeed=id=>{ const r=setCapSpeed(id); syncCapSeg(); return r; };
 Object.defineProperty(G.ui,'captionSpeed',{get:()=>CAP.speed,set:v=>G.ui.setCaptionSpeed(v),enumerable:true});
@@ -280,9 +310,8 @@ function renderLog(){
 G.on('mode',e=>{ if(e.mode==='paused'&&pauseSheet){ syncCapSeg(); renderLog(); if(pzTab==='msgs')pzList.scrollTop=0; } });
 /* controller: the right stick (or D-pad up/down while a tab has focus) scrolls the log; in play, D-pad down advances captions */
 function padScrollLog(dt){
-  if(!pzList||pzTab!=='msgs'||$('pause').hidden||!navigator.getGamepads)return;
-  let g=null; try{ for(const p of navigator.getGamepads()||[]){ if(p&&p.connected!==false){g=p;break;} } }catch(_){ return; }
-  if(!g)return; const y=+(g.axes&&g.axes[3])||0;
+  if(!pzList||pzTab!=='msgs'||$('pause').hidden||!G.input.padState)return;
+  const g=G.input.padState(); if(!g)return; const y=+(g.A&&g.A[3])||0;
   if(Math.abs(y)>.2)pzList.scrollTop+=y*900*Math.max(dt,1/60);
 }
 /* ---------- hearts ---------- */
@@ -307,7 +336,10 @@ function updateHearts(){
 const v3=new THREE.Vector3();
 function project(p,out){ v3.copy(p).project(G.camera); out.x=(v3.x*.5+.5)*innerWidth; out.y=(-v3.y*.5+.5)*innerHeight; out.behind=v3.z>1; return out; }
 const reticle=$('reticle'), stam=$('stamina'), stamArc=$('stamArc');
-let stamVis=0;
+let stamVis=0, stamFullT=0, stamPrev=1, stamCls='';
+const STAM_C=125.66; // circumference of the r=20 arc (index.html #stamArc)
+/** for tests: the wheel as drawn — {shown, state:'ok'|'low'|'exh'|'full'|'', opacity, frac} */
+G.ui.staminaWheel=()=>({shown:!stam.hidden&&stamVis>.02, state:stamCls.replace('st-',''), opacity:+(+stam.style.opacity||0).toFixed(2), frac:+(1-(+stamArc.getAttribute('stroke-dashoffset')||0)/STAM_C).toFixed(3)});
 const marker=document.createElement('div');
 marker.style.cssText='position:fixed;left:0;top:0;pointer-events:none;display:grid;justify-items:center;gap:2px;transform:translate(-50%,-50%);font:600 12px var(--body);color:#f1e9d8;text-shadow:0 1px 4px #000;transition:opacity .3s';
 marker.innerHTML='<svg width="18" height="18" viewBox="0 0 18 18"><path d="M9 1l7 8-7 8-7-8z" fill="rgba(227,161,58,.25)" stroke="#e3a13a" stroke-width="1.6"/></svg><span></span>';
@@ -323,17 +355,23 @@ function updateWorldUI(dt){
     v3.set(t.pos.x,t.pos.y+(t.lockOffset!=null?t.lockOffset:(t.height||1.6)*.6),t.pos.z);
     project(v3,pt); reticle.hidden=pt.behind; reticle.style.transform=`translate(${pt.x}px,${pt.y}px)`;
   }else reticle.hidden=true;
-  // stamina wheel beside the player while it's not full
-  const s=U.clamp(P.stamina==null?1:P.stamina,0,1);
-  stamVis=U.damp(stamVis,(playing&&s<.995)?1:0,6,dt);
+  // stamina wheel beside the player (BotW style) while it's not full: green, amber under 30%, flashing red/grey while
+  // exhausted; when it fills back up it pulses once, then fades. Hidden at full stamina.
+  const s=U.clamp(P.stamina==null?1:P.stamina,0,1), full=s>=.995;
+  if(full&&stamPrev<.995&&stamVis>.3)stamFullT=.75; // just refilled: the pulse (index.html #stamina.st-full)
+  stamPrev=s; if(stamFullT>0)stamFullT-=dt||0;
+  stamVis=playing?U.damp(stamVis,(!full||stamFullT>0)?1:0,full?5:10,dt):0; // paused / dead / cut to a menu: gone at once
   if(stamVis>.02&&P.pos){
-    v3.set(P.pos.x,P.pos.y+1.25,P.pos.z); project(v3,pt);
+    v3.set(P.pos.x,P.pos.y+1.3,P.pos.z); project(v3,pt);
     stam.hidden=pt.behind; stam.style.opacity=stamVis.toFixed(2);
     const big=1+((P.mods&&P.mods.stamMax)||1)*.75-.75; // Moth Wings: the ring grows with the pool (+15% per wing)
-    stam.style.transform=`translate(${pt.x+46}px,${pt.y-10}px) scale(${big.toFixed(2)})`;
-    stamArc.setAttribute('stroke-dashoffset',(81.7*(1-s)).toFixed(1));
-    stamArc.setAttribute('stroke',P.exhausted?'#e0634f':s<.3?'#e3c04a':'#9fdc8a');
-  }else stam.hidden=true;
+    const off=Math.min(64,Math.max(44,innerHeight*.07))*big; // to the right of the player's shoulder, a little further on big screens
+    const x=U.clamp(pt.x+off,34,innerWidth-34), y=U.clamp(pt.y-14,34,innerHeight-34);
+    stam.style.transform=`translate(${x.toFixed(1)}px,${y.toFixed(1)}px) scale(${big.toFixed(2)})`;
+    stamArc.setAttribute('stroke-dashoffset',(STAM_C*(1-s)).toFixed(2));
+    const cls=P.exhausted?'st-exh':(full&&stamFullT>0)?'st-full':s<.3?'st-low':'st-ok';
+    if(cls!==stamCls){ if(stamCls)stam.classList.remove(stamCls); stam.classList.add(cls); stamCls=cls; }
+  }else{ stam.hidden=true; if(!playing||full){ if(stamCls)stam.classList.remove(stamCls); stamCls=''; } }
   // objective marker
   const q=G.quest&&G.quest.target;
   if(playing&&q&&P.pos){
@@ -439,8 +477,22 @@ const keysEl=$('keys'); let keysHTML=keysEl?keysEl.innerHTML:'';
 const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['Menu','pause']];
 const glassOwned=()=>!!(G.glass&&G.glass.owned);
 const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(g==='Y'&&glassOwned()?'use · hold: the Glass':t)}</span>`).join('');
-const BLOCKED_MSG='Your browser blocked controller access in this view. Open the game on its own page, or run the local copy.';
-let keysFade=0, padHint=false;
+const BLOCKED_MSG='Controllers are blocked in this embedded page — open the game in its own tab.';
+/* one line of controller status for the pause menu and the Controls screen ([data-pad-status]) */
+function padStatus(){
+  const st=G.input.gamepad||{};
+  if(st.connected)return {state:'connected',text:`Controller: ${st.name||'Controller'} — connected`+(st.remap?' (non-standard layout, remapped)':'')+(st.count>1?` · ${st.count} found, using the last one pressed`:'')};
+  if(st.blocked||st.policy===false)return {state:'blocked',text:'Controllers are blocked in this embedded page — open the game in its own tab'+(st.error?` (browser said: ${st.error})`:'')};
+  if(st.supported===false)return {state:'unsupported',text:'This browser has no controller support'};
+  return {state:'none',text:'No controller found — connect it and press A'};
+}
+G.ui.padStatus=padStatus;
+let padStatusKey='';
+function drawPadStatus(){
+  const p=padStatus(), k=p.state+p.text; if(k===padStatusKey)return; padStatusKey=k;
+  document.querySelectorAll('[data-pad-status]').forEach(el=>{ el.textContent=p.text; el.dataset.state=p.state; });
+}
+let keysFade=0, padHint=false, padUiT=0, padCountSeen=-1;
 function refreshPadUI(){
   const st=G.input.gamepad, pad=usingPad();
   if(keysEl){ const want=pad?padRows():keysHTML; if(keysEl.dataset.mode!==(pad?'pad':'kb')){ keysEl.innerHTML=want; keysEl.dataset.mode=pad?'pad':'kb'; keysFade=0; } }
@@ -451,10 +503,11 @@ function refreshPadUI(){
   document.querySelectorAll('[data-kb-legend]').forEach(el=>{ el.hidden=pad&&st.connected; });
   const note=$('padNote');
   if(note){
-    if(st.blocked){ note.hidden=false; note.classList.add('warn'); note.textContent=BLOCKED_MSG; }
-    else if(!st.connected&&!G.isMobile){ note.hidden=false; note.classList.remove('warn'); note.textContent='Using a controller? Press any button.'; }
+    if(!st.connected&&(st.blocked||st.policy===false)){ note.hidden=false; note.classList.add('warn'); note.textContent=BLOCKED_MSG; }
+    else if(!st.connected&&st.supported&&!st.count&&!G.isMobile){ note.hidden=false; note.classList.remove('warn'); note.textContent='Using a controller? Press A on it.'; }
     else note.hidden=true;
   }
+  drawPadStatus();
   lastPrompt='';
 }
 G.on('input:device',refreshPadUI);
@@ -534,6 +587,7 @@ G.system('hud',{order:90,modes:'always',
     if(G.input.pressed('advance')&&canAdvance())G.ui.advance();
     updateCaption(dt);
     if(G.state.mode==='paused'){ if(logDirty)renderLog(); padScrollLog(G.dt||0); }
+    padUiT-=G.dt||dt||0; if(padUiT<=0&&G.state.mode!=='play'){ padUiT=.5; const c=(G.input.gamepad||{}).count|0; if(c!==padCountSeen){ padCountSeen=c; refreshPadUI(); } else drawPadStatus(); }
     if(toastT>0){toastT-=(dt||G.dt||0); if(toastT<=0)toastEl.classList.remove('show');}
     if(G.state.mode!=='play'&&stickId!==null){stickId=null;stick.classList.remove('on');}
     if(G.state.mode==='title')return;
