@@ -686,7 +686,14 @@ const SFX_LIST={
   hollow_windup:{peak:1.79},
   hollow_claw:{peak:.6},
   'hollow_lunge-1':{peak:.6}, 'hollow_lunge-2':{peak:.53},   // grouped as hollow_lunge
-  'hollow_hurt-1':{peak:.16}, 'hollow_hurt-2':{peak:.23}      // grouped as hollow_hurt
+  'hollow_hurt-1':{peak:.16}, 'hollow_hurt-2':{peak:.23},     // grouped as hollow_hurt
+  // Shade Hound (cut from Heath's wolf takes, 2026-11-07): two of each where the pair would otherwise sound like copies
+  'hound_notice-1':{peak:1.215}, 'hound_notice-2':{peak:1.905},   // howls
+  'hound_growl-1':{peak:0.665}, 'hound_growl-2':{peak:0.175},       // circling back in
+  'hound_windup-1':{peak:0.385}, 'hound_windup-2':{peak:0.575},   // crouch before the dash
+  'hound_bite-1':{peak:0.275}, 'hound_bite-2':{peak:0.165},           // lunging snarl
+  'hound_hurt-1':{peak:0.06}, 'hound_hurt-2':{peak:0.065},
+  hound_flee:{peak:0.195}, hound_death:{peak:0.525}
 };
 const sfxBuf={}, sfxGroups={};
 for(const stem in SFX_LIST){ const base=stem.replace(/-\d+$/,''); (sfxGroups[base]=sfxGroups[base]||[]).push(stem); }
@@ -712,6 +719,7 @@ function pickSfx(name){ const g=(sfxGroups[name]||[]).filter(st=>sfxBuf[st]&&sfx
 const hasSfx=name=>!!pickSfx(name);
 /** play a recorded sound. o: {pos, ref, gain, offset (s into the file), peakAt, rate, vary, dest} -> {src,gain,stem} or null
     peakAt (s): start far enough in that this variant's own `peak` lands peakAt seconds from now (overrides offset) */
+const sfxLog=[];   // last recordings played (test hook: G.audio.sfx.log)
 function playSfx(name,o={}){
   const stem=pickSfx(name); if(!ctx||!stem)return null; const e=sfxBuf[stem];
   const t=ctx.currentTime, src=ctx.createBufferSource(), g=ctx.createGain();
@@ -720,6 +728,7 @@ function playSfx(name,o={}){
   const off=U.clamp(offset+e.start,0,Math.max(0,e.buf.duration-.05)), peak=o.gain==null?1:o.gain;
   g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+(offset>0?.04:.006));
   src.connect(g); g.connect(o.dest||at(o.pos,o.ref||4)); src.start(t,off);
+  sfxLog.push(stem); if(sfxLog.length>40)sfxLog.shift();
   return {src,gain:g,stem,offset};
 }
 function fadeSfx(h,at,tau){ if(!h||!ctx)return; const t=Math.max(ctx.currentTime,at); try{ h.gain.gain.cancelScheduledValues(t); h.gain.gain.setTargetAtTime(0,t,tau); h.src.stop(t+tau*6); }catch(_){} }
@@ -808,6 +817,26 @@ function hollowHurt(m,swarm){
   if(!swarm)S.shriek(t,{dest:at(hp,4),f:1000,g:.12});              // synth fallback
 }
 let lastHurtSeen=new WeakMap();
+/* Shade Hound: recordings, with the old synth calls as the fallback if a file is missing.
+   Hounds come in pairs, so a howl just after another is skipped (one howl per pair), and the
+   growl as one circles back in is occasional, so a fight isn't wall-to-wall snarling. */
+const houndT={howl:0,grow:new WeakMap()};
+function houndSound(m,s,prev,t,out){
+  const hp=new THREE.Vector3(m.pos.x,m.pos.y+.8,m.pos.z), PR=(G.monsters.params||{}).hound||{};
+  if(s==='chase'&&(prev==='idle'||prev==='return')){
+    if(t-houndT.howl<1.5)return; houndT.howl=t;
+    if(!playSfx('hound_notice',{pos:hp,ref:9,gain:.85,vary:.08}))S.howl(t,{dest:out,g:.11}); }
+  else if(s==='chase'&&prev==='recover'){
+    if(t-(houndT.grow.get(m)||0)<5||Math.random()<.4)return; houndT.grow.set(m,t);
+    playSfx('hound_growl',{pos:hp,ref:4,gain:.7,vary:.1}); }
+  else if(s==='windup'){
+    const stem=pickSfx('hound_windup'), W=PR.dashWind||.5;   // its peak lands as the dash begins
+    if(!stem||!playSfx('hound_windup',{pos:hp,ref:5,gain:1,vary:.05,offset:Math.max(0,(SFX_LIST[stem]||{}).peak-W-.04)}))S.growl(t,{dest:out,f:78,dur:.5,g:.22}); }
+  else if(s==='attack'){ if(!playSfx('hound_bite',{pos:hp,ref:5,gain:1,vary:.06,peakAt:.15})){ S.whoosh(t,{dest:out,f0:400,f1:1400,dur:.2,g:.2}); S.clank(t+.12,{dest:out,f:180,g:.05}); } }
+  else if(s==='hurt'){ if(!playSfx('hound_hurt',{pos:hp,ref:5,gain:.9,vary:.1}))S.shriek(t,{dest:out,f:1300,g:.1}); }
+  else if(s==='flee'){ if(!playSfx('hound_flee',{pos:hp,ref:5,gain:.85,vary:.06}))S.shriek(t,{dest:out,f:1500,g:.08}); }
+  else if(s==='dying'){ playSfx('hound_death',{pos:hp,ref:6,gain:.9,vary:.04}); }
+}
 const LUNGE_HIT=.2; // s after entering 'attack' that a lunge strikes (monsters.js: v=lungeDist/.26)
 function updateMonsterSounds(){
   if(!G.monsters||!G.monsters.list){ if(extraMon.length)for(const m of extraMon)caveMonster(m); return; } const t=ctx.currentTime, P=G.player;
@@ -849,13 +878,7 @@ function updateMonsterSounds(){
         }
       }
       else if(s==='hurt')hollowHurt(m,false);
-    }else if(m.kind==='hound'){
-      if((s==='chase'||s==='stalk')&&(prev==='idle'||prev==='return'))S.howl(t,{dest:out,g:.11});
-      else if(s==='windup')S.growl(t,{dest:out,f:78,dur:.5,g:.22});
-      else if(s==='attack'){ S.whoosh(t,{dest:out,f0:400,f1:1400,dur:.2,g:.2}); S.clank(t+.12,{dest:out,f:180,g:.05}); }
-      else if(s==='hurt')S.shriek(t,{dest:out,f:1300,g:.1});
-      else if(s==='flee')S.shriek(t,{dest:out,f:1500,g:.08});
-    }
+    }else if(m.kind==='hound'){ houndSound(m,s,prev,t,out); }
   }
 }
 
@@ -1398,7 +1421,7 @@ function buildUI(){
 }
 
 /* ---------- system ---------- */
-G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get output(){return comp;},get layers(){return layers;},get _amb(){return amb;}, sfx:{list:SFX_LIST,get loaded(){return Object.keys(sfxBuf).filter(k=>sfxBuf[k].buf);},play:(n,o)=>playSfx(n,o||{}),get loops(){return loops.size;}},S,I,unlock,
+G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get output(){return comp;},get layers(){return layers;},get _amb(){return amb;}, sfx:{list:SFX_LIST,get loaded(){return Object.keys(sfxBuf).filter(k=>sfxBuf[k].buf);},play:(n,o)=>playSfx(n,o||{}),get loops(){return loops.size;}, get log(){return sfxLog.slice();}},S,I,unlock,
   music:{ get loaded(){return rec.loaded;}, get failed(){return rec.failed;}, get error(){return rec.error;}, get playing(){return rec.playing;},
     get state(){return rec.state;}, get startTime(){return rec.start;}, get offset(){return rec.offset;},
     get groups(){ const o={}; for(const k of REC.files){ const n=rec.nodes[k]; o[k]={loaded:!!rec.bufs[k],duration:rec.bufs[k]?rec.bufs[k].duration:0,playing:!!(n&&n.src),gain:n?+n.gain.gain.value.toFixed(3):0,target:+(rec.w[k]||0).toFixed(3)}; } return o; },
