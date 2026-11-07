@@ -274,7 +274,7 @@ const cw=(x,y,z)=>CAVE&&CAVE.toWorld?CAVE.toWorld(x,y,z):V(x,y+60,z+800);
 const uw=(x,y,z)=>UC&&UC.toWorld?UC.toWorld(x,y,z):V(x,y+60,z-800);
 const loopOn=()=>!!(G.loop&&G.loop.active);
 const COT={x:158,z:24,y:42};
-const NEST={x:165,y:30,z:-47.6};
+const NEST={x:165,y:35.4,z:-47.15};
 const SPOTS=[
   {id:'log',who:'ember',place:'island',name:'The hollow log',prompt:'Send Ember through the gap',
     c:V(25,H(25,7),7),yaw:.5},
@@ -605,7 +605,7 @@ function emberDraw(dt){
   B.tail.rotation.x=lerp(Math.sin(t*2.2)*.08+(gallop?-.45:0),.75,Math.max(k.sit*.7,k.lie));
   B.tail.rotation.y=lerp(Math.sin(t*(k.sit>.5?6:3))*(.18+.2*k.sit),1.25,k.lie);
   // the thing in her mouth
-  if(R.carry.visible!==!!E.carry){ carryItem(E.carry); }
+  if(R.carryKind!==E.carry){ R.carryKind=E.carry; carryItem(E.carry); }
   // a dodge hop
   if(E.hopT>=0){ E.hopT+=dt; const h=Math.sin(Math.min(1,E.hopT/.35)*PI)*.32; R.root.position.y+=h; if(E.hopT>.35)E.hopT=-1; }
 }
@@ -984,6 +984,9 @@ function bellStep(dt){ if(bellT<0||!DYN.bell)return; bellT+=dt; const a=Math.sin
 function lidStep(dt){ if(!DYN.lid)return; const want=S.chest?-1.9:0; DYN.lid.rotation.x+=(want-DYN.lid.rotation.x)*Math.min(1,dt*3); }
 
 /* ---------------------------------------------------------------- rewards */
+const pend=[];
+function later(s,fn){ pend.push({t:s,fn}); }
+function laterStep(dt){ for(let i=pend.length-1;i>=0;i--){ pend[i].t-=dt; if(pend[i].t<=0){ const f=pend[i].fn; pend.splice(i,1); try{ f(); }catch(e){ console.error('companions later',e); } } } }
 function autosave(){ try{ if(G.flow&&G.flow.writeSave)setTimeout(()=>{ if(isPlay())G.flow.writeSave(); },700); }catch(_){} }
 function spotDone(s){ if(S.spots[s.id])return; S.spots[s.id]=1; G.emit('companion:spot',{id:s.id}); autosave(); }
 const ITEMN={glowcap:['glowcap','glowcaps'],ichor:['ichor','ichor'],brine:['brine crystal','brine crystals'],pearl:['tide pearl','tide pearls'],kelp:['glowkelp','glowkelp'],vial:['vial of ether','vials of ether']};
@@ -1008,7 +1011,7 @@ function spotReward(s){
     const lines=['The note goes down into the dark and comes back changed. For a moment the chapel is full of people, and a girl is ringing this same bell, too hard, laughing.',
       '“Wren! Gently. It’s a bell, not a pan.” — “It wants to be heard, Mother.”',
       'Then only the dark again, and one candle burning that wasn’t.'];
-    lines.forEach((l,i)=>setTimeout(()=>G.ui.say(l,i===1?'An echo':null,{key:'bellEcho'+i}),400+i*120));
+    lines.forEach((l,i)=>later(.4+i*.1,()=>G.ui.say(l,i===1?'An echo':null,{key:'bellEcho'+i})));
     try{ if(G.undercroft&&G.undercroft.lightCandle){ const c=(G.undercroft.candles||[]).find(c=>c.room==='chapel'&&!G.undercroft.isLit('chapel')); if(c)G.undercroft.lightCandle(c.id,{free:true}); } }catch(e){ console.error('bell candle',e); }
     if(G.alchemy)G.alchemy.etherUnits=(G.alchemy.etherUnits||0)+5;
     G.emit('companion:echo',{id:'wren'}); }
@@ -1019,10 +1022,10 @@ function spotReward(s){
 function openSeaChest(){
   if(S.chest)return;
   if(!S.key){ G.ui.say('A sea-chest bound in iron, its lock crusted green with salt. Maren would have kept a spare key somewhere. Somewhere small.',null,{key:'chestLocked',priority:'high'});
-    if(!S.ember)return; if(!S.said.chestHint){ S.said.chestHint=1; setTimeout(()=>G.ui.say('Somewhere small. Under the cottage, perhaps, where only a fox could go.',null,{key:'chestHint'}),300); } return; }
+    if(!S.ember)return; if(!S.said.chestHint){ S.said.chestHint=1; later(.3,()=>G.ui.say('Somewhere small. Under the cottage, perhaps, where only a fox could go.',null,{key:'chestHint'})); } return; }
   S.chest=true; sfx('lid',V(SEACHEST.x,SEACHEST.y,SEACHEST.z));
   if(G.progress&&G.progress.grantShard)G.progress.grantShard('chest');
-  setTimeout(()=>G.ui.say('Under a folded oilskin, a note in a small, square hand: “If you’re reading this, you found the key, so you found the fox, so you’re all right. Keep the light. Keep the fox. — M.”','Maren',{key:'chestNote'}),2600);
+  later(2.6,()=>G.ui.say('Under a folded oilskin, a note in a small, square hand: “If you’re reading this, you found the key, so you found the fox, so you’re all right. Keep the light. Keep the fox. — M.”','Maren',{key:'chestNote'}));
   G.emit('companion:chest',{}); autosave();
 }
 
@@ -1046,7 +1049,7 @@ function startScout(){
   for(const s of SPOTS){ if(S.spots[s.id]||s.place!==place)continue; if(near(s.at)){ found.push('comp:'+s.id); S.seen[s.id]=1; shimmer(s.at); } }
   if(G.map){ for(const id of found)if(G.map.markSeen)G.map.markSeen(id); if(place==='island'&&G.map.reveal)G.map.reveal(p.x,p.z,T.scoutFind); }
   G.emit('companion:scout',{found:found.length,ids:found});
-  if(!S.said.scout){ S.said.scout=1; setTimeout(()=>G.ui.say(found.length?NM.corvin+' circles wide and comes back pleased with himself. Whatever he saw is on your map now.':NM.corvin+' circles wide and comes back with nothing to show. Nothing hidden here, then.',null,{key:'scout'}),2200); }
+  if(!S.said.scout){ S.said.scout=1; later(2.2,()=>G.ui.say(found.length?NM.corvin+' circles wide and comes back pleased with himself. Whatever he saw is on your map now.':NM.corvin+' circles wide and comes back with nothing to show. Nothing hidden here, then.',null,{key:'scout'})); }
   return true;
 }
 function scoutStep(dt){
@@ -1252,7 +1255,7 @@ G.system('companions',{order:46,modes:['play','dead'],
     if(eI||cI)introStep(dt);
     if(E.on&&!eI)emberStep(dt);
     if(C.on&&!cI)ravenStep(dt);
-    fallStep(dt); bellStep(dt); lidStep(dt); glintStep(dt);
+    laterStep(dt); fallStep(dt); bellStep(dt); lidStep(dt); glintStep(dt);
     if(DYN.nestGlint&&DYN.nestGlint.visible)DYN.nestGlint.material.opacity=.45+.25*Math.sin(G.time*2.2);
     // show each place's set pieces only where you are
     const place=placeNow();

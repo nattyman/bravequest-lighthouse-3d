@@ -112,3 +112,42 @@ Reward balance: two heart shards in total (2 and 6), and the rest are supply cac
 ## 7. Decisions to report back
 
 Report back to Heath on: the names, where the raven is freed and when, the shard count change, and anything that felt fiddly in play.
+
+## 8. As built (v22, `js/companions.js`)
+
+- **Ember** is earned when the first fox negative is freed (creatures.js hands the freed fox over through `G.creatures.claimFreed`);
+  later foxes run home as before. A save with a fox already freed gets her on load, quietly (checked every second, so old saves
+  and devtools states both work). Halloran's line comes once, through `G.creatures.halloranHooks`.
+- **Corvin**: the raven negative roosts on the eight standing stones (40, ·, −35). It lifts off and settles on the farthest stone
+  when you come within ~5 m or the swarm comes within ~9 m, so neither can catch it. Two hits while it perches (a charged bolt
+  is the practical way; a jump attack on a low stone works) tire it for 30 s: it slumps on its stone and only then does the swarm
+  hunt it. **It can be freed in Act 1** (Maren's lantern, on the walk back east across the moor) **or in the core loop** with a
+  baited lantern. To keep Ember reachable for loop saves that never freed a fox, every negative can now be freed in the core loop
+  by a baited lantern (before, negatives could only be freed in Act 1). It is the 9th negative: `G.creatures.total` is 9 and
+  every "of 8" string reads the total. Moth Wings stay at 4 (8 negatives).
+- **Following**: Ember walks a 96-crumb trail of your grounded positions (no navmesh); a crumb that rises > 0.95 m, drops
+  > 2.6 m or jumps > 2.6 m (a climb, a glide) is a break: she waits at it and reappears by you, unseen. Corvin flies a slow
+  circle 3–5 m out and 4–8 m up behind you, perches on collider tops (posts, rocks, stones) or the grass after 2 s still, and
+  rides your shoulder 30% of the time (always in the cave and the Undercroft, where he keeps under the ceiling). Catch-up: more
+  than 35 m away (or a break) fades them out if seen, then puts them back on a recent crumb or behind the camera, off screen.
+  A teleport of more than 8 m (fast travel, the cave, the Undercroft, a respawn) restarts the trail.
+- **Waiting**: inside the lighthouse (stair and lamp room) both wait by the door; during the Gloaming fight they wait by the
+  cottage. On the cave raft Corvin rides the lantern while it drifts.
+- **Spots** (each marked in the world, each persisted in `companions.spots`; map pins once seen or scouted):
+
+| spot | where | reward |
+|---|---|---|
+| hollow log (Ember) | moor, (25, ·, 7) | a Mender's Draught (2 glowcaps if your bottles are full) + 2 glowcaps |
+| cottage grate (Ember) | the cottage plinth, south side (160.6, 42, 27.3) | Maren's spare key → her sea-chest inside: **Heart Shard 13** + Maren's note |
+| cave crack (Ember) | the sea cave's Mouth, west wall (cave-local −6.6, 1.5, −12.2) | a rope ladder to a ledge: a vial of ether (12) + a tide pearl |
+| chapel bell (Corvin) | the Undercroft chapel, on a beam over the nave (local −20.2, −0.4, −48) | an echo of Wren; a chapel candle lights itself (+5 ether) |
+| dead tree (Corvin) | moor road, (4, ·, 9) | the bundle drops: 2 ichor, a brine crystal, a glowcap |
+| north-cliff nest (Corvin) | a ledge under the headland's north cliff, (165, 35.4, −47.15) | **Heart Shard 14** |
+
+- **Fights**: Ember's nip (6 s) runs to the nearest non-boss monster within 8 m that is winding up and breaks the wind-up
+  (`G.monsters.interrupt`: the same as a light stagger, no damage). Corvin's dive (10 s) hits a non-boss monster chasing or
+  winding up within 12 m: its attack is put off 0.8 s (`G.monsters.delay`). In the dark (inside, or `G.atmo.dark` > 0.5) Corvin
+  caws once when something hostile comes within 15 m. Nothing they do touches a boss.
+- **Budget**: each companion is one skinned toon mesh + one skinned outline (2 draw calls + its shadow); each spot's static
+  pieces are one merged mesh, shown only in its place and within ~130 m; moving parts (the tree bundle, the chest lid, the
+  ladder, the bell, the nest glow) are small separate meshes. No per-frame allocations in the update paths.

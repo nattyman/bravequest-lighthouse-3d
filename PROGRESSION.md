@@ -1,4 +1,4 @@
-# Progression, rewards and upgrades — binding spec (v14; v21: the Undercroft's 8th heart)
+# Progression, rewards and upgrades — binding spec (v14; v21: the Undercroft's 8th heart; v22: the companions' two shards, the 9th negative)
 
 Goal: exploring, fighting and freeing things should pay off in ways the player can feel. Zelda/BotW-style:
 small collectibles that add up, boss rewards, and upgrades bought at the keeper's benches. Gentle Gothic tone:
@@ -8,7 +8,8 @@ everything is a keeper's relic, an ether-thing or a moth-thing, never generic "l
 - Start: **2 hearts** (`maxHp` 4, half-heart units; `BASE_HP` in progression.js — was 5 hearts until v15, Heath: hearts come
   quickly early on). `maxHp` is derived on every load, so older saves move to the new base and hp is clamped to it.
   Max reachable in this build: 8 hearts (2 + 3 from shards + 3 boss hearts).
-- **Heart Shards** — "a sliver of the old lamp's glass, still warm". 4 shards = +1 heart. **12 shards** on the island (=3 hearts).
+- **Heart Shards** — "a sliver of the old lamp's glass, still warm". 4 shards = +1 heart. **14 shards** (v22: 12 on the island + 2 the
+  companions bring, COMPANIONS.md §4). Hearts from shards stay capped at 3 (the 13th and 14th are slack: a thorough player can miss two).
   Place them where they reward exploring and the movement kit: on top of the standing stones (double jump), a cliff ledge only
   reachable by gliding down from the headland, a sea stack at low tide, the hamlet (an attic / roof), inside the forest
   (hidden behind the Resisting Tree's roots), a tidepool only open at low tide, one guarded by a hound pack, one for clearing
@@ -20,7 +21,7 @@ everything is a keeper's relic, an ether-thing or a moth-thing, never generic "l
 - Existing saves: grant boss hearts retroactively on load if the boss is already dead.
 
 ## 2. Stamina — Moth Wings
-- Every **2 negatives freed** (there are 8) → +20% stamina (the stamina ring grows), with a moth-wing flourish on the Traveler's
+- Every **2 negatives freed** (there are 9 since v22: the raven on the standing stones; the 9th adds no wing) → +20% stamina (the stamina ring grows), with a moth-wing flourish on the Traveler's
   cloak. 4 upgrades total. Toast on each: "Moth Wing — the swarm lends you its lightness". Retroactive on load.
 
 ## 3. Keeper's Marks (currency for upgrades)
@@ -50,7 +51,7 @@ Total Mark cost ≈ 12–14 so a thorough player can buy nearly everything; a ca
 
 ## 6. The Journal (pause menu)
 A **Journal** button in the pause menu → one screen: hearts + shards (x/4), stamina wings (x/4), Marks, upgrades owned,
-caches found (x/8), shards found (x/12), negatives freed (x/8), blights cured, bosses. Works with mouse, touch and controller.
+caches found (x/8), shards found (x/14), negatives freed (x/9), blights cured, bosses. Works with mouse, touch and controller.
 
 ## 7. Persistence, tools, tests
 - `G.persist.register('progress', …)` — everything above saves and reloads; retroactive grants for old saves.
@@ -74,7 +75,7 @@ Sea-facing cliffs (headland N/E/S) are walls you can't leave; the headland's **w
 Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar under the south cliff only exists in the core loop).
 "Route check" = what the placement script proves with real inputs (`G.input.setVirtual` + `G.step`).
 
-### Heart Shards (12; 4 = +1 heart)
+### Heart Shards (14; 4 = +1 heart)
 | # | id | where (x, y, z) — y = the footing | how you reach it | route check |
 |---|---|---|---|---|
 | 1 | `stones` | crown of the shortest standing stone, NE side of the circle (45.3, 14.40, −28.4); ground 11.9 | jump onto the broken-off chunk at its foot (top 12.75), then **double jump** | ground→DJ fails · chunk→single fails · chunk→DJ ✓ |
@@ -89,7 +90,10 @@ Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar un
 | 10 | `tidepool` | rock pool on the sandbar under the south cliff (131, −0.95, 56.35) | **low tide only**, core loop: walk the bar from the beach or the cave mouth | high: not walkable · low: walk ✓ |
 | 11 | `west` | rock at the far west tip, past the forest (−231, 11.0, −4); ground 10.5 | single jump | ✓ |
 | 12 | `needle` | stone needle on the headland's north side (150, 43.85, −30); ground 42 | **double jump** from the grass | single fails · DJ ✓ |
+| 13 | `chest` | Maren's sea-chest by the cottage's south wall (157.25, 42.24, 26.28) | **Ember** fetches the spare key through the grate under the cottage's south side; open the chest | companions_e2e ✓ |
+| 14 | `nest` | an old raven's nest on a ledge under the headland's north cliff (165, 35.4, −47.15) | **Corvin** brings it up (send him from the lip above, (165, 42, −44.4)) | companions_e2e ✓ |
 Each shard glints (violet sprite + twinkle, glow grows with distance so it reads from far off) and chimes softly within 12 m.
+The two companion shards (13, 14) have no glint to walk into: `G.progress.grantShard(id)` hands them over (the nest shows a faint glow).
 The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lighthouse.js), so it isn't reachable.
 **Glide audit** (after the stronger glide): only the spire depends on glide distance, and it moved out to stay glide-only. The
 glide can't gain height, so the double-jump spots (stones, attic, outcrop, needle) and the cave/Undercroft height gates are

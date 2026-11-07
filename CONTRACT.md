@@ -17,7 +17,7 @@ js/flow.js        quest beats, checkpoints, pickups, title/attract camera  (lead
 js/hud.js         HUD, menus, touch buttons  (lead)
 vendor/three      local Three.js r128 + examples/js (for dev.html only)
 ```
-Load order: three → postprocessing → core → world → lighthouse → combat → player → creatures → monsters → flow → hud → `G.start()`.
+Load order: three → postprocessing → core → world → lighthouse → combat → player → creatures → monsters → flow → hud → … → undercroft_boss → companions → cloud → `G.start()`.
 Every module is a plain script wrapped in an IIFE: `(function(){ 'use strict'; const G=window.G, THREE=G.THREE; ... })();`
 Three.js is **r128** (UMD global). No ES modules, no imports, no other libraries, no network assets. All textures are procedural (canvas) — see `G.canvasTex`.
 
@@ -53,7 +53,7 @@ resistingTree:{x,y,z,r}  lanternSpot:{x,y,z}  hamlet:{x,y,z}  stones:{x,y,z}
 cliffPathBottom:{x,y,z}  cliffPathTop:{x,y,z}  finale:{x,y,z,r}
 patches:[{x,y,z}]            // 8–10 corruption patches on moor + forest, none within 20 m of the lighthouse
 mushrooms:[{x,y,z}]          // glowing violet mushroom clusters (healing pickups), ~14, near forest edges/ruins
-negativeHomes:[{x,y,z,kind}] // 8 passive negatives: kind 'stag'|'fox'|'hare'|'heron'
+negativeHomes:[{x,y,z,kind}] // 8 passive negatives: kind 'stag'|'fox'|'hare'|'heron' (companions.js adds a 9th, the raven, on the standing stones)
 monsterZones:[{name,x,z,r,kinds:[...],count}]  // e.g. forest {x:-130,z:0,r:50,kinds:['hollow','hound'],count:6}, hamlet {x:-20,z:30,r:22,kinds:['hollow'],count:3}, moor {x:55,z:-10,r:30,kinds:['hound'],count:3}
 path:[{x,z}]                 // centreline of the trail from lighthouse → cliff path → hamlet → Resisting Tree
 ```
@@ -81,6 +81,11 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 - UI calls (hud.js implements): `G.ui.say(text, who?, {priority:'high'|'normal'|'low', key})` (every line is also kept in the message log, pause menu > Messages; reading time is the player's choice: `G.ui.captionSpeed` 'relaxed'|'standard'|'hold'; `G.ui.advance()` = Enter / D-pad down / a tap on the caption), `G.ui.objective(text, sub?)`, `G.ui.toast(title, small?)`, `G.ui.bossBar(name|null, frac)`, `G.ui.flash()`, `G.ui.shake(amount)`.
 - HUD read-outs for tests (hud.js): `G.ui.captionStack()` → `{depth (back cards showing, 0–2), count ('+N' when 3+ lines wait, else ''), who:[names on the back cards], leaving}` — waiting captions show as a stack of card edges behind the front one (decoration only; the queue/pacing rules are unchanged); `G.ui.staminaWheel()` → `{shown, state:'ok'|'low'|'exh'|'full'|'', opacity, frac}`; `G.ui.padStatus()` → `{state:'connected'|'none'|'blocked'|'unsupported', text}` (the controller line in the pause menu and on the Controls screen, `[data-pad-status]`).
 - Pickups (flow.js implements): `G.pickups.spawn('heart'|'mushroom', pos)`.
+- Companions (js/companions.js, COMPANIONS.md): `G.companions = {ember, corvin, has(id), send(id), call(id), spots, shardSpots, names, raven, debug}`;
+  `send('ember')` = R (at a fox spot: go; else heel), `send('corvin')` = T (at a raven spot: go; else scout, 45 s cooldown). Hooks it uses:
+  `G.creatures.claimFreed(n, rig)` (the first freed fox), `G.creatures.addCustom(n)` / `freeCustom(n)` (the raven negative), `G.creatures.halloranHooks`,
+  `G.monsters.interrupt(m)` / `delay(m, s)` (never bosses), `G.progress.grantShard(id)`, `G.map.markSeen(id)` / `isSeen(id)`, `G.ui.padRowHooks`,
+  `G.ui.refreshLegends()`, `G.devtools.teleports`. Persist key `companions`. Neither companion has a hurtbox.
 - Map + fast travel (js/map.js): `G.map.open()/close()`, `G.map.addMarker({...})`, `G.map.waypoints`, `G.map.travelBlock(id)` → reason
   string or null, `G.map.travel(id)`. Eight waystones (lighthouse, cottage, cliff-path foot, standing stones, hamlet road, Resisting
   Tree, sea cave, the Undercroft) unlock when first visited; travel is chosen in the open map (click/tap, Tab+Enter, LB/RB+A) through a confirm card.
@@ -88,7 +93,7 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
   for the Undercroft, `G.undercroft.enter('stair',{instant:true})` / `G.undercroft.exit({instant:true})` (UNDERCROFT.md).
   It refuses during boss fights (the Tithe-Keeper's too), the Act 1 finale, while Maren's corrupted lantern or a swarm follows you, while the lantern rides
   the cave raft, with monsters hunting you within 30 m, mid-air, and to a destination under the fog.
-- Input actions: `forward back left right jump sprint roll attack lock interact shutter potion pause advance glass` (advance = Enter or controller D-pad down: next caption; glass = hold G, or hold Y on a controller once the Remembering Glass is owned — a Y tap stays interact, sent on release; touch: the Glass button). `G.input.down(a)`, `G.input.pressed(a)`, `G.input.released(a)`, `G.input.move()` → {x,y,mag}, `G.input.gamepad` → `{connected,id,name,blocked,error,policy,supported,count,index,mapping,remap}` (policy false = the page's permissions policy forbids 'gamepad'; remap 'xpad'|'generic' for a pad without the standard mapping), `G.input.padState()` → the pad in use in the standard layout `{B,A}` or null, `G.input.look()` → pixel delta this frame, `G.input.wheel`, `G.input.locked`.
+- Input actions: `forward back left right jump sprint roll attack lock interact shutter potion pause advance glass fox raven` (advance = Enter or controller D-pad down: next caption; glass = hold G, or hold Y on a controller once the Remembering Glass is owned — a Y tap stays interact, sent on release; touch: the Glass button; fox = R / D-pad left / the fox touch button, raven = T / D-pad right / the raven touch button — companions.js, shown once each companion is earned). The D-pad no longer walks. `G.input.down(a)`, `G.input.pressed(a)`, `G.input.released(a)`, `G.input.move()` → {x,y,mag}, `G.input.gamepad` → `{connected,id,name,blocked,error,policy,supported,count,index,mapping,remap}` (policy false = the page's permissions policy forbids 'gamepad'; remap 'xpad'|'generic' for a pad without the standard mapping), `G.input.padState()` → the pad in use in the standard layout `{B,A}` or null, `G.input.look()` → pixel delta this frame, `G.input.wheel`, `G.input.locked`.
 - Techniques (`js/combat.js`, loaded before player.js): `G.moves.T` is the tuning table (lunge, sweep, slam, spin, plunge, dive, doubleJump, buffer, aim). `G.moves.performed(id)` names a technique on screen (toast the first time; remembered in localStorage `bq-combos`, listed in the pause menu). `G.moves.raycast(from,dir,max,{start})` → `{point,dist,hb,surface}` against floors, walls (constrainers), colliders, cave ceilings and enemy hurtboxes. `G.moves.burst(pos,{radius,color,life,lightI})` ether ring + flash. `G.moves.noDoubleJump.push(fn(pos)->bool)` forbids the double jump where it returns true. `G.player.move` → `{id, phase, doubleJumped, dived, aiming, aimK, aimPoint, cooldowns}`.
 - Models: `G.models.lantern()` and `G.models.staff()` are defined by player.js at script-evaluation time and return fresh Object3Ds (other modules may call them in init()).
 
@@ -120,6 +125,12 @@ path:[{x,z}]                 // centreline of the trail from lighthouse → clif
 | `boss:dead` | {who:'stag'\|'gloaming'} | monsters (stag) / finale_boss (gloaming). Only `who:'gloaming'` ends Act 1 |
 | `map:waypoint` | {id, quiet} | map (a waystone unlocked; quiet = granted from an old save / home) |
 | `map:travel` | {id, phase:'start'\|'arrive'\|'done'} | map (fast travel: fade out → moved → faded back in) |
+| `companion:earned` | {id:'ember'\|'corvin', quiet} | companions (quiet = granted from an old save / a load) |
+| `companion:sent` / `companion:spot` | {id, spot} / {id} | companions (sent to a spot / a spot solved) |
+| `companion:scout` | {found, ids} | companions (Corvin circled; ids are map collectible ids pinned) |
+| `companion:heel` / `companion:caw` | {} / {why:'warn'\|'cooldown'} | companions |
+| `companion:nip` / `companion:dive` | {kind, interrupted} / {kind, delayed} | companions (the small fight help) |
+| `companion:dodge` | {id} | companions (a blow would have landed: they hop / flap aside) |
 
 ## Module briefs (who owns what)
 **world.js** — `G.world.height/walkable/landmarks` (synchronous), terrain mesh(es) with vertex colours (cel-shaded), sea (animated), sky dome (dusk gradient + moon + stars faint), fog, sea stacks, forest (instanced trunks/canopies; colliders for trunks), moor heath + wildflowers, local grass that follows `G.focus` for density, rocks, ruined hamlet, standing stones, stone walls, keeper's cottage + shed with warm windows, the cliff-path ramp, the Resisting Tree, path rendering, mushrooms visuals, atmosphere application (reads `G.atmo`), hemi/sun colours. Registers colliders for trees, rocks, buildings.
