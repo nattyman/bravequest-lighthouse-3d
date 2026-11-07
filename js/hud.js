@@ -393,7 +393,9 @@ function updateWorldUI(dt){
 const promptEl=$('prompt'); let lastPrompt='';
 function esc(s){return String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));}
 /* controller glyphs: Xbox face buttons as coloured badges, bumpers/triggers/menu as dark pills */
-const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X',H:'Up',Drink:'Up',Enter:'Down'};
+const PAD_OF_KEY={E:'Y',F:'RB',J:'X',Q:'LT',Tab:'LT',Space:'A',C:'B',Shift:'LB',Esc:'Menu',P:'Menu',Use:'Y',Click:'X',H:'Up',Drink:'Up',Enter:'Down',R:'Left',T:'Right'};
+/* touch: the companions' prompts name their buttons (companions.js mounts them) */
+const TOUCH_OF_KEY={R:'Fox',T:'Raven'};
 function glyph(n){
   const face={A:'a',B:'b',X:'x',Y:'y'}[n];
   if(face)return `<span class="pad pad-${face}" role="img" aria-label="${n} button">${n}</span>`;
@@ -401,12 +403,15 @@ function glyph(n){
   if(n==='Menu')return `<span class="pad pad-pill" role="img" aria-label="Menu button">&#9776;</span>`;
   if(n==='Up')return `<span class="pad pad-pill" role="img" aria-label="D-pad up">&#9650;</span>`;
   if(n==='Down')return `<span class="pad pad-pill" role="img" aria-label="D-pad down">&#9660;</span>`;
+  if(n==='Left')return `<span class="pad pad-pill" role="img" aria-label="D-pad left">&#9664;</span>`;
+  if(n==='Right')return `<span class="pad pad-pill" role="img" aria-label="D-pad right">&#9654;</span>`;
   return `<span class="pad pad-pill" role="img" aria-label="${n}">${esc(n)}</span>`;
 }
 G.ui.glyph=glyph;
 const usingPad=()=>G.input.device==='gamepad';
 function keyCap(k,isInteract){
   if(usingPad()){ const g=isInteract?'Y':PAD_OF_KEY[k]; if(g)return glyph(g); }
+  if(TOUCH_OF_KEY[k]&&(G.input.device==='touch'||(G.isMobile&&G.input.device!=='keyboard')))return `<span class="tap">${TOUCH_OF_KEY[k]}</span>`;
   return k?`<kbd>${esc(k)}</kbd>`:'';
 }
 function updatePrompt(){
@@ -476,7 +481,13 @@ function updatePotionsUI(dt){
 const keysEl=$('keys'); let keysHTML=keysEl?keysEl.innerHTML:'';
 const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['Menu','pause']];
 const glassOwned=()=>!!(G.glass&&G.glass.owned);
-const padRows=()=>PAD_ROWS.map(([g,t])=>`<span>${glyph(g)} ${esc(g==='Y'&&glassOwned()?'use · hold: the Glass':t)}</span>`).join('');
+/* other modules add rows once they apply (companions.js: D-pad left / right once Ember / Corvin are with you): G.ui.padRowHooks.push(()=>[[glyph,text],...]) */
+G.ui.padRowHooks=G.ui.padRowHooks||[];
+const extraPadRows=()=>{ const out=[]; for(const f of G.ui.padRowHooks){ try{ const r=f(); if(r)out.push(...r); }catch(e){} } return out; };
+const padRows=()=>{ const ex=extraPadRows(), rows=PAD_ROWS.slice(); const at=rows.findIndex(r=>r[0]==='Menu'); rows.splice(at<0?rows.length:at,0,...ex);
+  return rows.map(([g,t])=>`<span>${glyph(g)} ${esc(g==='Y'&&glassOwned()?'use · hold: the Glass':t)}</span>`).join(''); };
+/** companions.js: rebuild the legends after a row hook changes (the pad legend is cached once filled) */
+G.ui.refreshLegends=()=>{ document.querySelectorAll('[data-pad-legend]').forEach(el=>{ el.dataset.filled=''; }); if(keysEl&&keysEl.dataset.mode==='pad')keysEl.dataset.mode=''; refreshPadUI(); };
 const BLOCKED_MSG='Controllers are blocked in this embedded page — open the game in its own tab.';
 /* one line of controller status for the pause menu and the Controls screen ([data-pad-status]) */
 function padStatus(){

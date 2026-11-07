@@ -89,6 +89,10 @@ const ICON={
   bandolier:'<svg viewBox="0 0 32 32"><path d="M4 6l24 20" stroke="#6a4a2e" stroke-width="6" stroke-linecap="round"/><g fill="#a46cff" stroke="#2b2026"><rect x="8" y="7" width="3.4" height="6" rx="1"/><rect x="13" y="11" width="3.4" height="6" rx="1"/><rect x="18" y="15" width="3.4" height="6" rx="1"/></g></svg>',
   jar:'<svg viewBox="0 0 32 32"><path d="M11 4h10v3h-1v3c4 2 6 5 6 9v6a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3v-6c0-4 2-7 6-9V7h-1z" fill="rgba(207,230,226,.6)" stroke="#4b6a7a" stroke-width="1.2"/><circle cx="13" cy="20" r="1.6" fill="#fff0c8"/><circle cx="18" cy="23" r="1.3" fill="#fff0c8"/><circle cx="19" cy="17" r="1.1" fill="#fff0c8"/></svg>',
   charm:'<svg viewBox="0 0 32 32"><path d="M16 2v6" stroke="#8a6a2e" stroke-width="1.4"/><circle cx="16" cy="9" r="2" fill="none" stroke="#8a6a2e" stroke-width="1.4"/><path d="M16 12c-3-3-9-2-9 2 0 3 5 4 8 2-2 2-3 6 0 6 1 0 1-3 1-5 0 2 0 5 1 5 3 0 2-4 0-6 3 2 8 1 8-2 0-4-6-5-9-2z" fill="#c8a24c" stroke="#6a4a2e"/></svg>',
+  bundle:'<svg viewBox="0 0 32 32"><path d="M6 14c0-4 4-7 10-7s10 3 10 7v9c0 2-2 4-4 4H10c-2 0-4-2-4-4z" fill="#a8855a" stroke="#4a3426" stroke-width="1.3"/><path d="M6 15c4 2 16 2 20 0" stroke="#4a3426" stroke-width="1.2" fill="none"/><path d="M16 7v-3M13 5l3-1 3 1" stroke="#6a4a2e" stroke-width="1.6" fill="none" stroke-linecap="round"/><circle cx="12" cy="21" r="2.2" fill="#a46cff"/><circle cx="19.5" cy="20" r="1.8" fill="#e6dcef"/></svg>',
+  key:'<svg viewBox="0 0 32 32"><circle cx="10" cy="12" r="6" fill="none" stroke="#5a7a6a" stroke-width="3"/><path d="M15 15l11 11M21 21l3-3M24 24l2.4-2.4" stroke="#5a7a6a" stroke-width="3" stroke-linecap="round"/><circle cx="10" cy="12" r="2" fill="#c8a24c"/></svg>',
+  bell:'<svg viewBox="0 0 32 32"><path d="M16 4c-5 0-7 4-7 9v6l-3 4h20l-3-4v-6c0-5-2-9-7-9z" fill="#c8a24c" stroke="#6a4a2e" stroke-width="1.3"/><circle cx="16" cy="26" r="2.4" fill="#6a4a2e"/></svg>',
+  note:'<svg viewBox="0 0 32 32"><path d="M7 4h14l4 4v20H7z" fill="#efe4cc" stroke="#6a4a2e" stroke-width="1.2"/><path d="M10 11h11M10 15h11M10 19h8" stroke="#4b3863" stroke-width="1.1"/></svg>',
   recipe2:'<svg viewBox="0 0 32 32"><path d="M6 4h16l4 4v20H6z" fill="#efe4cc" stroke="#6a4a2e" stroke-width="1.2"/><path d="M10 11h12M10 15h12M10 19h8" stroke="#6c3f5f" stroke-width="1.2"/><circle cx="22" cy="23" r="3.4" fill="#c2405a"/></svg>'
 };
 
@@ -167,6 +171,10 @@ function ledgerRelic(){ // the Tithe Ledger: a heavy book bound in red-brown lea
 function genericRelic(hex){ const g=new THREE.Group(); const m=new THREE.Mesh(new THREE.IcosahedronGeometry(.16,0),G.toon(hex,{emissive:hex,emissiveIntensity:.5})); g.add(m); g.add(glowSprite(hex,1,.45)); return g; }
 function relicFor(icon){
   if(icon==='shard'){ const s=shardMesh(); s.scale.setScalar(1.3); return s; }
+  if(icon==='bundle'){ const g=new THREE.Group(); const b=new THREE.Mesh(new THREE.SphereGeometry(.22,12,9),G.toon('#a8855a')); b.scale.set(1,.8,.9); g.add(b); G.outline&&G.outline(b,{thickness:.014});
+    const k=new THREE.Mesh(new THREE.ConeGeometry(.09,.14,8),G.toon('#8a6a46')); k.position.y=.2; g.add(k); g.add(glowSprite('#ffd27a',1,.4)); return g; }
+  if(icon==='key'){ const g=new THREE.Group(), m=G.toon('#6f8f7a',{emissive:'#1a2a20',emissiveIntensity:.3}); const r=new THREE.Mesh(new THREE.TorusGeometry(.1,.03,6,14),m); r.position.y=.14; g.add(r);
+    const st=new THREE.Mesh(new THREE.BoxGeometry(.04,.3,.04),m); st.position.y=-.06; g.add(st); const t=new THREE.Mesh(new THREE.BoxGeometry(.08,.04,.04),m); t.position.set(.04,-.17,0); g.add(t); g.add(glowSprite('#cfe8d6',.9,.35)); return g; }
   if(icon==='heart')return heartRelic(); if(icon==='mark'||icon==='cache')return markRelic(); if(icon==='wing')return wingRelic(); if(icon==='ledger')return ledgerRelic();
   return genericRelic(icon==='charm'?'#c8a24c':icon==='lens'||icon==='jar'?'#bfe4ee':'#b48cff');
 }
@@ -272,6 +280,10 @@ function buildSpots(){
   { const x=150, z=-30, g=H(x,z), top=g+1.85;
     addPerch({x,z,r:.75,top}); pillar(root,x,z,g-.3,top,.75,{flare:1.4});
     SPOTS.push({id:'needle',name:'The headland needle',how:'A stone needle on the headland’s north side. Run at it and double jump onto the top.',pos:V(x,top+.55,z),from:V(x+2.5,g,z)}); }
+  /* 13–14. Companion shards (companions.js, COMPANIONS.md §4): Maren's sea-chest in the cottage (Ember fetches the key) and the
+     raven's nest on the north cliff (Corvin brings it back). No glint to walk into: G.progress.grantShard(id) hands them over. */
+  for(const e of (G.companions&&G.companions.shardSpots)||[])
+    SPOTS.push({id:e.id,name:e.name,how:e.how,pos:e.pos.clone(),from:(e.from||e.pos).clone(),ext:true});
   // the shard objects
   for(const s of SPOTS){ s.mesh=shardMesh(); s.mesh.position.copy(s.pos); root.add(s.mesh); s.t=Math.random()*10; s.chimeT=2+Math.random()*3; }
 
@@ -476,6 +488,7 @@ function updateWorld(dt){
   const p=P(); if(!p||!p.pos)return;
   const t=G.time, play=isPlay(), inCave=!!(G.cave&&G.cave.inside);
   for(const s of SPOTS){
+    if(s.ext){ if(s.mesh.visible)s.mesh.visible=false; continue; }
     const got=!!S.shards[s.id], avail=!got&&(!s.when||s.when());
     const dx=s.pos.x-p.pos.x, dz=s.pos.z-p.pos.z, d=Math.hypot(dx,dz);
     s.mesh.visible=avail&&d<220&&(!!s.cave===inCave);
@@ -506,7 +519,7 @@ function buildBeams(){
   const geo=new THREE.CylinderGeometry(.12,.12,60,6,1,true);
   const mk=(pos,hex,done)=>{ const m=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({color:hex,transparent:true,opacity:.55,depthWrite:false,blending:THREE.AdditiveBlending}));
     m.position.set(pos.x,pos.y+30,pos.z); m.userData.done=done; m.visible=false; root.add(m); beams.push(m); };
-  for(const s of SPOTS)mk(s.pos,0xb48cff,()=>!!S.shards[s.id]);
+  for(const s of SPOTS)if(!s.ext)mk(s.pos,0xb48cff,()=>!!S.shards[s.id]);
   for(const c of CACHES)mk(c.pos,0xffc860,()=>!!S.caches[c.id]);
 }
 
@@ -684,11 +697,11 @@ function closeJournal(){
   journalFrom=null;
 }
 function journalData(){
-  const negs=Math.min(8,Math.max(S.freed,G.state.freed|0));
+  const negTotal=(G.creatures&&G.creatures.total)||9, negs=Math.min(negTotal,Math.max(S.freed,G.state.freed|0));
   const bl=(G.blights&&G.blights.length?G.blights:[{id:'grove',name:'Blighted Grove'},{id:'tidepool',name:'Black Tide Pool'},{id:'well',name:'Choked Well'}]);
   const F=G.flow||{};
   return {hearts:maxHp()/2, shardsInto:shardN()%SHARDS_PER_HEART, shards:shardN(), shardTotal:SPOTS.length||12, wings:wingN(), marks:marksHeld(), earned:marksEarned(), spent:S.spent,
-    upgrades:UPGRADES.filter(u=>owns(u.id)).map(u=>u.id), caches:count(S.caches), cacheTotal:CACHES.length||8, freed:negs,
+    upgrades:UPGRADES.filter(u=>owns(u.id)).map(u=>u.id), caches:count(S.caches), cacheTotal:CACHES.length||8, freed:negs, freedTotal:negTotal,
     blights:bl.map(b=>({id:b.id,name:b.name,cured:!!b.cured})),
     bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)}]};
 }
@@ -703,7 +716,7 @@ function renderJournal(){
     <div class="jr-cell"><span class="k">Keeper’s Marks</span><span class="v">${ICON.mark}${d.marks}</span><span class="s">${d.earned} found · ${d.spent} spent</span></div>
     <div class="jr-cell"><span class="k">Heart Shards</span><span class="v">${ICON.shard}${d.shards} <small style="font-size:16px;color:#6c5a5f">/ ${d.shardTotal}</small></span><span class="s">found on the island</span></div>
     <div class="jr-cell"><span class="k">Keeper’s Caches</span><span class="v">${ICON.cache}${d.caches} <small style="font-size:16px;color:#6c5a5f">/ ${d.cacheTotal}</small></span><span class="s">opened</span></div>
-    <div class="jr-cell"><span class="k">Negatives freed</span><span class="v">${ICON.wing}${d.freed} <small style="font-size:16px;color:#6c5a5f">/ 8</small></span><span class="s">every two lend a wing</span></div>
+    <div class="jr-cell"><span class="k">Negatives freed</span><span class="v">${ICON.wing}${d.freed} <small style="font-size:16px;color:#6c5a5f">/ ${d.freedTotal}</small></span><span class="s">every two lend a wing</span></div>
   </div>
   <span class="eyebrow sec">Tempered</span><div class="jr-list">${UPGRADES.map(u=>`<span class="${owns(u.id)?'on':''}">${ICON[u.id]}${esc(u.name)}</span>`).join('')}</div>
   <span class="eyebrow sec">Blights cured</span><div class="jr-list">${d.blights.map(b=>`<span class="${b.cured?'on':''}">${b.cured?check:''}${esc(b.name)}</span>`).join('')}</div>
@@ -771,6 +784,8 @@ const API=G.progress={
   },
   summary(){ const p=P(); return {hp:p.hp,maxHp:p.maxHp,shards:shardN(),marks:marksHeld(),wings:wingN(),upgrades:Object.keys(S.upgrades),caches:count(S.caches)}; },
   liftPose:LIFT_POSE, perches, get drops(){ return drops; }, endReward(){ let n=0; while((reward.active||queue.length)&&n++<64){ if(!reward.active)startReward(queue.shift()); endLift(); hideCard(); reward.active=null; } }, // tests: finish every queued moment now
+  /** companions.js: a shard that is handed to you (the sea-chest, the raven's nest) — the usual "get item" moment */
+  grantShard(id,o){ const s=SPOTS.find(x=>x.id===id); if(!s||S.shards[id])return false; collectShard(s,o||{}); autosave(); return true; },
   debug:{collect:id=>{ const s=SPOTS.find(x=>x.id===id); if(s)collectShard(s); }, open:id=>{ const c=CACHES.find(x=>x.id===id); if(c)openCache(c); },
     reset(){ for(const k of ['shards','caches','hearts','marks','upgrades','said'])S[k]={}; S.spent=0; S.freed=0; heldHp=0; queue.length=0; pend.length=0; for(const k in drops){ root.remove(drops[k].mesh); delete drops[k]; } for(const c of CACHES)c.open=null; apply(); },
     get queue(){ return queue; }, get pend(){ return pend; }, reward}

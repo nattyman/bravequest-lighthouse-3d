@@ -368,7 +368,10 @@ function preyList(){
     out.push({key:hb,hb,center:hb._swarmCenter,alive:()=>!(hb.alive&&!hb.alive()),r:(hb.radius||.6)+1.4,
       range:hb.mothRange||7,want:hb.mothWant||0,dmg:hb.mothDamage==null?1:hb.mothDamage,
       lure:()=>typeof hb.mothPrey==='function'?!!hb.mothPrey():!!hb.mothPrey}); }
-  for(const n of negatives){ if(n.dead||n.dying&&n.fade<.3)continue; out.push({key:n,neg:n,center:n.center,alive:()=>!n.dead,r:1.9}); }
+  // negatives: the swarm frees them in Act 1 (Maren's lantern); in the core loop a baited lantern draws it to them too.
+  // n.lure (companions.js' raven) can say no: the raven has to be weakened first.
+  for(const n of negatives){ if(n.dead||n.dying&&n.fade<.3)continue; if(n.lure&&!n.lure())continue;
+    out.push({key:n,neg:n,center:n.center,alive:()=>!n.dead,r:n.preyR||1.9,lure:()=>!!(G.loop&&G.loop.active&&baited())}); }
   return out;
 }
 let preys=[];
@@ -838,6 +841,8 @@ function spawnFreed(n){
   // the real animal has been fading in underneath; hand it over to the freed list
   const c=n.real||buildRealUnder(n);
   c.mats.forEach(m=>m.opacity=1); c.outlines.forEach(o=>o.visible=true); c.root.visible=true;
+  // COMPANIONS HOOK (companions.js): the first freed fox stays with you instead of running home
+  if(API.claimFreed){ let k=false; try{ k=API.claimFreed(n,c); }catch(e){ console.error('claimFreed',e); } if(k){ G.scene.remove(c.root); return; } }
   const pp=G.player&&G.player.pos||n.pos;
   let hd=Math.atan2(n.pos.x-pp.x,n.pos.z-pp.z); if(!isFinite(hd))hd=n.heading;
   freedAnimals.push({c,mats:c.mats,outlines:c.outlines,pos:n.pos.clone(),heading:n.heading,want:hd,t:0,phase:0,kind:n.kind,vy:0});
@@ -860,6 +865,7 @@ function finishNeg(n){
 /* save/load: silently mark negatives as already freed (no burst, no event) */
 function restoreFreed(idx){
   (idx||[]).forEach(i=>{ const n=negatives[i]; if(!n||n.dead)return;
+    if(n.custom){ n.dead=true; freedCount++; API.freed=freedCount; if(n.restore)n.restore(); return; }
     n.dead=true; n.c.root.visible=false; freedCount++; API.freed=freedCount;
     for(const k in n.em)G.ink&&G.ink.remove&&G.ink.remove(n.em[k]);
     if(n.pool&&G.ink&&G.ink.remove)G.ink.remove(n.pool); });
@@ -880,7 +886,7 @@ function updateNegatives(dt){
   const pp=G.player&&G.player.pos, palive=G.player&&G.player.alive!==false;
   _ref.copy(inkRef());
   for(const n of negatives){
-    if(n.dead)continue;
+    if(n.dead||n.custom)continue;   // custom negatives (companions.js' raven) run themselves
     n.center.set(n.pos.x,n.pos.y+n.hgt*.6,n.pos.z);
     const S=KINDS[n.kind], c=n.c;
     const near=U.dist2(n.pos,_ref)<INK_FAR;
@@ -1469,7 +1475,15 @@ G.on('lamp:cured',()=>{
 });
 
 /* ---------------------------------------------------------------- API + system */
+/* a negative another module runs itself (companions.js' raven): {custom:true, kind, pos, center, bite, hits, dead, dying, fade, lure()} —
+   it joins the list (the swarm hunts it, saves keep its index) and calls freeCustom(n) when its black has boiled off */
+function addCustom(n){ n.custom=true; n.i=negatives.length; n.bite=n.bite||0; n.hits=n.hits||0; n.dead=!!n.dead; n.dying=!!n.dying; n.fade=n.fade==null?1:n.fade;
+  negatives.push(n); API.total=negatives.length; return n; }
+function freeCustom(n){ if(n.dead)return; n.dead=true; freedCount++; API.freed=freedCount; ashBurst(n.center,30,1.2);
+  G.emit('negative:freed',{kind:n.kind,pos:n.pos.clone(),freed:freedCount,total:negatives.length});
+  for(const m of moths) if(m.tgt==='hunt'&&m.prey&&m.prey.key===n)toLanternOrHome(m); }
 const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negatives,moths,patches,get halloran(){return hal;},
+  addCustom, freeCustom, claimFreed:null, buildAnimal:(k,m)=>buildAnimal(k,m), animAnimal, animalGeos:k=>animalGeos(k), animalSpec:k=>animalSpec(k), KINDS, negInk:o=>negInk(o),
   toPatch, toRoost, setRoost, inCaveRegion, get roost(){return roost;}, clingR:null, N_ROOST,
   lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
   ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),halloranAt:(p,yaw)=>halloranAt(p,yaw),

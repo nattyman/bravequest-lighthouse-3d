@@ -40,9 +40,20 @@ second becomes the warm beam, and the fog answers with the finale boss (the Gloa
 | Lock on | Q | Lock | LT |
 | Lantern shutter | F | Shut | RB |
 | Drink a Mender’s Draught | H | bottle button | D-pad up |
+| Ember: go (at a fox spot) / come to heel | R | fox button | D-pad left |
+| Corvin: go (at a raven spot) / scout | T | raven button | D-pad right |
 | Pause | Esc | pause button | Menu |
 
 Jump again in the air for a **double jump** (a moth-wing flutter of the Traveler's Cloak; once per jump, needs the cloak). Holding jump still glides afterwards. Roll in the air to **dive**. While you hold strike to charge the staff, the camera moves over your shoulder and a violet reticle appears: aim with the camera (mouse, right stick, right-thumb drag) and release to send an ether bolt to the reticle (a full charge sends a stronger bolt; aim at the ground close by for the spin attack instead). While locked on, the bolt seeks the target.
+
+### Companions
+
+**Ember**, the first fox negative you free, stays with you; **Corvin** is a raven negative roosting on the standing stones (hit it
+once or twice while it perches to tire it, then let the swarm take it — Act 1 with Maren's lantern, or the core loop with a baited
+lantern). Both follow you everywhere, can't be hurt, help a little in fights, and solve six optional detours marked in the world
+(fox spots: a low gap with scratch marks and red fur; raven spots: a high perch with white streaks and a dangling black feather).
+Away from a spot, R calls Ember to heel and T sends Corvin scouting (map pins within 40 m, 45 s cooldown). Names live in
+`COMP_NAMES` in `js/companions.js`. Test: `python3 test/companions_e2e.py`.
 
 ### Mender’s Draught
 
@@ -79,6 +90,7 @@ Every file in `js/` is one plain-script module talking to the others through `wi
 | `audio.js` | adaptive score from the Bravequest Theme stems, ambience, sound effects |
 | `fog.js`, `alchemy.js`, `moths.js` | the core loop (see `LOOP.md`) |
 | `potions.js` | Mender’s Draught: the carried healing potion, drinking, starter bottles |
+| `companions.js` | Ember the fox and Corvin the raven: following, commands, the six companion spots, scouting, the raven negative (see `COMPANIONS.md`) |
 
 Assets: `audio/` holds the processed theme stems, `sfx/` the processed sound effects (originals live outside the repo). `design/` holds the design doc and style guides.
 
