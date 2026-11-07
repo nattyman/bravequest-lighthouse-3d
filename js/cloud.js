@@ -65,7 +65,7 @@ async function put(){
   if(raw.length>DOC_LIMIT){ return; }                      // too big for one document: stay local
   S.busy=true; S.dirty=false; clearTimeout(S.timer); S.timer=0; S.lastPut=Date.now();
   try{
-    await S.ref.set({v:1,at:d.at,objective:String(d.objective||'').slice(0,120),save:raw});
+    await (S.inflight=S.ref.set({v:1,at:d.at,objective:String(d.objective||'').slice(0,120),save:raw}));
     S.remoteAt=d.at; G.emit('cloud:saved',{at:d.at});
   }catch(e){
     const c=e&&e.code;
@@ -81,7 +81,12 @@ function schedule(){
   const ms=Math.max(0,GAP-(Date.now()-S.lastPut));
   S.timer=setTimeout(()=>{ S.timer=0; put(); },ms);
 }
-function flush(){ if(S.state!=='on')return Promise.resolve(); clearTimeout(S.timer); S.timer=0; return put(); }
+/* waits for an upload already in flight, then sends whatever is newer than it */
+async function flush(){
+  if(S.state!=='on')return; clearTimeout(S.timer); S.timer=0;
+  if(S.busy&&S.inflight){ try{ await S.inflight; }catch(_){} clearTimeout(S.timer); S.timer=0; }
+  return put();
+}
 
 G.cloud={ get state(){ return S.state; }, flush };
 G.on('save:written',schedule);
