@@ -274,7 +274,7 @@ const cw=(x,y,z)=>CAVE&&CAVE.toWorld?CAVE.toWorld(x,y,z):V(x,y+60,z+800);
 const uw=(x,y,z)=>UC&&UC.toWorld?UC.toWorld(x,y,z):V(x,y+60,z-800);
 const loopOn=()=>!!(G.loop&&G.loop.active);
 const COT={x:158,z:24,y:42};
-const NEST={x:165,y:35.4,z:-47.15};
+const NEST={x:165,y:39.3,z:-47.3};
 const SPOTS=[
   {id:'log',who:'ember',place:'island',name:'The hollow log',prompt:'Send Ember through the gap',
     c:V(25,H(25,7),7),yaw:.5},
@@ -383,7 +383,7 @@ function buildIsland(){
 
   /* 6. the raven's nest on a ledge below the north cliff */
   { const n=NEST, list=[];
-    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#6f6b66',(x,y,z,c)=>{ c.lerp(U.col('#56603e'),smooth(.3,.9,y)*.7); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.38,n.z+.35,0,.4,0,1.35,.42,1.15)});
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#6f6b66',(x,y,z,c)=>{ c.lerp(U.col('#56603e'),smooth(.3,.9,y)*.7); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.38,n.z+.75,0,.4,0,1.35,.42,1.7)});
     for(let i=0;i<22;i++){ const a=i/22*TAU, l=.32+(i%3)*.06; list.push({geo:cyl(.012,.01,l,i%2?'#5a4632':'#776048',4),m:M4(n.x+Math.cos(a)*.3,n.y+.07+(i%3)*.03,n.z+Math.sin(a)*.3,PI/2,a+PI/2+.35,(i%5-2)*.12)}); }
     list.push({geo:ell(.3,.07,.3,'#3c3024'),m:M4(n.x,n.y+.04,n.z)});
     streaks(list,V(n.x-.1,n.y-.75,n.z-.72),.1,2.6,6);
@@ -503,6 +503,7 @@ function emberStep(dt){
   const alert=bossFight()||hunted(15);
   let want=null, wantSpeed=0, face=null;
   // --- modes
+  if(E.mode==='away'&&(lhInside(pp)||finale())){ E.mode='wait'; E.opa=0; E.pos.set(1e6,0,0); }
   if(E.mode==='away'){ E.awayT+=dt; E.fade=0;
     if(E.opa<=.01&&E.awayT>.4&&!lhInside(pp)&&!finale()&&p.alive!==false&&p.grounded!==false)emberReappear(); }
   else if(lhInside(pp)||finale()){ // wait outside: by the tower door, or out of the fight by the cottage

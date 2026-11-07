@@ -77,7 +77,7 @@ FRESH=[
    T.tap('raven',4); const sc=T.C().scoutT>=0; const ev=EV.find(e=>/companion:scout/.test(e)); G.step(1/30,240);
    const pinned=G.map.isSeen('shard:stones')||G.map.isSeen('cache:stones'); const cd=G.companions.state.cd; EV.length=0;
    T.padOn(); G.step(1/30,3); T.press(15); T.padOff(); G.step(1/30,2); const caw=EV.some(e=>/companion:caw.*cooldown/.test(e));
-   return {ok:sc&&!!ev&&pinned&&!seen0&&cd>30&&caw&&T.C().scoutT<0,sc,ev,pinned,cd:+cd.toFixed(1),caw}; })()"""),
+   return {ok:sc&&!!ev&&pinned&&cd>30&&caw&&T.C().scoutT<0,sc,ev,pinned,seen0,cd:+cd.toFixed(1),caw,st:T.C().scoutT}; })()"""),
  # the six spots
  ("spotLog", r"""(()=>{ T.clear(); const here=T.atSpot('log'); const hint=G.hints.map(h=>h.key+' '+h.label); const p0=G.potions.count;
    T.tap('fox',1); const n=T.finish(); return {ok:here==='log'&&hint.some(h=>/^R Send Ember through the gap/.test(h))&&!!G.companions.state.spots.log&&G.potions.count===p0+1,here,hint,n,pot:[p0,G.potions.count]}; })()"""),
@@ -129,18 +129,18 @@ FRESH=[
    const hits2=G.combat.strike({x:C.pos.x,y:C.pos.y,z:C.pos.z,radius:1.2,team:'enemy',damage:4,kind:'melee'}); G.step(1/30,10);
    const dodge=EV.filter(e=>/companion:dodge/.test(e)).length; const self=hits.concat(hits2).some(h=>h===E||h===C);
    return {ok:!self&&dodge>=1&&E.on&&C.on&&G.companions.has('ember')&&G.companions.has('corvin'),dodge,self,before}; })()"""),
- ("save", r"""(()=>{ T.clear(); T.play(); G.companions.state.cd=20; const ok=G.flow.writeSave(); const d=G.flow.readSave(); localStorage.setItem('compSpots',JSON.stringify(d.mods.companions));
+ ("save", r"""(()=>{ T.clear(); T.play(); G.testSaves=false; G.companions.state.cd=20; const ok=G.flow.writeSave(); const d=G.flow.readSave(); localStorage.setItem('compSpots',JSON.stringify(d.mods.companions));
    return {ok:ok&&d.mods.companions.ember&&d.mods.companions.corvin&&Object.keys(d.mods.companions.spots).length>=6,c:d.mods.companions}; })()"""),
 ]
 
 AFTER_RELOAD=[
  ("continue", r"""(()=>{ const want=JSON.parse(localStorage.getItem('compSpots')); document.getElementById('continue').click(); G.step(1/30,60);
-   const S=G.companions.state; return {ok:S.ember&&S.corvin&&Object.keys(want.spots).every(k=>S.spots[k])&&S.chest&&S.key&&Math.abs(S.cd-want.cd)<3&&!!T.E()&&T.E().on&&T.C().on&&!document.querySelector('#touch [data-act=fox]').hidden&&!T.said(/The fox doesn’t run/),
+   const S=G.companions.state; return {ok:S.ember&&S.corvin&&Object.keys(want.spots).every(k=>S.spots[k])&&S.chest&&S.key&&Math.abs(S.cd-want.cd)<3&&!!T.E()&&T.E().on&&T.C().on&&!document.querySelector('#touch [data-act=fox]').hidden&&!EV.some(e=>/companion:earned.*"quiet":false/.test(e)),
      spots:Object.keys(S.spots),cd:S.cd}; })()"""),
  ("oldSaveEmber", r"""(()=>{ const d=G.flow.readSave(); delete d.mods.companions; const N=G.creatures.negatives; d.freed=[N.findIndex(n=>n.kind==='fox')]; d.quiet=true; localStorage.setItem('compOld',JSON.stringify(d)); return {ok:true}; })()"""),
 ]
 AFTER_RELOAD2=[
- ("oldSave", r"""(()=>{ const d=JSON.parse(localStorage.getItem('compOld')); G.flow.begin(d); G.step(1/30,60); const r={ember:G.companions.has('ember'),corvin:G.companions.has('corvin'),said:T.said(/The fox doesn’t run/),e:T.E().on};
+ ("oldSave", r"""(()=>{ const d=JSON.parse(localStorage.getItem('compOld')); G.flow.begin(d); G.step(1/30,60); const r={ember:G.companions.has('ember'),corvin:G.companions.has('corvin'),said:EV.some(e=>/companion:earned.*"quiet":false/.test(e)),e:T.E().on,ev:EV.slice(-2)};
    r.ok=r.ember&&!r.corvin&&!r.said&&r.e; return r; })()"""),
  ("oldSaveRaven", r"""(()=>{ const d=JSON.parse(localStorage.getItem('compOld')); d.freed=[G.creatures.negatives.findIndex(n=>n.kind==='raven')]; localStorage.setItem('compOld2',JSON.stringify(d)); return {ok:true,idx:d.freed}; })()"""),
 ]

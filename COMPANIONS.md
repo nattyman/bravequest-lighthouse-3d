@@ -142,7 +142,7 @@ Report back to Heath on: the names, where the raven is freed and when, the shard
 | cave crack (Ember) | the sea cave's Mouth, west wall (cave-local −6.6, 1.5, −12.2) | a rope ladder to a ledge: a vial of ether (12) + a tide pearl |
 | chapel bell (Corvin) | the Undercroft chapel, on a beam over the nave (local −20.2, −0.4, −48) | an echo of Wren; a chapel candle lights itself (+5 ether) |
 | dead tree (Corvin) | moor road, (4, ·, 9) | the bundle drops: 2 ichor, a brine crystal, a glowcap |
-| north-cliff nest (Corvin) | a ledge under the headland's north cliff, (165, 35.4, −47.15) | **Heart Shard 14** |
+| north-cliff nest (Corvin) | a ledge under the headland's north cliff, (165, 39.3, −47.3) | **Heart Shard 14** |
 
 - **Fights**: Ember's nip (6 s) runs to the nearest non-boss monster within 8 m that is winding up and breaks the wind-up
   (`G.monsters.interrupt`: the same as a light stagger, no damage). Corvin's dive (10 s) hits a non-boss monster chasing or

@@ -91,7 +91,7 @@ Low tide: one ≈75 s window per 300 s cycle, sea level −1.2 m (the sandbar un
 | 11 | `west` | rock at the far west tip, past the forest (−231, 11.0, −4); ground 10.5 | single jump | ✓ |
 | 12 | `needle` | stone needle on the headland's north side (150, 43.85, −30); ground 42 | **double jump** from the grass | single fails · DJ ✓ |
 | 13 | `chest` | Maren's sea-chest by the cottage's south wall (157.25, 42.24, 26.28) | **Ember** fetches the spare key through the grate under the cottage's south side; open the chest | companions_e2e ✓ |
-| 14 | `nest` | an old raven's nest on a ledge under the headland's north cliff (165, 35.4, −47.15) | **Corvin** brings it up (send him from the lip above, (165, 42, −44.4)) | companions_e2e ✓ |
+| 14 | `nest` | an old raven's nest on a ledge under the headland's north cliff (165, 39.3, −47.3), 3 m under the lip | **Corvin** brings it up (send him from the lip above, (165, 42, −44.4)) | companions_e2e ✓ |
 Each shard glints (violet sprite + twinkle, glow grows with distance so it reads from far off) and chimes softly within 12 m.
 The two companion shards (13, 14) have no glint to walk into: `G.progress.grantShard(id)` hands them over (the nest shows a faint glow).
 The lighthouse gallery was dropped as a spot: the lamp-room glass is a wall (lighthouse.js), so it isn't reachable.
