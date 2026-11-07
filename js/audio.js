@@ -693,6 +693,18 @@ const SFX_LIST={
   'hound_windup-1':{peak:0.385}, 'hound_windup-2':{peak:0.575},   // crouch before the dash
   'hound_bite-1':{peak:0.275}, 'hound_bite-2':{peak:0.165},           // lunging snarl
   'hound_hurt-1':{peak:0.06}, 'hound_hurt-2':{peak:0.065},
+  // the Hollow Stag (cut from Heath's boss takes, 2026-11-07)
+  'stag_intro-1':{peak:1.825}, 'stag_intro-2':{peak:2.765},   // bellow as it rises from the ink
+  'stag_summon':{peak:2.615},   // calling its hounds
+  'stag_windup-1':{peak:0.455}, 'stag_windup-2':{peak:0.5}, 'stag_windup-3':{peak:0.335},   // snort before a charge, sweep or stomp
+  'stag_hurt-1':{peak:0.37}, 'stag_hurt-2':{peak:0.39},   // grunt when struck
+  'stag_sweep-1':{peak:0.205}, 'stag_sweep-2':{peak:0.085},   // antler sweep
+  'stag_impact-1':{peak:0.365}, 'stag_impact-2':{peak:0.33}, 'stag_impact-3':{peak:0.38}, 'stag_impact-4':{peak:0.03},   // stomp landing / charge crash
+  'stag_charge-1':{peak:0.57}, 'stag_charge-2':{peak:1.61},   // the charge
+  'stag_death-1':{peak:0.765}, 'stag_death-2':{peak:1.52},   // death
+  // magical reveal (the reward moment, a freed negative, the chest) and victory (bosses, a new heart)
+  'reward_sting-1':{peak:0.04}, 'reward_sting-2':{peak:0.495}, 'reward_sting-3':{peak:0.275}, 'reward_sting-4':{peak:0.12},   // sparkling reveal
+  'victory-1':{peak:1.085}, 'victory-2':{peak:2.105}, 'victory-3':{peak:2.175},   // orchestral victory
   hound_flee:{peak:0.195}, hound_death:{peak:0.525}
 };
 const sfxBuf={}, sfxGroups={};
@@ -717,17 +729,18 @@ function decodeSfx(stem){
 function decodeAllSfx(){ for(const stem in sfxBuf)decodeSfx(stem); }
 function pickSfx(name){ const g=(sfxGroups[name]||[]).filter(st=>sfxBuf[st]&&sfxBuf[st].buf); return g.length?g[(Math.random()*g.length)|0]:null; }
 const hasSfx=name=>!!pickSfx(name);
-/** play a recorded sound. o: {pos, ref, gain, offset (s into the file), peakAt, rate, vary, dest} -> {src,gain,stem} or null
+/** play a recorded sound. o: {pos, ref, gain, offset (s into the file), peakAt, rate, vary, dest, when (ctx time), duck (music level 0..1 while it plays)} -> {src,gain,stem} or null
     peakAt (s): start far enough in that this variant's own `peak` lands peakAt seconds from now (overrides offset) */
 const sfxLog=[];   // last recordings played (test hook: G.audio.sfx.log)
 function playSfx(name,o={}){
   const stem=pickSfx(name); if(!ctx||!stem)return null; const e=sfxBuf[stem];
-  const t=ctx.currentTime, src=ctx.createBufferSource(), g=ctx.createGain();
+  const t=Math.max(ctx.currentTime,o.when||0), src=ctx.createBufferSource(), g=ctx.createGain();
   src.buffer=e.buf; src.playbackRate.value=(o.rate||1)*(1+(Math.random()-.5)*(o.vary==null?.08:o.vary));
   const offset=o.peakAt!=null?Math.max(0,((SFX_LIST[stem]||{}).peak||0)-o.peakAt):(o.offset||0);
   const off=U.clamp(offset+e.start,0,Math.max(0,e.buf.duration-.05)), peak=o.gain==null?1:o.gain;
   g.gain.setValueAtTime(0,t); g.gain.linearRampToValueAtTime(peak,t+(offset>0?.04:.006));
   src.connect(g); g.connect(o.dest||at(o.pos,o.ref||4)); src.start(t,off);
+  if(o.duck)recDip(t,o.duck,Math.max(.5,e.buf.duration-off-1.2));
   sfxLog.push(stem); if(sfxLog.length>40)sfxLog.shift();
   return {src,gain:g,stem,offset};
 }
@@ -817,6 +830,28 @@ function hollowHurt(m,swarm){
   if(!swarm)S.shriek(t,{dest:at(hp,4),f:1000,g:.12});              // synth fallback
 }
 let lastHurtSeen=new WeakMap();
+/* The Hollow Stag: recordings, with the old synth calls as fallback. Its attacks wind up in
+   chargeWind / sweepWind / stompWind (monsters.js), so each gets a snort; the stomp lands on entering
+   'stomp', a charge ends in a crash ('recover' after a hit, 'staggered' after the wall). */
+const stagT={charge:null,hurt:0};
+function stagSound(m,s,prev,t,out){
+  const hp=new THREE.Vector3(m.pos.x,m.pos.y+2.6,m.pos.z), o=(g,x)=>Object.assign({pos:hp,ref:12,gain:g,vary:.04},x||{});
+  if(s==='intro'){ if(!playSfx('stag_intro',o(1))){ S.rumble(t,{dest:out,g:.7,dur:2.6,f0:60,f1:28,lp:340}); S.moan(t+.2,{dest:out,f:95,dur:2.2,g:.25}); } }
+  else if(s==='chargeWind'||s==='sweepWind'||s==='stompWind'){
+    if(!playSfx('stag_windup',o(s==='sweepWind'?.8:1)))S.growl(t,{dest:out,f:s==='chargeWind'?46:52,dur:.8,g:.32,lp:400});
+    if(s==='chargeWind')for(let i=0;i<3;i++)S.thud(t+.15+i*.26,{dest:out,g:.35,f0:90,f1:40,dur:.2});   // hooves pawing the ground
+  }
+  else if(s==='charge'){ const h=playSfx('stag_charge',o(1)); if(h)stagT.charge=h; else S.whoosh(t,{dest:out,f0:150,f1:600,dur:.9,g:.4}); }
+  else if(s==='sweep'){ if(!playSfx('stag_sweep',o(1,{vary:.08})))S.whoosh(t,{dest:out,f0:300,f1:1600,dur:.5,g:.45}); }
+  else if(s==='stomp'){ if(!playSfx('stag_impact',o(1.1,{peakAt:.02,vary:.06}))){ S.rumble(t,{dest:out,g:.85,dur:1.1,f0:70,f1:30,a:.02}); S.thud(t,{dest:out,g:.9,f0:110,f1:30,dur:.5}); } }
+  else if((s==='recover'||s==='staggered')&&prev==='charge'){
+    if(stagT.charge){ fadeSfx(stagT.charge,t,.12); stagT.charge=null; }
+    if(!playSfx('stag_impact',o(s==='staggered'?1.2:.9,{peakAt:.02,vary:.06})))S.thud(t,{dest:out,g:.7,f0:90,f1:35,dur:.4}); }
+  else if(s==='summon'){ if(!playSfx('stag_summon',o(1))){ S.howl(t,{dest:out,g:.16,dur:2}); S.hiss(t,{dest:out,dur:1.4,f0:200,f1:2000,g:.25}); } }
+  else if(s==='hurt')stagHurt(m);
+}
+function stagHurt(m){ const t=ctx.currentTime; if(t-stagT.hurt<1.1)return; stagT.hurt=t;
+  if(!playSfx('stag_hurt',{pos:new THREE.Vector3(m.pos.x,m.pos.y+2.6,m.pos.z),ref:10,gain:.9,vary:.08}))S.shriek(t,{dest:at(m.pos,10),f:420,g:.18}); }
 /* Shade Hound: recordings, with the old synth calls as the fallback if a file is missing.
    Hounds come in pairs, so a howl just after another is skipped (one howl per pair), and the
    growl as one circles back in is occasional, so a fight isn't wall-to-wall snarling. */
@@ -846,20 +881,10 @@ function updateMonsterSounds(){
     if(m.kind==='nameless'){ namelessSnd(m); continue; }
     // player hits arrive via the 'strike' event (which records lastHit); any other hit is the moth swarm (creatures.js calls hb.hit directly)
     if(m.kind==='hollow'&&m.lastHit!=null&&lastHurtSeen.get(m)!==m.lastHit){ lastHurtSeen.set(m,m.lastHit); if(!m.dying)hollowHurt(m,true); }
-    const prev=mStates.get(m); const s=m.state; if(prev===s)continue; mStates.set(m,s); if(prev===undefined)continue;
+    const prev=mStates.get(m); const s=m.state; if(prev===s)continue; mStates.set(m,s); if(prev===undefined&&!(m.boss&&s==='intro'))continue;   // a boss is born in 'intro': its entrance must still sound
     const d=Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z); if(d>45)continue;
     const out=at(new THREE.Vector3(m.pos.x,m.pos.y+1.2,m.pos.z),m.boss?10:4);
-    if(m.boss){
-      if(s==='intro'){ S.rumble(t,{dest:out,g:.7,dur:2.6,f0:60,f1:28,lp:340}); S.moan(t+.2,{dest:out,f:95,dur:2.2,g:.25}); }
-      else if(s==='windup'){ if(m.atk==='charge'){ for(let i=0;i<3;i++)S.thud(t+i*.28,{dest:out,g:.45,f0:90,f1:40,dur:.2}); S.growl(t,{dest:out,f:46,dur:1,g:.4,lp:380}); } else S.growl(t,{dest:out,f:52,dur:.8,g:.32,lp:420}); }
-      else if(s==='charge'){ S.whoosh(t,{dest:out,f0:150,f1:600,dur:.9,g:.4}); }
-      else if(s==='sweep'){ S.whoosh(t,{dest:out,f0:300,f1:1600,dur:.5,g:.45}); }
-      else if(s==='stomp'){ S.rumble(t+.45,{dest:out,g:.85,dur:1.1,f0:70,f1:30,a:.02}); S.thud(t+.45,{dest:out,g:.9,f0:110,f1:30,dur:.5}); }
-      else if(s==='summon'){ S.howl(t,{dest:out,g:.16,dur:2}); S.hiss(t,{dest:out,dur:1.4,f0:200,f1:2000,g:.25}); }
-      else if(s==='hurt'){ S.shriek(t,{dest:out,f:420,g:.18}); }
-      else if(s==='recover'&&prev==='charge'){ S.thud(t,{dest:out,g:.7,f0:90,f1:35,dur:.4}); }
-      continue;
-    }
+    if(m.boss){ stagSound(m,s,prev,t,out); continue; }
     if(m.kind==='hollow'){
       const hp=new THREE.Vector3(m.pos.x,m.pos.y+1.8,m.pos.z), PR=(G.monsters.params||{}).hollow||{};
       if(s==='chase'&&(prev==='idle'||prev==='return')){ if(!playSfx('hollow_notice',{pos:hp,ref:6,gain:.9}))S.moan(t,{dest:out,f:170+Math.random()*40,dur:1.6,g:.14}); }
@@ -891,7 +916,8 @@ function wire(){
     if(e&&e.spin){ S.whoosh(t,{f0:300,f1:2600,dur:.6,g:.38}); S.chime(t+.1,[74,81,86],{g:.07,step:.06,decay:.8}); return; }
     const c=(e&&e.combo)||1; S.whoosh(t,{f0:c===3?280:420,f1:c===3?1800:2600,dur:c===3?.36:.24,g:c===3?.36:.28}); });
   G.on('strike',e=>{ if(!ctx||!e||e.team!=='player')return; const t=ctx.currentTime;
-    for(const h of e.hits||[]){ const m=h.monster; if(m&&m.kind==='hollow'&&!m.dying){ lastHurtSeen.set(m,m.lastHit); hollowHurt(m,e.kind==='swarm'); } }
+    for(const h of e.hits||[]){ const m=h.monster; if(m&&m.kind==='hollow'&&!m.dying){ lastHurtSeen.set(m,m.lastHit); hollowHurt(m,e.kind==='swarm'); }
+      else if(m&&m.boss&&m.kind==='stag'&&!m.dying)stagHurt(m); }
     const hb=e.hits&&e.hits[0]; const out=hb?at(new THREE.Vector3(hb.pos.x,hb.pos.y+1,hb.pos.z),5):sfxBus;
     if(e.kind==='swarm'){ S.hiss(t,{dest:out,dur:.25,f0:2000,f1:4500,g:.06}); return; }
     S.thud(t,{dest:out,g:.5,f0:150,f1:55,dur:.22,nf:2600}); S.hiss(t,{dest:out,dur:.12,f0:1800,f1:900,g:.12,Q:1});
@@ -923,12 +949,17 @@ function wire(){
     // the motif as a low brass call over the rumble (D minor)
     phrase('horn',synthBus,t+1.2,MOTIF,{tr:-12,g:.09,unit:PULSE*1.2}); });
   G.on('monster:killed',e=>{ if(!ctx||!e)return; const t=ctx.currentTime; const out=at(new THREE.Vector3(e.pos.x,e.pos.y+1,e.pos.z),e.boss?12:5);
+    if(e.boss&&e.kind==='stag'&&playSfx('stag_death',{pos:new THREE.Vector3(e.pos.x,e.pos.y+2.6,e.pos.z),ref:14,gain:1,vary:0})){ S.dissolve(t,{dest:out,dur:3,g:.2}); return; }
     S.dissolve(t,{dest:out,dur:e.boss?3:1.2,g:e.boss?.4:.22}); if(e.boss){ S.rumble(t,{dest:out,g:.8,dur:4,f0:60,f1:25}); } });
   // victory: bells + choir in D major, the hook (D E~ C# E F# E C# D~) brightened on music box
-  G.on('boss:dead',()=>{ if(!ctx)return; const t=onGrid(ctx.currentTime+1.5,BEAT); recDip(t,.5,5); S.bell(t,62,{g:.3,decay:7,dest:synthBus}); I.choir(synthBus,t,[62,66,69,74,78],7,.06);
+  G.on('boss:dead',()=>{ if(!ctx)return; const t=onGrid(ctx.currentTime+1.5,BEAT);
+    if(playSfx('victory',{dest:sfxBus,gain:1,vary:0,when:t,duck:.3}))return;   // Heath's orchestral victory; the synth bells below are the fallback
+    recDip(t,.5,5); S.bell(t,62,{g:.3,decay:7,dest:synthBus}); I.choir(synthBus,t,[62,66,69,74,78],7,.06);
     phrase('musicBox',synthBus,t+BEAT,HOOK.map(([m,p,l])=>[m,p-4,l]),{g:.13,major:true}); });
   G.on('negative:freed',e=>{ if(!ctx)return; const t=ctx.currentTime; const out=e&&e.pos?at(new THREE.Vector3(e.pos.x,e.pos.y+1,e.pos.z),6):sfxBus;
-    S.dissolve(t,{dest:out,dur:1,g:.15}); S.chime(t+.6,[74,78,81],{dest:out,g:.08,step:.1}); });
+    S.dissolve(t,{dest:out,dur:1,g:.15});
+    if(!playSfx('reward_sting',{pos:e&&e.pos?new THREE.Vector3(e.pos.x,e.pos.y+1,e.pos.z):null,dest:e&&e.pos?null:sfxBus,ref:6,gain:.75,when:t+.5}))S.chime(t+.6,[74,78,81],{dest:out,g:.08,step:.1}); });
+  G.on('chest:open',e=>{ if(!ctx)return; playSfx('reward_sting',{pos:e&&e.pos?new THREE.Vector3(e.pos.x,e.pos.y+.6,e.pos.z):null,dest:e&&e.pos?null:sfxBus,ref:5,gain:.8}); });
   G.on('pickup',e=>{ if(!ctx)return; const t=ctx.currentTime; if(e&&e.kind==='mushroom'){S.chime(t,[69,74,78],{g:.07,step:.05,decay:1});} else { S.chime(t,[81,86],{g:.09,step:.05,decay:.8}); S.sparkle(t,{g:.05}); } });
   G.on('talk',e=>{ if(!ctx)return; const h=G.creatures&&G.creatures.halloran; const p=h&&(h.pos||(h.g&&h.g.position));
     const out=p?at(new THREE.Vector3(p.x,p.y+1.6,p.z),5):sfxBus; const n=Math.min(14,Math.max(4,Math.round(((e&&e.line)||'').length/9)));

@@ -453,7 +453,8 @@ function liftPose(T){
 }
 function sting(big){
   const A=G.audio; if(!A||!A.ready||!A.S||!A.context)return;
-  try{ if(A.sfx&&A.sfx.play&&A.sfx.play('reward_sting',{gain:.9}))return; }catch(_){}
+  // Heath's recordings: the orchestral victory for a new heart, the sparkling reveal for everything else
+  try{ if(A.sfx&&A.sfx.play&&A.sfx.play(big?'victory':'reward_sting',{gain:big?.95:.9,vary:0,duck:big?.3:.6}))return; }catch(_){}
   const S2=A.S, t=A.context.currentTime;
   try{ S2.chime(t,[62,66,69,74],{g:.09,step:.11,decay:1.4}); S2.chime(t+.5,big?[74,78,81,86]:[74,81],{g:.08,step:.07,decay:2.2}); S2.bell&&S2.bell(t+.48,50,{g:.12,decay:2.8}); S2.sparkle&&S2.sparkle(t+.55,{g:.05}); }catch(e){}
 }
