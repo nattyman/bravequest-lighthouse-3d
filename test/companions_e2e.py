@@ -117,9 +117,10 @@ FRESH=[
    const ev=EV.find(e=>/companion:nip/.test(e)); const r={ev,state:m.state,hp:m.hp,hp0:hp,cd:E.nipCD}; G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)});
    r.ok=!!ev&&/"interrupted":true/.test(ev)&&r.state==='hurt'&&r.hp===hp&&r.cd>4; return r; })()"""),
  ("dive", r"""(()=>{ T.clear(); const p=G.player.pos; const m=G.monsters.spawn('hound',new THREE.Vector3(p.x+5,p.y,p.z),{aggro:true}); G.step(1/30,2); m.state='chase'; m.cool=.3; const hp=m.hp;
-   const C=T.C(); C.mode='fly'; C.diveCD=0; C.pos.set(p.x,p.y+4,p.z); EV.length=0; let n=0, cool=0; for(;n<90;n++){ m.cool=Math.min(m.cool,.3); if(m.state!=='chase'&&m.state!=='windup')m.state='chase'; G.step(1/30,1); if(EV.some(e=>/companion:dive/.test(e))){ cool=m.state==='windup'?-m.st:m.cool; break; } }
+   const C=T.C(); C.mode='fly'; C.diveCD=0; C.pos.set(p.x,p.y+4,p.z); EV.length=0; let n=0, cool=0; const d0=G.monsters.delay; G.monsters.delay=(mm,sec)=>{ const b=mm.state==='windup'?-mm.st:mm.cool; const r=d0(mm,sec); cool=(mm.state==='windup'?-mm.st:mm.cool)-b; return r; };
+   for(;n<90;n++){ m.cool=Math.min(m.cool,.3); if(m.state!=='chase'&&m.state!=='windup')m.state='chase'; G.step(1/30,1); if(EV.some(e=>/companion:dive/.test(e)))break; } G.monsters.delay=d0;
    const ev=EV.find(e=>/companion:dive/.test(e)); const r={ev,n,cool:+cool.toFixed(2),hp:m.hp,hp0:hp}; G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)});
-   r.ok=!!ev&&/"delayed":true/.test(ev)&&cool>.6&&r.hp===hp; return r; })()"""),
+   r.ok=!!ev&&/"delayed":true/.test(ev)&&Math.abs(cool-.8)<.01&&r.hp===hp; return r; })()"""),
  ("boss", r"""(()=>{ T.clear(); const e=G.flow.stagEdge(); T.tp(e.x,e.z); G.monsters.startStag(); G.step(1/30,30); const B=G.monsters.boss; const st=B.state;
    const a=G.monsters.interrupt(B), b=G.monsters.delay(B); const E=T.E(), C=T.C(); E.nipCD=0; C.diveCD=0; EV.length=0; G.step(1/30,90);
    const r={boss:!!B,a,b,nips:EV.filter(e=>/nip|dive/.test(e)).length}; G.monsters.kill(B,{dir:new THREE.Vector3(0,0,1)}); G.step(1/30,60); T.clear();
