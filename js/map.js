@@ -637,7 +637,7 @@ function uploadField(force){
 const markers=[]; const byId={};
 let pinMat=null, pinGeo={};
 const MARKER_COL={player:'#d9ae54',objective:'#a56cff',landmark:'#c79a4a',bench:'#e7a24b',blight:'#151018',blightCured:'#b995ff',cave:'#9c8a76',waypoint:'#ffc35a',
-  shard:'#b48cff',cache:'#8a5a32',custom:'#c79a4a'};
+  shard:'#b48cff',cache:'#8a5a32',custom:'#c79a4a',fox:'#d0702e',raven:'#3a3150'};
 function pinGeometry(kind,color){
   const key=kind+color; if(pinGeo[key])return pinGeo[key];
   const parts=[{g:new THREE.CylinderGeometry(.025,.012,1.05,6),m:mat(0,.52,0),c:'#9a8c7a'}];
@@ -1033,6 +1033,8 @@ const M=G.map={isOpen:false,from:null,addMarker,removeMarker,get markers(){retur
   /** travel now (the confirm card is the player's way in; this is for tools/tests). force skips the checks. */
   travel:(id,o)=>{ const w=WP_BY[id]; return w?startTravel(w,o||{}):false; },
   get traveling(){ return TR.on; },
+  /** companions.js (Corvin's scouting): pin a collectible / companion spot on the chart (ids 'shard:x', 'cache:x', 'comp:x') */
+  markSeen:id=>{ if(id)seenC[id]=1; }, isSeen:id=>!!seenC[id],
   ask:id=>{ const w=WP_BY[id]; if(!w||!M.isOpen)return false; select(w,true); return askTravel(w); },
   get confirming(){ return confirmW?confirmW.id:null; }, get selected(){ return selWp?selWp.id:null; },
   debug:{retro,pack:()=>pack(bits),get cells(){return nBits;},grid:{nx:NX,nz:NZ,x0:B.x0,z0:B.z0,cw:CW,cd:CD},get buildMs(){return buildMs;},puffs:0,

@@ -403,7 +403,7 @@ G.system('flow',{order:60,modes:'always',
       enabled:()=>{ const L=G.items.lantern; return !L.found&&!L.carried&&!stagDead&&!!(G.monsters&&G.monsters.boss&&G.monsters.boss.kind==='stag'); },
       use(){ G.ui.say('You reach for the lantern and the Stag’s crown flares. Not while it stands.',{priority:'high',key:'stagLantern'}); }});
     G.on('player:dead',onDead);
-    G.on('negative:freed',()=>{ G.state.freed=(G.state.freed||0)+1; G.ui.toast('A negative freed',G.state.freed+' of 8'); });
+    G.on('negative:freed',()=>{ G.state.freed=(G.state.freed||0)+1; G.ui.toast('A negative freed',G.state.freed+' of '+((G.creatures&&G.creatures.total)||9)); });
     const l=$('loading'); if(l)l.textContent='Ready when you are.';
   },
   update(dt){

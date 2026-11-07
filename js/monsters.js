@@ -1594,6 +1594,10 @@ G.monsters={list,spawn:(kind,pos,opts)=>spawn(kind,pos,opts||{aggro:false}),
   alive:()=>list.filter(m=>m.alive&&!m.dying).length,
   get boss(){return boss;}, tokens, startStag, stagArena:()=>m_arena||arenaOf(), params:P, despawn:(m,sink)=>despawn(m,sink),
   kill:(m,info)=>{ if(m&&m.alive&&!m.dying)die(m,info||{}); },
+  /* COMPANIONS HOOK (companions.js): Ember's nip breaks a wind-up like a light stagger; Corvin's dive puts the next attack off.
+     Never damage, never bosses. Both return true when they did something. */
+  interrupt:m=>{ if(!m||m.boss||!m.alive||m.dying||m.state!=='windup'||m.raid)return false; dropToken(m); m.flare=0; m.cool=Math.max(m.cool,.6); setState(m,'hurt'); m.st=-.15; return true; },
+  delay:(m,s=.8)=>{ if(!m||m.boss||!m.alive||m.dying)return false; if(m.state==='windup')m.st-=s; else m.cool=Math.max(m.cool,0)+s; return true; },
   // shared ink kit (cave_boss.js builds the Undertow with the same look)
   fx:{puff,ember,splash,sparks,gather,puddle,inkMat,sharedUniforms,sweep,mergeGeos,tendril,stepTendril,eyeSprite,anchor,ringMesh,raftInfo,nearestMoth,eatMoth,swarmMoth}};
 G.system('monsters',{order:40,modes:['play'],

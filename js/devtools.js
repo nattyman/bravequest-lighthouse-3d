@@ -133,6 +133,7 @@ const STARTS=[
   {id:'undercroft',name:'The Undercroft',sub:'Well cured, trapdoor open · at the foot of the stair, nothing lit, 40 moths',group:'The Undercroft'},
   {id:'undercroft-chapel',name:'The Crypt Chapel',sub:'Stair and cellars lit · the bell-ropes and the sexton’s niche ahead',group:'The Undercroft'},
   {id:'undercroft-boss',name:'Before the Tithe-Keeper',sub:'Glass owned, sluice set, portcullis up · at the store door',group:'The Undercroft'},
+  {id:'companions',name:'Companions',sub:'Loop running · Ember and Corvin with you · on the moor by the hollow log',group:'Companions',main:false},
   {id:'testsave',name:'Continue test save',sub:'',group:'Saves',test:true}
 ];
 DT.starts=STARTS;
@@ -231,6 +232,13 @@ function runStart0(id){
   }
   if(/^cave:/.test(id)){ const room=id.slice(5); F.begin(caveSave(room)); caveSwarmAndEnter(room); return; }
   if(/^undercroft/.test(id)){ F.begin(undercroftSave(id)); undercroftEnter(id); return; }
+  if(id==='companions'){ // companions.js: both earned (a fox and the raven freed), standing by the hollow log on the moor
+    const s=loopSave({lantern:true}); const N=(G.creatures&&G.creatures.negatives)||[];
+    s.freed=N.map((n,i)=>(n.kind==='raven'||(n.kind==='fox'&&i===N.findIndex(m=>m.kind==='fox')))?i:-1).filter(i=>i>=0);
+    s.mods.fog={ether:90,milestones:['beach','hamlet','forest'],crossed:true,fed:true};
+    s.mods.companions={v:1,ember:true,corvin:true,spots:{},key:false,chest:false,cd:0,said:{hal:1},seen:{}};
+    const L=G.companions&&G.companions.spots.find(q=>q.id==='log'); const at=L?L.stand:V(28,13,9);
+    s.pos=[at.x+1,at.y,at.z+1]; s.yaw=PI; F.begin(s); return; }
 }
 function chooseStart(id){
   if(G.state.mode==='title'){ runStart(id); return; }
@@ -254,8 +262,17 @@ const SPOTS=[
   {id:'mouthOut',name:'Cave mouth',at:()=>{ const m=LM().caveMouth; return m&&[m.x,m.y,m.z+2.2,PI]; }},
   {id:'trapdoor',name:'Undercroft trapdoor',at:()=>{ const d=LM().undercroftDoor; return d&&[d.x+1.7,null,d.z,PI/2]; }}
 ];
+DT.teleports=SPOTS;
 function teleport(id){
   const P=G.player; testMode();
+  { const s=SPOTS.find(x=>x.id===id); if(s&&s.go){ const r=s.go(); if(!r)return 'That place isn’t built.';
+      if(Array.isArray(r)){ if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
+        if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
+        teleportWithSwarm(r[0],r[1],r[2],r[3]); closePanel(); return 'Teleported to '+s.name; }
+      if(!(G.loop&&G.loop.active))return 'That one opens with the core loop — use a start point.';
+      if(r.cave&&G.cave){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.enter(r.cave,{instant:true}); }
+      if(r.undercroft&&G.undercroft){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.enter(r.undercroft,{instant:true}); }
+      if(r.pos)P.teleport(r.pos.x,r.pos.y,r.pos.z,r.yaw); closePanel(); return 'Teleported to '+s.name; } }
   if(CAVE_ORDER.includes(id)){
     if(!(G.loop&&G.loop.active))return 'The cave opens with the core loop — use a start point.';
     const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null;
