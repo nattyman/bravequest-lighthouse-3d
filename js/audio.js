@@ -11,6 +11,9 @@
    theme) takes over: audio/bq-cave-core|rhythm|power.mp3, fetched lazily on the
    first cave visit (or once the core loop starts), time-warped onto the
    island's bar grid so both recordings loop together, phase-locked.
+   Every boss fight (Gloaming, Undertow, Tithe-Keeper, Crane) plays Heath's
+   "Bravequest Boss Battle Theme" (audio/bq-boss.mp3, its own tempo): it starts
+   from the top each fight, then loops its middle, while the theme fades away.
    It only listens: events from the other modules plus a light poll of
    player / monster state.
    ===================================================================== */
@@ -423,6 +426,32 @@ function startCave(when){
   caveRec.playing=true;
 }
 const caveLive=()=>caveRec.playing;
+/* The boss recording: "Bravequest Boss Battle Theme" (Suno, 9 stems summed; ~152 bpm, its own grid).
+   One file: the fight opens at 0 s (its opening hit), then loops 64.69–147.54 s (208 beats); the seam
+   has a 0.18 s crossfade baked in. Fetched once the island stems are decoded, so it never slows the title. */
+const BOSS={loopStart:64.69079, loopEnd:147.53959, rawLen:147.93958, gain:1.4, fadeOut:3.5};
+const bossRec={ requested:false, fetch:null, decoding:false, buf:null, failed:false, error:null, offset:0, src:null, w:0, stopAt:0, starts:0 };
+const BOSS_STATES={boss:1,caveBoss:1};
+function requestBoss(){
+  if(bossRec.requested)return; bossRec.requested=true;
+  try{ bossRec.fetch=fetch('audio/bq-boss.mp3').then(r=>{ if(!r.ok)throw new Error('HTTP '+r.status); return r.arrayBuffer(); }); }
+  catch(e){ bossRec.fetch=Promise.reject(e); }
+  bossRec.fetch.catch(()=>{});
+}
+function decodeBoss(){
+  if(bossRec.decoding||!ctx||!bossRec.requested)return; bossRec.decoding=true;
+  bossRec.fetch.then(decode).then(b=>{ bossRec.buf=b; const extra=b.duration-BOSS.rawLen; bossRec.offset=(extra>0&&extra<.08)?extra:0; })
+    .catch(e=>{ bossRec.failed=true; bossRec.error=String(e&&e.message||e); console.warn('boss music unavailable, using the theme:',bossRec.error); });
+}
+const bossReady=()=>!!bossRec.buf;
+/** the boss song is (or is fading) in: its own clock, so the theme and synth accents stand aside */
+const bossLive=()=>!!bossRec.src;
+function startBoss(when){
+  if(!bossRec.buf||bossRec.src)return;
+  const s=ctx.createBufferSource(); s.buffer=bossRec.buf; s.loop=true; s.loopStart=BOSS.loopStart+bossRec.offset; s.loopEnd=BOSS.loopEnd+bossRec.offset;
+  s.connect(rec.nodes.boss.gain); s.start(when,bossRec.offset); bossRec.src=s; bossRec.stopAt=0; bossRec.starts++;
+}
+function stopBoss(){ if(!bossRec.src)return; try{bossRec.src.stop();}catch(_){} try{bossRec.src.disconnect();}catch(_){} bossRec.src=null; bossRec.stopAt=0; }
 let recBus, coreLP, coreWarm, recCaveLP, caveCoreLP;
 function decode(ab){ return new Promise((res,rej)=>{ try{ const p=ctx.decodeAudioData(ab,res,rej); if(p&&p.then)p.then(res,rej); }catch(e){rej(e);} }); }
 function buildRecording(){
@@ -437,12 +466,13 @@ function buildRecording(){
   caveCoreLP=ctx.createBiquadFilter(); caveCoreLP.type='lowpass'; caveCoreLP.frequency.value=2600; caveCoreLP.Q.value=.5; caveCoreLP.connect(recBus);
   if(caveCoreSend)caveCoreLP.connect(caveCoreSend);
   for(const k of CAVE_KEYS){ const g=ctx.createGain(); g.gain.value=0; g.connect(k==='ccore'?caveCoreLP:recBus); rec.nodes[k]={gain:g,src:null}; }
+  { const g=ctx.createGain(); g.gain.value=0; g.connect(recBus); rec.nodes.boss={gain:g,src:null}; }
   const want=['core','rhythm','power'];
   Promise.all(want.map(k=>recFetch[k].then(decode).then(b=>{rec.bufs[k]=b;})))
     .then(()=>{ rec.loaded=true;
       // Some decoders keep the mp3 encoder delay: the extra length is all lead-in, so shift the grid by it.
       const extra=rec.bufs.core.duration-REC.rawLen; rec.offset=(extra>0&&extra<.08)?extra:0;
-      startStems(ctx.currentTime+.08); })
+      startStems(ctx.currentTime+.08); requestBoss(); })
     .catch(e=>{ rec.failed=true; rec.error=String(e&&e.message||e); console.warn('music stems unavailable, using generative score:',rec.error); });
   recFetch.title.then(decode).then(b=>{ rec.bufs.title=b; startTitle(ctx.currentTime+.05); }).catch(()=>{});
 }
@@ -525,6 +555,7 @@ function synthWeights(st,mode){
   if(s==='dead'||s==='silent')return W;
   // stems still decoding (normally < 1 s): hold the fallback score back so it doesn't start then vanish
   if(!live&&!rec.failed&&ctx.currentTime-unlockedAt<6&&s!=='tower')return W;
+  if(BOSS_STATES[s]&&bossReady())return W;          // the boss song carries the whole fight
   if(s==='caveBoss'){ W.caveBoss=1; W.boss=live?.35:1; return W; }
   if(s==='caveResolve'||s==='caveHold')return W;
   if(s==='caveLit'){ W.cave=1; return W; }
@@ -615,14 +646,25 @@ function updateMusic(_dt,mode){
   // the dungeon recording: fetch on the first cave visit or once the core loop is on; decode once the island stems play
   if(!caveRec.requested&&(cv.inside||(G.loop&&G.loop.active)))requestCave();
   if(caveRec.requested&&!caveRec.decoding&&rec.loaded)decodeCave();
+  if(bossRec.requested&&!bossRec.decoding&&rec.loaded)decodeBoss();
+  // the boss song: from the top each fight; on leaving, it fades and stops, so the next fight starts fresh
+  const inBoss=!!BOSS_STATES[st.s]&&bossReady();
+  if(rec.nodes.boss){
+    if(inBoss&&!bossRec.src)startBoss(t+.05);
+    const tw=inBoss?BOSS.gain*(paused?.5:1):0;
+    bossRec.w=U.damp(bossRec.w,tw,tw>bossRec.w?3:(st.s==='dead'?2:1.2),dt);
+    rec.nodes.boss.gain.gain.setTargetAtTime(bossRec.w,t,.06);
+    if(!inBoss&&bossRec.src){ if(!bossRec.stopAt)bossRec.stopAt=t+BOSS.fadeOut; else if(t>=bossRec.stopAt&&bossRec.w<.06)stopBoss(); }
+    else bossRec.stopAt=0; }
   if(recBus){ const M=mixFor(st.s), have=rec.playing;
     for(const k of REC.files.concat(CAVE_KEYS)){ const n=rec.nodes[k]; if(!n)continue;
       let tw=(k==='title'?(rec.bufs.title?M.title:0):(have?(M[k]||0):0));
       if(k==='title'&&!rec.bufs.title)tw=0;
       if(st.s==='title'&&k==='core'&&!rec.bufs.title&&have)tw=.6;   // no title excerpt: gentle core instead
       if(paused)tw*=.5;
+      if(inBoss)tw=0;
       const up=tw>rec.w[k], fast=st.s==='combat'||st.s==='boss'||st.s==='caveBoss'||st.s==='caveCombat';
-      rec.w[k]=U.damp(rec.w[k],tw,up?(fast?2.2:.6):(st.s==='dead'?1.2:st.s==='caveResolve'?1:.45),dt);
+      rec.w[k]=U.damp(rec.w[k],tw,up?(fast?2.2:.6):(inBoss?2.4:st.s==='dead'?1.2:st.s==='caveResolve'?1:.45),dt);
       n.gain.gain.setTargetAtTime(rec.w[k],t,.08); }
     coreLP.frequency.setTargetAtTime(M.lp,t,.8); coreWarm.gain.setTargetAtTime(M.warm,t,1.5);
     if(M.clp)caveCoreLP.frequency.setTargetAtTime(M.clp,t,.8); }
@@ -1362,6 +1404,10 @@ G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get outp
     get groups(){ const o={}; for(const k of REC.files){ const n=rec.nodes[k]; o[k]={loaded:!!rec.bufs[k],duration:rec.bufs[k]?rec.bufs[k].duration:0,playing:!!(n&&n.src),gain:n?+n.gain.gain.value.toFixed(3):0,target:+(rec.w[k]||0).toFixed(3)}; } return o; },
     get synth(){ const o={}; for(const k of LAYER_NAMES)o[k]=+layers[k].w.toFixed(3); return o; },
     get filter(){ return coreLP?Math.round(coreLP.frequency.value):null; },
+    get bossSong(){ const n=rec.nodes.boss; return {requested:bossRec.requested,loaded:!!bossRec.buf,failed:bossRec.failed,error:bossRec.error,
+      duration:bossRec.buf?bossRec.buf.duration:0,offset:bossRec.offset,playing:!!bossRec.src,starts:bossRec.starts,
+      gain:n?+n.gain.gain.value.toFixed(3):0,target:+bossRec.w.toFixed(3),
+      loop:[BOSS.loopStart,BOSS.loopEnd],file:'audio/bq-boss.mp3'}; },
     get cave(){ const o={requested:caveRec.requested,loaded:caveRec.loaded,failed:caveRec.failed,error:caveRec.error,playing:caveRec.playing,offset:caveRec.offset,
         filter:caveCoreLP?Math.round(caveCoreLP.frequency.value):null,files:CAVE_KEYS.map(k=>'audio/bq-'+CAVE_FILES[k]+'.mp3'),groups:{}};
       for(const k of CAVE_KEYS){ const n=rec.nodes[k]; o.groups[k]={loaded:!!rec.bufs[k],duration:rec.bufs[k]?rec.bufs[k].duration:0,playing:!!(n&&n.src),gain:n?+n.gain.gain.value.toFixed(3):0,target:+(rec.w[k]||0).toFixed(3)}; }
