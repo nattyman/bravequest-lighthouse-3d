@@ -315,8 +315,8 @@ function scratches(list,at,yaw,o={}){ const n=o.n||3, len=o.len||.32;
   for(let i=0;i<n;i++){ const g=box(.022,len,.012,o.col||'#e8dcc6'); list.push({geo:g,m:new THREE.Matrix4().compose(V(at.x+Math.cos(yaw)*(i-1)*.07,at.y+(i%2)*.03,at.z-Math.sin(yaw)*(i-1)*.07),new THREE.Quaternion().setFromEuler(new THREE.Euler(o.tilt||0,yaw,.32)),V(1,1,1))}); } }
 function furTuft(list,at){ for(let i=0;i<6;i++){ const a=i*1.1, g=cone(.026,.13,i%2?'#d0702e':'#b8561f',5); list.push({geo:g,m:M4(at.x+Math.cos(a)*.04,at.y+.03,at.z+Math.sin(a)*.04,Math.cos(a)*.9,0,Math.sin(a)*.9)}); }
   list.push({geo:ell(.05,.03,.05,'#e9dcc8',null,8),m:M4(at.x,at.y+.01,at.z)}); }
-function streaks(list,top,yaw,len=.9,n=4){ for(let i=0;i<n;i++){ const l=len*(.55+((i*37)%10)/14); list.push({geo:box(.04,l,.014,'#f1efe6'),m:M4(top.x+Math.cos(yaw)*(i-1.5)*.09,top.y-l/2,top.z-Math.sin(yaw)*(i-1.5)*.09,0,yaw,0)});
-    list.push({geo:ell(.035,.025,.035,'#f8f6ee',null,6),m:M4(top.x+Math.cos(yaw)*(i-1.5)*.09,top.y-l,top.z-Math.sin(yaw)*(i-1.5)*.09)}); } }
+function streaks(list,top,yaw,len=.9,n=4){ for(let i=0;i<n;i++){ const l=len*(.55+((i*37)%10)/14); list.push({geo:box(.026,l,.012,'#b9b4a8'),m:M4(top.x+Math.cos(yaw)*(i-1.5)*.09,top.y-l/2,top.z-Math.sin(yaw)*(i-1.5)*.09,0,yaw,0)});
+    list.push({geo:ell(.026,.02,.026,'#c4bfb3',null,6),m:M4(top.x+Math.cos(yaw)*(i-1.5)*.09,top.y-l,top.z-Math.sin(yaw)*(i-1.5)*.09)}); } }
 function featherGeo(){ const sh=new THREE.Shape(); sh.moveTo(0,0); sh.quadraticCurveTo(.035,-.09,0,-.22); sh.quadraticCurveTo(-.03,-.09,0,0);
   const g=new THREE.ShapeGeometry(sh,6); const v=mergeStatic([{geo:paintGeo(g,'#15131c')},{geo:paintGeo(new THREE.ShapeGeometry(sh,6).rotateY(PI),'#15131c')},{geo:cyl(.004,.004,.26,'#3a3742',4),m:M4(0,-.1,0)}]); return v; }
 function dangle(list,from,len=.35,yaw=0){ list.push({geo:cyl(.004,.004,len,'#2a2830',4),m:M4(from.x,from.y-len/2,from.z)}); list.push({geo:featherGeo(),m:M4(from.x,from.y-len,from.z,.15,yaw,.1)}); }
@@ -383,9 +383,9 @@ function buildIsland(){
 
   /* 6. the raven's nest on a ledge below the north cliff */
   { const n=NEST, list=[];
-    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#6f6b66',(x,y,z,c)=>{ c.lerp(U.col('#56603e'),smooth(.3,.9,y)*.7); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.38,n.z+.75,0,.4,0,1.35,.42,1.7)});
-    for(let i=0;i<22;i++){ const a=i/22*TAU, l=.32+(i%3)*.06; list.push({geo:cyl(.012,.01,l,i%2?'#5a4632':'#776048',4),m:M4(n.x+Math.cos(a)*.3,n.y+.07+(i%3)*.03,n.z+Math.sin(a)*.3,PI/2,a+PI/2+.35,(i%5-2)*.12)}); }
-    list.push({geo:ell(.3,.07,.3,'#3c3024'),m:M4(n.x,n.y+.04,n.z)});
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#6f6b66',(x,y,z,c)=>{ c.lerp(U.col('#56603e'),smooth(.3,.9,y)*.7); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.55,n.z+.75,0,.4,0,1.3,.75,1.7)});
+    for(let i=0;i<26;i++){ const a=i/26*TAU, l=.42+(i%3)*.08; list.push({geo:cyl(.016,.012,l,i%2?'#5a4632':'#776048',4),m:M4(n.x+Math.cos(a)*.38,n.y+.07+(i%3)*.03,n.z+Math.sin(a)*.38,PI/2,a+PI/2+.35,(i%5-2)*.12)}); }
+    list.push({geo:ell(.38,.09,.38,'#3c3024'),m:M4(n.x,n.y+.04,n.z)});
     streaks(list,V(n.x-.1,n.y-.75,n.z-.72),.1,2.6,6);
     dangle(list,V(n.x+.35,n.y+.06,n.z-.3),.3,.9);
     addPiece(list,'island',V(n.x,n.y,n.z),140);
@@ -403,7 +403,7 @@ function buildCave(){
   const L=cw(-5.95,4.3,-14.7); SP.crack.ledge=L;
   const fl=CAVE.floorVis?CAVE.floorVis(-5.95,-14.7)+60:L.y-2.9;
   list.push({geo:paintGeo(new THREE.CylinderGeometry(1,1.15,.5,9),'#5e5a55',(x,y,z,c)=>c.multiplyScalar(.8+.35*U.vnoise(x*4,z*4))),m:M4(L.x,L.y-.25,L.z)});
-  list.push({geo:paintGeo(new THREE.CylinderGeometry(.7,1,L.y-fl,8),'#4c4844',(x,y,z,c)=>c.multiplyScalar(.75+.3*U.vnoise(x*5,y*5))),m:M4(L.x-.35,(L.y+fl)/2-.25,L.z)});
+  list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1).scale(.8,(L.y-fl)/2,.9),'#4c4844',(x,y,z,c)=>c.multiplyScalar(.75+.3*U.vnoise(x*5,y*5))),m:M4(L.x-.35,(L.y+fl)/2-.25,L.z)});
   addPiece(list,'cave',L,60);
   G.addCollider({x:L.x-.2,z:L.z,r:.95,y0:fl-2,y1:L.y-.4});
   G.floorProviders.push((x,z,y)=>{ const dx=x-L.x, dz=z-L.z; if(dx*dx+dz*dz>.92*.92)return null; return L.y<=y+.05?L.y:null; });
@@ -567,6 +567,7 @@ function tryNip(){
   if(!best||Math.hypot(best.pos.x-E.pos.x,best.pos.z-E.pos.z)>T.nipRange+2)return false;
   E.mode='nip'; E.target=best; E.nipT=0; E.nipCD=T.nipCD; return true;
 }
+const OFF_G=[0,.35,PI,PI+.35], OFF_W=[0,PI,PI*.85,PI*1.85];
 /* the pose: walk cycle + blended sit / lie / swim / carry / squeeze / bark / nip */
 function emberDraw(dt){
   const R=EM, B=R.bones, sp=R.sp, k=E.k, t=E.t;
@@ -577,7 +578,7 @@ function emberDraw(dt){
   const S0=E.speed, walk=1.6, amp=Math.min(1,S0/walk)*(S0>walk*2.2?.85:.5)*(1-k.sit)*(1-k.lie);
   E.phase+=dt*Math.min(S0,9)*(S0>5?3.1:4.4)/Math.max(.4,.36)*.6;
   const ph=E.phase, gallop=S0>5;
-  const off=gallop?[0,.35,PI,PI+.35]:[0,PI,PI*.85,PI*1.85];
+  const off=gallop?OFF_G:OFF_W;
   // body
   let by=sp.bodyY+(S0>.1?Math.abs(Math.sin(ph))*.035*(gallop?1.8:1):Math.sin(t*1.4)*.004);
   let bx=(S0>.1?Math.sin(ph*2)*.02*(gallop?3:1):0);
@@ -587,7 +588,7 @@ function emberDraw(dt){
   B.body.position.y=by; B.body.rotation.x=bx; B.body.rotation.z=Math.sin(t*45)*.02*k.nip;
   B.body.scale.set(1+.12*k.squeeze,1-.28*k.squeeze,1+.06*k.squeeze);
   // legs
-  const legs=[B.leg0,B.leg1,B.leg2,B.leg3];
+  if(!R.legs)R.legs=[B.leg0,B.leg1,B.leg2,B.leg3]; const legs=R.legs;
   for(let i=0;i<4;i++){ let a=Math.sin(ph+off[i])*amp; const front=i<2;
     a=lerp(a,front?.6:-1.15,k.sit); a=lerp(a,front?-1.35:-1.05,k.lie); a=lerp(a,Math.sin(t*9+off[i])*.7,k.swim); a=lerp(a,front?-1.2:1.1,k.squeeze);
     legs[i].rotation.x=a; legs[i].rotation.z=front&&k.lie>.5?(i?-.12:.12)*k.lie:0; }
@@ -614,7 +615,7 @@ function emberDraw(dt){
 /* ================================================================ 7. CORVIN — the brain */
 const C={on:false,pos:V(),vel:V(),heading:0,bank:0,pitch:0,opa:0,fade:0,mode:'off',t:0,still:0,flap:0,flapPh:0,glideT:0,
   perch:V(),perchK:null,perchT:0,shoulderT:0,ground:false,landK:0,k:{fold:1,flare:0,hop:0,look:0,alert:0},task:null,taskT:0,
-  diveCD:0,target:null,diveT:0,scoutT:-1,scoutA:0,cawT:0,warned:new Set(),warnCD:0,hopT:-1,awayT:0,ride:false,tgt:V(),_v:V()};
+  diveCD:0,target:null,diveT:0,scoutT:-1,scoutA:0,cawT:0,warned:new Set(),warned2:new Set(),warnCD:0,hopT:-1,awayT:0,ride:false,tgt:V(),_v:V()};
 function ravenShow(){ if(!CV){ CV=buildRaven(); G.scene.add(CV.root); } return true; }
 function shoulderPos(out){ const p=P(), h=p.heading||0; // the left shoulder (the staff rides on the right)
   return out.set(p.pos.x+Math.cos(h)*.21+Math.sin(h)*.02,p.pos.y+1.18,p.pos.z-Math.sin(h)*.21+Math.cos(h)*.02); }
@@ -739,10 +740,10 @@ function tryDive(){
 }
 function darkWarn(){
   const dark=interior()||(G.atmo&&G.atmo.dark>.5); const p=P().pos;
-  const now=new Set();
+  const now=C.warned2; now.clear();
   for(const m of (G.monsters&&G.monsters.list)||[]){ if(!m.alive||m.dying)continue; if(Math.abs(m.pos.x-p.x)>T.warnR||Math.abs(m.pos.z-p.z)>T.warnR)continue; if(m.pos.distanceTo(p)<T.warnR)now.add(m); }
   if(dark&&C.warnCD<=0){ for(const m of now) if(!C.warned.has(m)){ C.warnCD=6; sfx('caw',C.pos); C.k.look=1; G.emit('companion:caw',{why:'warn',kind:m.kind}); break; } }
-  C.warned=now;
+  C.warned2=C.warned; C.warned=now;
 }
 /* the cave raft: Corvin rides the lantern while the moths do */
 function rideStep(dt){
