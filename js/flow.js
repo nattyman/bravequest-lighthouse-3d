@@ -337,7 +337,7 @@ function rise(){
   G.setMode('play'); G.input.lockPointer();
 }
 let wasLocked=false, pausedAt=0;
-function pause(){ if(G.state.mode!=='play')return; pausedAt=performance.now(); G.setMode('paused'); G.input.unlockPointer(); $('pause').hidden=false; $('saveNote').textContent=''; syncQuality(); $('resume').focus(); }
+function pause(){ if(G.state.mode!=='play')return; pausedAt=performance.now(); if(G.ui.pauseTab)G.ui.pauseTab('main'); G.setMode('paused'); G.input.unlockPointer(); $('pause').hidden=false; $('saveNote').textContent=''; syncQuality(); $('resume').focus(); }
 function syncQuality(){ document.querySelectorAll('#qualitySeg button').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.q===G.quality.level)));
   document.querySelectorAll('#invertSeg button').forEach(b=>b.setAttribute('aria-pressed',String((b.dataset.invert==='1')===!!G.settings.invertY))); }
 function resume(){ $('pause').hidden=true; G.setMode('play'); G.input.lockPointer(); }
@@ -411,12 +411,13 @@ G.system('flow',{order:60,modes:'always',
     if(mode==='title'){updateAttract(dt);return;}
     if(mode==='play'){
       if(G.input.pressed('pause'))pause();
+      else if(G.input.pressed('log')){ pause(); if(G.ui.pauseTab)G.ui.pauseTab('msgs',true); }
       updatePickups(dt); updateBeats(); updateFinale(dt); trackSafe(dt);
       if(endingT>0){ endingT-=dt; if(endingT<=0){ G.setMode('ending'); G.input.unlockPointer(); $('hud').hidden=true; $('ending').hidden=false; $('keep').focus(); } }
       // gentle nudge if the player wanders the cliff top without the light for a long time
       if(G.quest.step==='door'&&G.time>70&&!sawDoor){sawDoor=true;onDoorBlocked();}
     }else if(mode==='paused'){
-      if(G.input.pressed('pause')&&performance.now()-pausedAt>350)resume();
+      if((G.input.pressed('pause')||G.input.pressed('log'))&&performance.now()-pausedAt>350)resume();
     }
   }
 });

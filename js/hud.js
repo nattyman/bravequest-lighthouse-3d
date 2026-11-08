@@ -479,7 +479,7 @@ function updatePotionsUI(dt){
 
 /* ---------- controller legend + notices ---------- */
 const keysEl=$('keys'); let keysHTML=keysEl?keysEl.innerHTML:'';
-const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['Menu','pause']];
+const PAD_ROWS=[['LS','move'],['RS','camera'],['A','jump · hold to glide'],['B','roll'],['X','strike · hold to charge'],['Y','use'],['LT','lock on'],['LB','sprint'],['RB','lantern shutter'],['Up','drink a draught'],['Down','next message'],['View','messages'],['Menu','pause']];
 const glassOwned=()=>!!(G.glass&&G.glass.owned);
 /* other modules add rows once they apply (companions.js: D-pad left / right once Ember / Corvin are with you): G.ui.padRowHooks.push(()=>[[glyph,text],...]) */
 G.ui.padRowHooks=G.ui.padRowHooks||[];

@@ -516,6 +516,12 @@ void main(){vec3 d=normalize(vDir);float y=d.y,h=max(y,0.);
   if(y>0.){vec2 cp=d.xz/(y+.1)*.9+vec2(uTime*.003,0.);
     float cl=smoothstep(.48,.78,fb(cp*vec2(.5,1.7)))*smoothstep(.0,.06,y)*(1.-smoothstep(.3,.65,y));
     vec3 cc=mix(uCloud,uGlowP*1.05,clamp(glow*1.2+core,0.,1.)); c=mix(c,cc,cl*.75);}
+  // the Milky Way: a soft tilted band of light with dark dust lanes, strongest high up and away from the dusk glow
+  { vec3 A=normalize(vec3(.42,.38,.82)); float bd=dot(d,A), band=exp(-bd*bd/.016);
+    vec3 bx=normalize(cross(A,vec3(0.,1.,0.))), by=cross(A,bx); vec2 bp=vec2(atan(dot(d,by),dot(d,bx))*3.,bd*16.);
+    float neb=fb(bp*1.7+3.1), dust=smoothstep(.45,.7,fb(bp*vec2(2.6,1.3)+7.3))*exp(-bd*bd/.004);
+    float mw=band*(.55+.75*neb)*(1.-.75*dust)*smoothstep(.04,.42,h)*(1.-clamp(glow*2.2+core,0.,1.));
+    c+=mix(vec3(.30,.26,.44),vec3(.58,.52,.66),neb)*mw*.42; }
   float m=max(dot(d,uMoonDir),0.);
   c+=vec3(.95,.9,1.)*(smoothstep(.99935,.9996,m)*2.2+pow(m,120.)*.25+pow(m,14.)*.05);
   c=mix(c,uHor,smoothstep(0.,-.08,y));
@@ -529,6 +535,13 @@ void main(){vec3 d=normalize(vDir);float y=d.y,h=max(y,0.);
   const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.BufferAttribute(p,3));
   stars=new THREE.Points(sg,new THREE.PointsMaterial({color:0xd9d2ff,size:1.6,sizeAttenuation:false,transparent:true,opacity:.55,fog:false,depthWrite:false}));
   stars.frustumCulled=false; stars.renderOrder=-9; root.add(stars);
+  // fine star dust along the Milky Way (same axis as the shader's band)
+  { const M=650, q=new Float32Array(M*3), A=new THREE.Vector3(.42,.38,.82).normalize(), bx=new THREE.Vector3().crossVectors(A,new THREE.Vector3(0,1,0)).normalize(), by=new THREE.Vector3().crossVectors(A,bx), v=new THREE.Vector3();
+    let n=0; for(let i=0;i<M*3&&n<M;i++){ const a=r()*TAU, off=(r()+r()+r()-1.5)*.13; v.copy(bx).multiplyScalar(Math.cos(a)).addScaledVector(by,Math.sin(a)).addScaledVector(A,off).normalize();
+      if(v.y<.22)continue; q[n*3]=v.x*855; q[n*3+1]=v.y*855; q[n*3+2]=v.z*855; n++; }
+    const g2=new THREE.BufferGeometry(); g2.setAttribute('position',new THREE.BufferAttribute(q.subarray(0,n*3),3));
+    const dustStars=new THREE.Points(g2,new THREE.PointsMaterial({color:0xe6defa,size:1.1,sizeAttenuation:false,transparent:true,opacity:.32,fog:false,depthWrite:false}));
+    dustStars.frustumCulled=false; dustStars.renderOrder=-9; stars.add(dustStars); stars.userData.dust=dustStars; }
 }
 
 /* ---------- lights & fog ---------- */
@@ -883,7 +896,11 @@ function wallKit(kit,pts,r){
 function ruinCottage(kit,cx,cz,yaw,r,idx){
   const base=Math.min(gh(cx-3,cz-2),gh(cx+3,cz-2),gh(cx-3,cz+2),gh(cx+3,cz+2));
   kit.frame=mat4(cx,base,cz,0,yaw,0);
-  const Wd=7.2,Dp=5.2,T=.55;
+  // each ruin its own house (playtest 2026-11-07: "they look copy-pasted"): footprint, stone colour and one detail differ.
+  // No extra random draws, so everything else on the island (and the undercroft ruin, idx 3) is laid out exactly as before.
+  const VAR=[{W:7.6,D:5.4,tint:[1.06,.98,.9]},{W:6.3,D:4.7,tint:[.9,.95,.97]},{W:7.9,D:5.6,tint:[1.02,.94,.92]},{W:7.2,D:5.2,tint:[1,1,1]}][idx]||{W:7.2,D:5.2,tint:[1,1,1]};
+  const Wd=VAR.W,Dp=VAR.D,T=.55;
+  const tint=c=>{ c.r*=VAR.tint[0]; c.g*=VAR.tint[1]; c.b*=VAR.tint[2]; return c; };
   const walls=[ // [x0,z0,x1,z1,maxH,gable,doorAt]
     [-Wd/2,-Dp/2,Wd/2,-Dp/2,2.6,false,idx%2?-.6:1.2],[-Wd/2,Dp/2,Wd/2,Dp/2,2.6,false,null],
     [-Wd/2,-Dp/2,-Wd/2,Dp/2,2.6,true,null],[Wd/2,-Dp/2,Wd/2,Dp/2,2.6,true,null]];
@@ -903,7 +920,7 @@ function ruinCottage(kit,cx,cz,yaw,r,idx){
       if(!w[5]&&r()<.18)hgt=Math.min(hgt,.95);
       hgt=Math.max(.5,hgt);
       const px=along==='x'?lx:w[0],pz=along==='x'?w[1]:lx,seg=L/n+.02;
-      _c.setHSL(.08+r()*.04,.07,.62+r()*.2);
+      _c.setHSL(.08+r()*.04,.07,.62+r()*.2); tint(_c);
       kit.box('stone',along==='x'?seg:T,hgt+.6,along==='x'?T:seg,px,(hgt+.6)/2-.6,pz,0,0,0,_c.clone());
       if(r()<.5)kit.box('stone',.5,.3,.5,px+(r()-.5)*.3,hgt+.05,pz+(r()-.5)*.2,r(),0,(r()-.5)*.4,_c.clone().multiplyScalar(.9));
       if(hgt>.7){ if(!run)run={a:lx,b:lx,h:hgt}; else{run.b=lx;run.h=Math.max(run.h,hgt);} }
@@ -923,6 +940,22 @@ function ruinCottage(kit,cx,cz,yaw,r,idx){
   for(let k=0;k<3;k++){ const v=r(); kit.box('timber',.18,.18,ucR?3.2:4.4,ucR?.5+v*2.4:(v-.5)*5,.5+r()*.8,(r()-.5)*1.5,r()*.6-.3,r()*.8-.4,r()*.3); }
   // rubble
   for(let k=0;k<6;k++){const a=r()*TAU,d=Wd*.6+r()*1.5;kit.box('stone',.45+r()*.4,.3+r()*.25,.4+r()*.3,Math.cos(a)*d,.05,Math.sin(a)*d*.7,r()*3,r(),r(),col('#8a857c'));}
+  // the detail that makes it this house
+  const dz=-Dp/2, door=walls[0][6];
+  if(idx===0){ // a sagging timber porch over the door
+    for(const sx of [-.95,.95])kit.box('timber',.16,2.1,.16,door+sx,1.05,dz-1.3,0,0,sx*.04,col('#8a7562'));
+    kit.box('timber',2.4,.16,.18,door,2.05,dz-1.3,0,0,.07,col('#7d6a58'));
+    kit.box('slate',2.6,.1,1.6,door,2.2,dz-.75,0,-.32,.05); }
+  const BX=(px,pz,hw,hd,h)=>G.addBoxCollider({x:cx+px*cs+pz*sn,z:cz-px*sn+pz*cs,hw,hd,yaw,y0:base-2,y1:base+h});
+  if(idx===1)BX(-Wd/2+1.0,Dp/2-.6,.65,.35,.95);
+  if(idx===2)BX(Wd/2+1.8,0,.25,1.7,1.1);
+  if(idx===1){ // the door lintel still standing, a worn step, and a cold hearth inside
+    kit.box('timber',1.7,.22,T+.1,door,2.05,dz,0,0,0,col('#6e5c4c'));
+    kit.box('stone',1.5,.18,.7,door,.06,dz-.5,0,0,0,col('#9a948a'));
+    kit.box('stone',1.3,.9,.7,-Wd/2+1.0,.45,Dp/2-.6,0,0,0,col('#7c736a')); kit.box('stone',.9,.12,.5,-Wd/2+1.0,.92,Dp/2-.6,0,0,0,col('#3c3530')); }
+  else if(idx===2){ // a lean-to byre against the side: low wall and a slumped roof
+    kit.box('stone',.45,1.1,3.4,Wd/2+1.8,.55,0,0,0,0,tint(col('#8f8a80')));
+    kit.box('slate',2.2,.1,3.6,Wd/2+.95,1.45,0,0,0,-.42); }
   kit.frame=new THREE.Matrix4();
 }
 
@@ -1178,7 +1211,7 @@ function buildCottage(kit,r){
   fk.box('fcloth',.56,.12,WS1-WS0-.06,-IX+.3,F+.52,(WS0+WS1)/2,0,0,0,col('#6c3f5f'));
   fk.add('fcloth',blob(.17,1,3,.15),mat4(-IX+.18,F+.72,WS0+.3,0,.3,.4,1,1,.55),col('#c8a24c'));
   fk.add('fcloth',blob(.16,1,5,.15),mat4(-IX+.18,F+.7,WS1-.3,0,-.2,.4,1,1,.55),col('#4b3863'));
-  fk.box('fcloth',.3,.04,.22,-IX+.42,F+.6,(WS0+WS1)/2+.1,0,.3,0,col('#5a3a26')); // a book left on the seat
+  fk.box('fcloth',.3,.04,.22,-IX+.42,F+.6,(WS0+WS1)/2+.1,.3,0,0,col('#5a3a26')); // a book left on the seat (lying flat: the .3 was in the tilt slot, playtest 2026-11-07)
   // table + two chairs + the keeper's logbook, candle, mug, inkpot
   const TX=-.9, TZ=.3;
   fk.box('fwood',1.5,.08,.86,TX,F+.78,TZ,.04,0,0,col('#a0764e'));
@@ -1474,7 +1507,12 @@ function buildHeadland(){
   kit.frame=mat4(176,TOP,34,0,PI,0);
   kit.box('timber',2,.1,.5,0,.5,0,0,0,0,col('#8a6a4c')); kit.box('timber',2,.45,.08,0,.82,.24,-.15,0,0,col('#8a6a4c'));
   for(const s of [-1,1])kit.box('stone',.3,.5,.45,s*.8,.24,0);
-  kit.frame=new THREE.Matrix4(); G.addCollider({x:176,z:34,r:1.1});
+  kit.frame=new THREE.Matrix4(); G.addCollider({x:176,z:34,r:1.1,y1:TOP+1.1,noStand:true}); // low: the camera can look over it at someone sitting
+  // sit on it (playtest 2026-11-07): the seat faces the sea and the tide flats (+z)
+  { const seat=new THREE.Vector3(176,TOP+.5,34); let saidSit=false;
+    G.interact.add({pos:seat,radius:1.9,priority:1,label:'Sit',enabled:()=>!(G.player&&G.player.sitting),
+      use:()=>{ if(G.player.sit&&G.player.sit({x:176,z:34.12,yaw:0})&&!saidSit){ saidSit=true;
+        try{ G.ui.say('You sit a while. The sea breathes against the stacks below, and the tide slides in and out over the flats.'); }catch(e){} } }}); }
   // garden flower beds + bushes inside the fence
   const fg=root; const bedMat=G.toon('#ffffff',{vertexColors:true});
   const bed=[]; for(let k=0;k<26;k++){const x=150+r()*16,z=16.5+r()*3.5; if(Math.abs(x-158)<1.6)continue; bed.push({g:blob(.35+r()*.25,0,k,.3),m:mat4(x,TOP+.1,z,0,0,0,1,.7,1),c:col(r()<.5?'#7a55b8':'#d9d0e6')});}
@@ -1539,13 +1577,16 @@ function buildMushrooms(){
 /* ---------- grass that follows the focus ---------- */
 const GR={C:8,N:11,K:190,R:40,slots:[],fx:1e9,fz:1e9,queue:[],geo:null,mat:null,level:null};
 /* per quality: tufts per 8 m cell (ring radius stays 40 m), parting, wind detail */
-const GRQ={saver:{K:100,push:false,lq:true},balanced:{K:190,push:true,lq:false},high:{K:290,push:true,lq:false}};
+const GRQ={saver:{K:100,push:false,lq:true},balanced:{K:200,push:true,lq:false},high:{K:280,push:true,lq:false}}; // tufts are 4 blades (were 3)
 function buildGrassGeo(){
-  // tuft of 3 bent blades. Vertex colour is a shade factor (dark roots -> bright tips); the instance colour is the ground's.
-  const pos=[],colA=[],idx=[]; const base=new THREE.Color(.36,.4,.34),mid=new THREE.Color(.86,.9,.8),tip=new THREE.Color(1.22,1.24,.98);
-  for(let b=0;b<3;b++){const a=b/3*TAU+.4,ca=Math.cos(a),sa=Math.sin(a),off=.07,w=.045,h=.5+b*.09,lean=.2;
+  // tuft of 4 bent blades of mixed height and lean. Vertex colour is a shade factor (roots -> bright tips); the instance
+  // colour is the ground's. Roots start just under the surface and only a little darker than the ground, so a tuft grows
+  // out of the turf instead of reading as a model pushed into it (playtest 2026-11-07).
+  const pos=[],colA=[],idx=[]; const base=new THREE.Color(.7,.74,.66),mid=new THREE.Color(.9,.94,.84),tip=new THREE.Color(1.22,1.24,.98);
+  const B=[[.4,.06,.5,.2],[2.1,.13,.62,.27],[3.9,.1,.44,.16],[5.3,.15,.57,.3]]; // angle, offset from centre, height, lean
+  for(const [a,off,h,lean] of B){const ca=Math.cos(a),sa=Math.sin(a),w=.042;
     const o=pos.length/3,ox=ca*off,oz=sa*off,px=-sa*w,pz=ca*w;
-    pos.push(ox-px,0,oz-pz, ox+px,0,oz+pz, ox-px*.6+ca*lean*.5,h*.5,oz-pz*.6+sa*lean*.5, ox+px*.6+ca*lean*.5,h*.5,oz+pz*.6+sa*lean*.5, ox+ca*lean,h,oz+sa*lean);
+    pos.push(ox-px,-.06,oz-pz, ox+px,-.06,oz+pz, ox-px*.6+ca*lean*.5,h*.5,oz-pz*.6+sa*lean*.5, ox+px*.6+ca*lean*.5,h*.5,oz+pz*.6+sa*lean*.5, ox+ca*lean,h,oz+sa*lean);
     for(const c of [base,base,mid,mid,tip])colA.push(c.r,c.g,c.b);
     idx.push(o,o+1,o+2,o+1,o+3,o+2,o+2,o+3,o+4);}
   const g=new THREE.BufferGeometry();
@@ -1563,11 +1604,13 @@ varying vec4 vGr; // x tip height 0..1, y gust brightening, z sun-through, w far
 `+sh.vertexShader
       .replace('#include <begin_vertex>',`#include <begin_vertex>
   vec2 ip0=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);
-  float fd=length(ip0-uFocus.xz); transformed*=1.-smoothstep(${(GR.R-12).toFixed(1)},${GR.R.toFixed(1)},fd);`)
+  float fd=length(ip0-uFocus.xz); transformed*=1.-smoothstep(${(GR.R-12).toFixed(1)},${GR.R.toFixed(1)},fd);
+  vec3 cw0=(modelMatrix*vec4(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2],1.)).xyz; // tufts the camera sits in (low aim, slopes) shrink away
+  transformed*=smoothstep(.5,1.7,length(cw0-cameraPosition));`)
       .replace('#include <project_vertex>',`vec4 mvPosition=vec4(transformed,1.);
   mvPosition=instanceMatrix*mvPosition;
   vec2 ip=vec2(instanceMatrix[3][0],instanceMatrix[3][2]);
-  float hh=transformed.y, k=hh*hh*1.6;
+  float hh=max(transformed.y,0.), k=hh*hh*1.6;
   #ifdef BQ_LQ
   float gust=0.;
   float w=sin(uTime*1.7+ip.x*.23+ip.y*.17)*.5+.35;
@@ -1697,6 +1740,32 @@ function buildMist(){
   }
 }
 
+/* ---------- stand on things: the tops of rocks, standing stones, field walls and ruin walls are floors ----------
+   (playtest 2026-11-07: "you should be able to get up on these"). Any circle collider at least .6 m across or box
+   collider with a real top (y1) becomes a floor once you are above it — jump, double jump or glide onto it. Only for
+   callers that pass a height (feet, rays); a bare floorAt(x,z) still means the ground, so nothing spawns on a rock. */
+function installStandOn(){
+  // a top you could plausibly see and reach: 0.3–3.4 m above the ground it stands on (not tall building shells, not
+  // the undercroft's buried rooms, not slivers like doors and fences)
+  const ok=c=>{ if(c._stand==null){ const g=height(c.x,c.z), top=c.y1-g; c._stand=c.y1<1e8&&top>.3&&top<3.4&&(c.y0<-1e8||c.y1-c.y0<6)&&(c.r==null?Math.min(c.hw,c.hd)>=.2:c.r>=.6); } return c._stand&&!c.noStand; };
+  G.floorProviders.push((x,z,y)=>{
+    if(y==null||y>1e8)return null;
+    let best=null;
+    for(const c of G.collidersNear(x,z)){
+      if(c.y1>y+.05||!ok(c))continue;
+      const dx=x-c.x, dz=z-c.z; if(dx*dx+dz*dz>(c.r*.82)*(c.r*.82))continue;
+      if(best==null||c.y1>best)best=c.y1;
+    }
+    for(const b of G.boxColliders){
+      if(b.y1>y+.05||!ok(b))continue;
+      const cs=Math.cos(b.yaw||0),sn=Math.sin(b.yaw||0), lx=(x-b.x)*cs-(z-b.z)*sn, lz=(x-b.x)*sn+(z-b.z)*cs;
+      if(Math.abs(lx)>b.hw||Math.abs(lz)>b.hd)continue;
+      if(best==null||b.y1>best)best=b.y1;
+    }
+    return best;
+  });
+}
+
 /* ---------- airborne cliff-climb guard (core already blocks steep steps when grounded) ---------- */
 function installConstrainer(){
   G.constrainers.push((prev,next,y,radius,who)=>{
@@ -1761,7 +1830,7 @@ G.system('world',{order:0,modes:'always',
     buildSky(); const stacks=buildStacks(); buildSea(stacks); setupLights();
     buildForest(); buildRocks(); buildResistingTree();
     buildFlowers(); buildMoorStructures(); buildTreeTiles(); bakeTreeAO(); buildHeadland(); buildMushrooms();
-    buildGrass(); updateGrass(true); buildMist();
+    buildGrass(); updateGrass(true); buildMist(); installStandOn();
     HEMI0.c.copy(G.lights.hemi.color); HEMI0.g.copy(G.lights.hemi.groundColor);
     W.stats.buildMs=Math.round(performance.now()-t0);
     if(G.debug)console.log('[world] built',JSON.stringify(W.stats));
@@ -1780,7 +1849,7 @@ G.system('world',{order:0,modes:'always',
     fog.density=lerp(lerp(.0105,.02,ff)*lerp(1,.55,cured),.09,dark);
     if(G.scene.background&&G.scene.background.isColor)G.scene.background.copy(fog.color);
     skyU.uHor.value.copy(FOG.base).lerp(FOG.cured,cured*.55); skyU.uDark.value=dark; skyU.uCured.value=cured;
-    stars.material.opacity=.55*(1-dark)*(1-cured*.3);
+    stars.material.opacity=.55*(1-dark)*(1-cured*.3); if(stars.userData.dust)stars.userData.dust.material.opacity=.32*(1-dark)*(1-cured*.3);
     const L=G.lights, lf=1-dark*.975;
     L.hemi.intensity=lerp(.78,.95,cured)*lf; L.sun.intensity=lerp(.95,1.05,cured)*(1-dark);
     seaU.uLight.value=lf;

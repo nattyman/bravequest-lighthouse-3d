@@ -152,7 +152,12 @@ const S={
       tt+=d+.03+(Math.random()<.18?.12:0); } },
   step(t,surf,g){ const out=sfxBus, k=g||.12;
     if(surf==='stone'){ noise(t,.05,filt('bandpass',2600,1.2,envGain(out,t,.001,k*1.1,0,.06))); S.thud(t,{g:k*.6,f0:180,f1:90,dur:.06,click:0}); }
-    else if(surf==='leaves'){ for(let i=0;i<3;i++){const tt=t+i*.018; noise(tt,.05,filt('highpass',2400+Math.random()*1500,.7,envGain(out,tt,.001,k*.5,0,.05)));} noise(t,.12,filt('lowpass',900,.7,envGain(out,t,.004,k*.7,0,.12))); }
+    else if(surf==='leaves'){ // forest floor: a soft muffled footfall, then a short spread of dry crunch grains and a little rustle
+      const R=Math.random;
+      noise(t,.1,filt('lowpass',420+R()*160,.8,envGain(out,t,.006,k*.75,0,.11)),true);
+      const n=4+(R()*3|0); for(let i=0;i<n;i++){ const tt=t+.008+R()*.075*(i/n+.3), d=.012+R()*.02;
+        noise(tt,d,filt('bandpass',1300+R()*2600,1.6+R()*1.6,envGain(out,tt,.001,k*(.16+R()*.2),0,d))); }
+      noise(t+.02,.14,filt('bandpass',2600+R()*900,.9,envGain(out,t+.02,.03,k*.09,0,.12))); }
     else if(surf==='wetstone'){ // stone click, a thin wet slap, and a slap-back echo off the cave wall
       noise(t,.05,filt('bandpass',2400,1.2,envGain(out,t,.001,k*1.05,0,.06))); S.thud(t,{g:k*.55,f0:170,f1:85,dur:.06,click:0});
       noise(t+.008,.04,filt('bandpass',3800,2.2,envGain(out,t+.008,.002,k*.45,0,.04)));
@@ -775,7 +780,7 @@ function updateCreatureLoops(mode){
 }
 
 /* ---------- player & monster state polling ---------- */
-let lastState='idle', wasGround=true, fallV=0, stepDist=0, lastPos=null, charging=false;
+let lastState='idle', wasGround=true, fallV=0, stepDist=0, lastPos=null, charging=false, footEvents=false;
 function surfaceAt(p){
   if(cv.inside) return (p.y-cv.oy)<cv.water+.3?'wade':'wetstone';
   const lh=G.world.lighthouse;
@@ -800,10 +805,11 @@ function updatePlayerSounds(dt){
   if(!P.grounded){ fallV=Math.min(fallV,P.vel?P.vel.y:0); }
   if(P.grounded&&!wasGround&&lastPos){ const k=U.clamp(-fallV/14,0,1); if(k>.15){ S.thud(t,{g:.15+k*.45,f0:120,f1:40,dur:.25}); S.step(t,surfaceAt(P.pos),.18+k*.2); } fallV=0; }
   wasGround=P.grounded;
-  // footsteps by distance travelled
-  if(lastPos&&P.grounded&&st!=='roll'&&st!=='dead'){
+  // footsteps: player.js emits 'player:footstep' on each heel strike of the walk/run cycle, so sound and feet stay in step.
+  // Fallback (no events seen, e.g. an old player module): by distance, using the same stride the animation uses.
+  if(!footEvents&&lastPos&&P.grounded&&st!=='roll'&&st!=='dead'){
     const d=Math.hypot(P.pos.x-lastPos.x,P.pos.z-lastPos.z); const spd=d/Math.max(dt,1e-3);
-    if(spd>.6&&d<2){ stepDist+=d; const stride=spd>6?1.25:spd>3.5?1.0:.72;
+    if(spd>.6&&d<2){ stepDist+=d; const perM=3.4+(1.3-3.4)*U.clamp((spd-1)/7.2,0,1), stride=Math.PI/perM;
       if(stepDist>stride){ stepDist=0; S.step(t,surfaceAt(P.pos),U.clamp(.06+spd*.012,.06,.15)); } }
   }
   lastPos=lastPos||new THREE.Vector3(); lastPos.copy(P.pos);
@@ -925,6 +931,8 @@ function wire(){
   G.on('player:hurt',e=>{ if(!ctx)return; const t=ctx.currentTime; S.thud(t,{g:.6,f0:110,f1:40,dur:.3}); S.whoosh(t,{f0:900,f1:300,dur:.25,g:.12});
     if(G.player.hp<=2&&G.player.hp>0){ for(let i=0;i<3;i++)S.chime(t+.25+i*.32,[86],{g:.06,decay:.25}); } });
   // death: the motif falls apart, slowly (F E C … A) — the recording fades out via MIX.dead
+  G.on('player:footstep',e=>{ footEvents=true; if(!ctx)return; const P=G.player; if(!P||!P.grounded||P.state==='roll'||P.state==='dead')return;
+    const spd=e&&e.spd||3; S.step(ctx.currentTime,surfaceAt(P.pos),U.clamp(.06+spd*.012,.06,.15)); });
   G.on('player:dead',()=>{ if(!ctx)return; const t=ctx.currentTime; S.rumble(t,{g:.5,dur:3,f0:55,f1:30}); S.chime(t+.4,[65,64,60,57],{g:.09,step:.5,decay:2.4,dest:synthBus}); });
   // respawn: the leitmotif's head D–E–F rising to A, on the beat grid
   G.on('player:respawn',()=>{ if(!ctx)return; const t=onGrid(ctx.currentTime,PULSE); S.chime(t,[62,64,65,69,74],{g:.08,step:PULSE*.5,decay:1.6,dest:synthBus}); });

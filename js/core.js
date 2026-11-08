@@ -228,7 +228,7 @@ const BIND={
   forward:['KeyW','ArrowUp'], back:['KeyS','ArrowDown'], left:['KeyA','ArrowLeft'], right:['KeyD','ArrowRight'],
   jump:['Space'], sprint:['ShiftLeft','ShiftRight'], roll:['KeyC','ControlLeft','AltLeft'],
   attack:['KeyJ','mouse0'], lock:['KeyQ','Tab','mouse2'], interact:['KeyE'], shutter:['KeyF'], potion:['KeyH'], pause:['Escape','KeyP'],
-  advance:['Enter','NumpadEnter'], // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
+  advance:['Enter','NumpadEnter'], log:['KeyL'], // L / View button: straight to the message log (playtest 2026-11-07) // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
   glass:['KeyG'], // hold: raise the Remembering Glass (glass.js; the Undercroft). Controller: hold Y (see pollPad)
   fox:['KeyR'], raven:['KeyT'] // companions.js: Ember go / heel, Corvin go / scout (controller: D-pad left / right)
 };
@@ -275,7 +275,7 @@ G.setInvertY=(on)=>{
    pressed/held/released sets as keys; sticks feed move() and look(). While a menu/card is up,
    the pad drives the card's buttons instead, and any button used there is ignored by gameplay
    until it is released (so A on "Begin" doesn't also jump). */
-const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'pause',9:'pause',10:'sprint',11:'lock',12:'potion',13:'advance',14:'fox',15:'raven'}; // 12 = D-pad up: drink a draught; 13 = D-pad down: next message; 14/15 = D-pad left/right: the companions (companions.js)
+const PAD_BTN={0:'jump',1:'roll',2:'attack',3:'interact',4:'sprint',5:'shutter',6:'lock',7:'attack',8:'log',9:'pause',10:'sprint',11:'lock',12:'potion',13:'advance',14:'fox',15:'raven'}; // 12 = D-pad up: drink a draught; 13 = D-pad down: next message; 14/15 = D-pad left/right: the companions (companions.js)
 /* look: px-equivalent per second at full deflection. player.js turns 1 px into .0042 rad yaw / .0036 rad pitch,
    so 750 px/s ≈ 3.15 rad/s ≈ 180°/s horizontally and 330 px/s ≈ 1.2 rad/s (≈68°/s) vertically. */
 const PAD={moveDead:.18,lookDead:.15,lookCurve:2,lookX:750,lookY:330,trigger:.5,navDelay:.38,navRepeat:.14};
