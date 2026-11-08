@@ -510,13 +510,18 @@ const hv=new V3();            // horizontal velocity
 let vy=0, coyote=0, jumpBuf=0, airT=0, fallTop=0, jumpHeld=false, wasGliding=false, glideT=0, glideV0=0, glideSink=4;
 /* the glide (Jacob: more lift): ≈1.6 m flown per metre of height lost at full stick; entry speed above the glide speed is
    kept and bleeds off over `bleed` s. Stamina still drains, so it's a glide, not flight. */
-const GLIDE={speedIdle:5, speedMin:5.4, speed:7.6, sinkIdle:3.1, sinkMin:3.4, sink:4.6, bleed:1.5, catch:6, stamina:.038};
+const GLIDE={speedIdle:5, speedMin:5.4, speed:7.6, sinkIdle:3.1, sinkMin:3.4, sink:4.6, bleed:1.5, catch:6, stamina:.038,
+  stallSpeed:.7, sinkStall:2.1, brake:3.4}; // stall: pull back against your flight (playtest 2026-11-07)
+let glideStall=0;
 let rollT=-1, rollDur=.5, rollKind='roll'; const rollDir=new V3();
 let hurtT=0, iframes=0, deadT=0, landT=0, landHeavy=0, stunT=0, interactT=0, stopT=0, shoveT=0;
 let staminaDelay=0, attackHeld=0, staffDrawnT=0, staffDrawn=false, sprinting=false;
-let ph=0, prevStep=0, turnRate=0, prevHeading=0, lookT=3, lookYaw=0, blinkT=2;
+let ph=0, prevStep=0, prevPlant=0, turnRate=0, prevHeading=0, lookT=3, lookYaw=0, blinkT=2;
 const atk={on:false,i:0,t:0,phase:'',queued:false,exclude:null,struck:false};
 const charge={on:false,t:0,ready:0};
+let sitting=null; const sitAt={x:0,z:0,yaw:0};
+// hold strike this long and it becomes a charge; a shorter press swings on release (so a hold never swipes first)
+const CHARGE_HOLD=.16; let tapPend=-1;
 let spinT=-1, spinExclude=null, boltPoseT=0;
 /* techniques (combat.js holds the numbers in G.moves.T): the move in progress, cooldowns, input buffers, air flags */
 const MT=()=>(G.moves&&G.moves.T)||null;
@@ -595,6 +600,10 @@ Object.assign(P,{
     G.focus.copy(P.pos);
   },
   setControl(b){P.inputEnabled=!!b; if(!b){cancelCombat(); jumpBuf=0;}},
+  /** sit on a seat: {x,z,yaw} (feet position, facing). Any move / jump / roll / strike / use stands up. */
+  sit(s){ if(!P.alive||!P.grounded||rollT>=0||mv.id||atk.on||charge.on||P.gliding)return false; if(L.carried)return false;
+    sitting=s; sitAt.x=s.x; sitAt.z=s.z; sitAt.yaw=s.yaw||0; hv.set(0,0,0); interactT=.3; G.emit('player:sit',s); return true; },
+
   /** point the follow camera (cutscene hand-back): yaw like heading, pitch in rad (+ looks down); snaps */
   aimCamera(yaw,pitch){ if(isFinite(yaw))cam.yaw=yaw; if(isFinite(pitch))cam.pitch=pitch; cam.snap=true; },
   facing(){return new V3(Math.sin(P.heading),0,Math.cos(P.heading));},
@@ -644,6 +653,7 @@ P.setCloak=function(b){ G.items.cloak=G.items.cloak||{owned:false}; G.items.cloa
   applyCloak(!!b); if(R){R.hood.scale.copy(R.hoodBase); R.cape.scale.set(1,1,.82);} };
 P.hasCloak=hasCloak;
 P.GLIDE=GLIDE; // glide tuning (tests, docs)
+Object.defineProperty(P,'sitting',{configurable:true,get(){ return !!sitting; }});
 /** put the staff on the back (another module needs the right hand, e.g. to drink) */
 P.sheathe=function(){ if(staffDrawn)sheathe(); };
 G.on('cloak:found',()=>{ if(CK.t<0&&CK.worn&&CK.done)return; CK.done=true; equipFlourish(); });
@@ -655,7 +665,7 @@ function checkpointPos(){
   return {x:s.x,y:s.y,z:s.z,yaw:s.yaw==null?START.yaw:s.yaw};
 }
 function isRollInvuln(){return rollT>=0&&rollT>.02&&rollT<rollDur*.78;}
-function cancelCombat(){atk.on=false; atk.queued=false; charge.on=false; charge.t=0; spinT=-1; attackHeld=0; if(mv.id)endMove(); atkBuf=0;}
+function cancelCombat(){atk.on=false; atk.queued=false; tapPend=-1; charge.on=false; charge.t=0; spinT=-1; attackHeld=0; if(mv.id)endMove(); atkBuf=0;}
 function die(){
   if(!P.alive)return;
   P.alive=false; P.state='dead'; deadT=0; cancelCombat(); rollT=-1; P.gliding=false; P.lockTarget=null;
@@ -760,7 +770,10 @@ function updateLantern(dt){
     if(pend.reset||dt<=0){pend.pos.copy(tmp).y-=.3; pend.prev.copy(pend.pos); pend.reset=false;}
     else{
       const h=Math.min(dt,1/30);
-      const v=tmp2.copy(pend.pos).sub(pend.prev).multiplyScalar(.9);
+      // a livelier swing (was .9 per frame: it barely moved): less damping, a nudge from each step, a breath of wind
+      const v=tmp2.copy(pend.pos).sub(pend.prev).multiplyScalar(Math.pow(.955,h*60));
+      if(pend.kick){ const ch=Math.cos(P.heading), sh=Math.sin(P.heading); v.x+=ch*pend.kick*h; v.z+=-sh*pend.kick*h; pend.kick=0; }
+      const wt=G.time; v.x+=Math.sin(wt*1.3)*.012*h; v.z+=Math.sin(wt*.9+1.7)*.01*h;
       pend.prev.copy(pend.pos); pend.pos.add(v); pend.pos.y-=9.8*h*h*1.0;
       const d=tmp3.copy(pend.pos).sub(tmp); const len=d.length()||1; d.multiplyScalar(.3/len); pend.pos.copy(tmp).add(d);
     }
@@ -837,7 +850,7 @@ function fireBolt(o={}){
   else if(o.point){ dir=tmp2.copy(o.point).sub(from); const d=dir.length(); dir.normalize(); life=clamp(d/speed+.06,.12,2.6);
     P.heading=Math.atan2(dir.x,dir.z); }
   else{dir=P.facing(); const t=G.combat.nearestTarget(P.pos,16,dir); if(t&&Math.abs(U.angDiff(Math.atan2(t.pos.x-P.pos.x,t.pos.z-P.pos.z),P.heading))<.35){tmp2.copy(t.pos); tmp2.y+=(t.height||1.4)*.55; dir=tmp2.sub(from).normalize();}}
-  const m=new THREE.Group(), gs=o.great?1.45:1;
+  const m=new THREE.Group(), gs=o.great?1.45:1; m.userData.noAim=true;
   const core=new THREE.Mesh(new THREE.SphereGeometry(.11*gs,12,10),new THREE.MeshBasicMaterial({color:glowCol(o.great?'#ffe6c0':'#c9a8ff',3)})); m.add(core);
   m.add(sprite(G.tex.flame,o.great?'#d9b8ff':'#a070ff',.9*gs,1)); m.add(sprite(G.tex.soft,'#7a4cff',2.2*gs,.5));
   const proj=G.combat.spawnProjectile({pos:from,vel:dir.clone().multiplyScalar(speed),radius:B.radius,team:'player',damage:B.dmg+(MOD().dmg||0),life,kind:'bolt',mesh:m,knockback:B.kb,pierce:pierce>0,
@@ -851,12 +864,43 @@ function fireBolt(o={}){
   return proj;
 }
 /** the aim ray: from the camera through the reticle, starting just past the Traveler */
-function aimRay(){
+function aimRay(o){
   const c=G.camera, M=MT(); c.updateMatrixWorld();
   const from=c.position.clone(), dir=new V3(); c.getWorldDirection(dir);
   tmp3.set(P.pos.x,P.pos.y+1.1,P.pos.z).sub(from);
   const start=Math.max(.3,tmp3.dot(dir)+.35);
-  return G.moves.raycast(from,dir,(M?M.aim.rayMax:60),{start});
+  const r=G.moves.raycast(from,dir,(M?M.aim.rayMax:60),{start});
+  // The physics ray only knows terrain, colliders and hurtboxes. Aiming at anything else (a rock spire, a roof, a
+  // branch, something up high) it ran on to 60 m, and since the bolt leaves the staff (right of the camera) it then
+  // passed a metre wide of what was under the reticle. On release, also test what is actually drawn there.
+  if(o&&o.visual&&!r.hb){ const v=visualHit(from,dir,start,r.dist); if(v){r.point=v; r.dist=v.distanceTo(from); r.surface='mesh';} }
+  return r;
+}
+const _rc=new THREE.Raycaster(); let _vis=null, _visT=-1;
+function visualTargets(){
+  if(_vis&&G.time-_visT<2)return _vis;
+  _vis=[]; _visT=G.time; const skip=P.model||null;
+  G.scene.traverse(ob=>{
+    if(!ob.isMesh||ob.isSkinnedMesh)return;
+    if(isUnder(ob,skip))return;
+    const m=Array.isArray(ob.material)?ob.material[0]:ob.material; if(!m)return;
+    if(m.depthWrite===false||m.side===THREE.BackSide||(m.transparent&&(m.opacity==null||m.opacity<.6))||m.blending===THREE.AdditiveBlending)return;
+    if(ob.isInstancedMesh&&ob.count>400)return;           // grass and ground cover: thousands of tests, never the thing you aimed at
+    if(!ob.geometry)return; if(!ob.geometry.boundingSphere)ob.geometry.computeBoundingSphere();
+    if(ob.geometry.boundingSphere&&ob.geometry.boundingSphere.radius*Math.max(ob.scale.x,ob.scale.y,ob.scale.z)>250)return; // sky, sea, terrain shells
+    _vis.push(ob);
+  });
+  return _vis;
+}
+function isUnder(ob,root){ for(let o=ob;o;o=o.parent)if(o===root||(o.userData&&o.userData.noAim))return true; return false; }
+function shown(ob){ for(let o=ob;o;o=o.parent)if(!o.visible)return false; return true; }
+function visualHit(from,dir,near,far){
+  try{
+    _rc.set(from,dir); _rc.near=near; _rc.far=far;
+    const hits=_rc.intersectObjects(visualTargets(),false);
+    for(const h of hits)if(shown(h.object))return h.point.clone();
+  }catch(e){}
+  return null;
 }
 function releaseCharge(ready){
   const A=MT()?MT().aim:{spinNear:4.5};
@@ -866,7 +910,7 @@ function releaseCharge(ready){
     return;
   }
   if(aim.k>.5&&G.moves){
-    const r=aimRay(); aim.hit=r; aim.last=r.point.clone();
+    const r=aimRay({visual:true}); aim.hit=r; aim.last=r.point.clone();
     const near=Math.hypot(r.point.x-P.pos.x,r.point.z-P.pos.z)<A.spinNear&&r.point.y<P.pos.y+2.2;
     if(ready>=2&&near&&P.grounded)startSpin(); else fireBolt({point:r.point,great:ready>=2});
     return;
@@ -933,6 +977,13 @@ function update(dt){
   if(ctl&&I.pressed('jump'))jumpBuf=.15; else jumpBuf=Math.max(0,jumpBuf-dt);
   jumpHeld=ctl&&I.down('jump');
   const busy=hurtT>0||stunT>0||interactT>0||spinT>=0||P.actionLock>0; // actionLock: another module's committed action (potions.js: drinking)
+  // sitting (a bench): any move, jump, roll, strike or use stands you up
+  if(sitting){
+    const up=!ctl||!P.alive||hurtT>0||mag>.3||I.pressed('jump')||I.pressed('roll')||I.pressed('attack')||I.pressed('interact');
+    if(up){ sitting=null; interactT=.3; jumpBuf=0; rollBuf=0; atkBuf=0; G.emit('player:stand'); }
+    else{ hv.set(0,0,0); vy=0; P.pos.x=sitAt.x; P.pos.z=sitAt.z; P.heading=U.dampAngle(P.heading,sitAt.yaw,8,dt); P.state='sit'; P.vel.set(0,0,0);
+      if(ctl)G.hint('E','Stand'); animate(rdt); placeModel(); updateLantern(dt); G.focus.copy(P.pos); return; }
+  }
   // roll / dodge (buffered); in the air it is the dive (once per jump)
   const M=MT();
   if(ctl&&I.pressed('roll'))rollBuf=M?M.buffer.roll:.1; else rollBuf=Math.max(0,rollBuf-dt);
@@ -1171,8 +1222,17 @@ function handleAttack(dt,wish,mag,busy){
   if(I.pressed('attack'))atkBuf=M?M.buffer.attack:.12; else atkBuf=Math.max(0,atkBuf-dt);
   if(atkBuf>0&&!busy&&!charge.on&&!mv.id){
     const c=pickCombo();
-    if(c){atkBuf=0; startMove(c,wish);}
-    else if(P.grounded&&rollT<0){atkBuf=0; if(atk.on)atk.queued=true; else startSwing(0,wish);}
+    if(c){atkBuf=0; tapPend=-1; startMove(c,wish);}
+    else if(P.grounded&&rollT<0){atkBuf=0;
+      if(atk.on)atk.queued=true;
+      // first strike from rest: wait to see if this is a tap (swing on release) or a hold (charge, no swing first)
+      else if(tapPend<0&&I.down('attack')&&!atkHoldLock)tapPend=0;
+      else if(tapPend<0)startSwing(0,wish);}
+  }
+  if(tapPend>=0){
+    if(!I.down('attack')||atkHoldLock||busy||mv.id||rollT>=0||!P.grounded){
+      const swing=!I.down('attack')&&!busy&&!mv.id&&rollT<0&&P.grounded; tapPend=-1; if(swing)startSwing(0,wish);
+    } else tapPend+=dt;
   }
   // swing progress
   if(atk.on){
@@ -1184,8 +1244,8 @@ function handleAttack(dt,wish,mag,busy){
     else {atk.on=false;}
   }
   // charge: hold attack
-  if(!charge.on&&attackHeld>.24&&(!atk.on||atk.phase==='rec')&&rollT<0&&!busy&&!mv.id&&P.grounded){
-    atk.on=false; atk.queued=false; charge.on=true; charge.t=0; charge.ready=0; drawStaff();
+  if(!charge.on&&attackHeld>CHARGE_HOLD&&(!atk.on||atk.phase==='rec')&&rollT<0&&!busy&&!mv.id&&P.grounded){
+    atk.on=false; atk.queued=false; tapPend=-1; charge.on=true; charge.t=0; charge.ready=0; drawStaff();
   }
   if(charge.on){
     charge.t+=dt*(MOD().charge||1); staffDrawnT=3;
@@ -1195,6 +1255,7 @@ function handleAttack(dt,wish,mag,busy){
     if(!I.down('attack')){
       const ready=charge.ready; charge.on=false; attackHeld=0;
       if(ready>=1)releaseCharge(ready);
+      else if(P.grounded&&rollT<0&&!busy&&!mv.id)startSwing(0,wish); // let go before the charge took: still a strike, never a dead press
     }
   }
   updateMove(dt);
@@ -1290,18 +1351,27 @@ function airControl(dt,wish,mag,ctl){
   const h=P.pos.y-G.floorAt(P.pos.x,P.pos.z,P.pos.y);
   // glide: hold jump while falling
   const wantGlide=hasCloak()&&ctl&&I.down('jump')&&!P.exhausted&&P.stamina>0&&h>1.1&&(vy<-1||airT>.32||P.gliding)&&rollT<0&&!mv.id&&!(djUsed&&vy>0);
-  if(wantGlide&&!P.gliding){P.gliding=true; glideT=0; glideV0=Math.hypot(hv.x,hv.z); cancelCombat(); G.emit('player:glide',{pos:P.pos.clone()});}
+  if(wantGlide&&!P.gliding){P.gliding=true; glideT=0; glideStall=0; P.glideStall=0; glideV0=Math.hypot(hv.x,hv.z); cancelCombat(); G.emit('player:glide',{pos:P.pos.clone()});}
   if(P.gliding&&(!wantGlide)){P.gliding=false; fallTop=P.pos.y;}
   if(P.gliding){
     glideT+=dt;
     P.stamina=Math.max(0,P.stamina-spend(dt*GLIDE.stamina)); staminaDelay=.6;
     if(P.stamina<=0){P.exhausted=true; P.gliding=false; fallTop=P.pos.y;}
-    if(mag>.08)P.heading=U.dampAngle(P.heading,Math.atan2(wish.x,wish.z),2.4,dt);
+    // stall: pull the stick back against the way you're flying and the cloak flares — you brake to a near-hover and
+    // drift down slowly. Straight back holds your heading (line up a landing on a pillar); back-and-to-a-side brakes
+    // while you swing round, then you pick up speed in the new direction.
+    const hs=Math.hypot(hv.x,hv.z), fa=hs>1.5?Math.atan2(hv.x,hv.z):P.heading; // against the way you're actually moving
+    const wa=Math.atan2(wish.x,wish.z), back=mag>.08?Math.max(0,-Math.cos(U.angDiff(wa,fa)))*smooth(.08,.6,mag):0;
+    const sK=smooth(.3,.85,back), pure=smooth(.86,.97,back);
+    glideStall=damp(glideStall,sK,sK>glideStall?8:3,dt); P.glideStall=glideStall;
+    if(mag>.08)P.heading=U.dampAngle(P.heading,wa,lerp(2.4,1.5,glideStall)*(1-pure),dt);
     // forward speed from the stick; speed you came in with above that (a sprint, a double jump) bleeds off over GLIDE.bleed s
-    const k=mag>.08?smooth(.08,1,mag):0, base=mag>.08?lerp(GLIDE.speedMin,GLIDE.speed,k):GLIDE.speedIdle;
-    const gs=base+Math.max(0,glideV0-base)*Math.max(0,1-glideT/GLIDE.bleed);
+    const k=mag>.08?smooth(.08,1,mag)*(1-sK):0, base=mag>.08&&sK<.99?lerp(GLIDE.speedMin,GLIDE.speed,k):GLIDE.speedIdle;
+    let gs=base+Math.max(0,glideV0-base)*Math.max(0,1-glideT/GLIDE.bleed);
+    gs=lerp(gs,GLIDE.stallSpeed,glideStall); if(glideStall>.3)glideV0=Math.min(glideV0,gs);
     glideSink=mag>.08?lerp(GLIDE.sinkMin,GLIDE.sink,k):GLIDE.sinkIdle;
-    const ff=P.facing(); hv.x=damp(hv.x,ff.x*gs,1.6,dt); hv.z=damp(hv.z,ff.z*gs,1.6,dt);
+    glideSink=lerp(glideSink,GLIDE.sinkStall,glideStall);
+    const ff=P.facing(), hr=lerp(1.6,GLIDE.brake,sK); hv.x=damp(hv.x,ff.x*gs,hr,dt); hv.z=damp(hv.z,ff.z*gs,hr,dt);
   }else if(mag>.08){
     const cur=Math.max(hv.length(),4.2);
     hv.x=damp(hv.x,wish.x*cur,2.6,dt); hv.z=damp(hv.z,wish.z*cur,2.6,dt);
@@ -1408,6 +1478,8 @@ function animate(dt){
     T.spX+=(.05+run*.14+spr*.14)*w; T.spY=s*.13*run; T.hipY=-s*.12*run; T.hdX-=run*.1;
     T.rigZ=clamp(-turnRate*.045*run,-.32,.32);
     // footstep dust
+    // heel strike (thigh at the front of its swing): the footstep sound (audio.js listens)
+    const cs=Math.sign(c); if(cs!==prevPlant){prevPlant=cs; if(spd>.6){G.emit('player:footstep',{spd,foot:cs>0?'L':'R'}); pend.kick=(cs>0?1:-1)*(.25+spd*.05);}}
     const st=Math.sign(s); if(st!==prevStep){prevStep=st; if(spd>4.6){const fp=(st>0?R.ftR:R.ftL).getWorldPosition(tmp3); dust(fp,spr>.5?3:2,.32);}}
   }
   if(P.exhausted&&P.grounded&&rollT<0){T.spX+=.42+Math.sin(t*9)*.05; T.hdX+=.15; T.shLX-=.3; T.shRX-=.3; T.elL=-.3; T.elR=-.3;}
@@ -1423,6 +1495,7 @@ function animate(dt){
       setT({spX:.28,spY:0,spZ:0,hdX:-.32,shLZ:1.38,shRZ:-1.38,shLX:-.3,shRX:-.3,shLY:.15,shRY:-.15,elL:-.12,elR:-.12,
         thLX:.22+Math.sin(t*3)*.08,thRX:.32-Math.sin(t*3)*.08,knL:.55,knR:.65,ftL:.4,ftR:.4,thLZ:.06,thRZ:-.06});
       T.rigZ=clamp(-turnRate*.12,-.45,.45); rate=6*g+2;
+      if(glideStall>.01){ const q=glideStall; T.spX-=.42*q; T.hdX+=.18*q; T.shLZ+=.12*q; T.shRZ-=.12*q; T.shLX-=.35*q; T.shRX-=.35*q; T.thLX-=.45*q; T.thRX-=.35*q; T.knL+=.25*q; T.knR+=.2*q; }
     }else if(vy>0){
       setT({spX:.12,thLX:-.95,knL:1.25,ftL:.2,thRX:.25,knR:.55,ftR:.3,shLX:-.6,shRX:.35,shLZ:.35,shRZ:-.5,elL:-.6,elR:-.4,hdX:-.1});
       rate=14;
@@ -1565,6 +1638,9 @@ function animate(dt){
     T.rigZ=1.48*k2; T.pivot=lerp(.45,.17,k2); T.drop=k2?lerp(.33,0,k2)*(1-k2):0;
     if(deadT<.5)T.drop=0;
   }
+  // ---- sitting on a bench: hips on the seat, knees bent, hands resting on the knees ----
+  if(sitting){ ik=false; setT({thLX:-1.42,thRX:-1.36,knL:1.38,knR:1.5,ftL:.1,ftR:.05,thLZ:.08,thRZ:-.08,spX:.1+br*.012,hdX:.04-br*.01,
+      shLX:-.42,shRX:-.42,shLZ:.16,shRZ:-.16,elL:-.62,elR:-.62}); T.drop=.17; rate=7; }
   // ---- damp pose ----
   for(const k of KEYS){ pose[k]=damp(pose[k],T[k],rate,dt); }
   pose.pivot=damp(pose.pivot,T.pivot,8,dt);
@@ -1634,10 +1710,16 @@ function updateCloak(dt){
   if(dt>0){
     const ax=k*(tgt.x-cl.lag.x)-c*cl.lagV.x, ay=k*(tgt.y-cl.lag.y)-c*cl.lagV.y, az=k*(tgt.z-cl.lag.z)-c*cl.lagV.z;
     cl.lagV.x+=ax*dt; cl.lagV.y+=ay*dt; cl.lagV.z+=az*dt; cl.lag.addScaledVector(cl.lagV,dt);
-    const fT=.03+run*.07+glide*.32+(rollT>=0?.12:0)+(!P.grounded?.06:0);
+    const fT=.03+run*.07+glide*.32+(rollT>=0?.2:0)+(!P.grounded?.06:0);
     cl.flareV+=(70*(fT-cl.flare)-9*cl.flareV)*dt; cl.flare+=cl.flareV*dt;
     const whirl=mv.id==='sweep'||mv.id==='spin'||mv.id==='plunge'&&mv.phase!=='wind'||djFlipT>=0&&djFlipT<.4;
-    cl.rigid=damp(cl.rigid,(rollT>=0&&rollKind!=='sideL'&&rollKind!=='sideR')||!P.alive||spinT>=0||whirl?.95:.3,14,dt);
+    // rolls: the cloak used to lock to the body (.95) and tumble as one stiff piece. Now it mostly follows but trails and
+    // streams out behind, gets a kick as the roll starts and swings through as you come up (playtest 2026-11-07)
+    const rolling=rollT>=0&&rollKind!=='sideL'&&rollKind!=='sideR';
+    if(rolling&&!cl.wasRoll){ cl.lagV.z-=3.2; cl.lagV.y+=1.6; cl.flareV+=2.5; }
+    if(!rolling&&cl.wasRoll){ cl.lagV.z+=2.4; cl.lagV.y-=.8; cl.flareV+=1.2; }
+    cl.wasRoll=rolling;
+    cl.rigid=damp(cl.rigid,!P.alive||spinT>=0||whirl?.95:rolling?.72:.3,rolling?9:14,dt);
   }
   const t=G.time;
   const wAmp=.012+run*.04+glide*.06+(!P.grounded?.03:0), wF=4+run*7+glide*6;
@@ -1717,8 +1799,15 @@ function updateCamera(dt){
   const inside=!!(LH&&LH.inside&&LH.inside(P.pos));
   const CT=G.world.cottage, inCot=!!(CT&&CT.near&&CT.near(P.pos));
   let dist=cam.zoom, pMin=-.42, pMax=1.2;
-  if(inside){dist=Math.min(dist,2.8); pMin=.48; pMax=1.3;}
-  if(inCot){dist=Math.min(dist,3.6); pMin=.42; pMax=1.15; if(cam.pitch<.5&&cam.idle>.3)cam.pitch=damp(cam.pitch,.5,2.5,dt);}
+  // interiors tighten the boom and the pitch range; blend into and out of them instead of snapping at the doorway
+  // ...and start easing in a few steps before the door, so the wall doesn't shove the camera in at the threshold
+  const doorK=(d,y)=>d&&Math.abs(P.pos.y-y)<2.5?clamp(1-(Math.hypot(P.pos.x-d.x,P.pos.z-d.z)-1)/3.5,0,1):0;
+  const tIn=inside?1:doorK(LH&&LH.doorOut,LH&&LH.doorOut?LH.doorOut.y-1.4:0)*.7, tCot=inCot?1:doorK(CT&&CT.door,CT&&CT.door?CT.door.y:0)*.8;
+  cam.kIn=damp(cam.kIn||0,tIn,cam.snap?99:4.5,dt); cam.kCot=damp(cam.kCot||0,tCot,cam.snap?99:4.5,dt);
+  const kI=cam.kIn, kC=cam.kCot;
+  if(kI>.001){dist=lerp(dist,Math.min(dist,2.8),kI); pMin=lerp(pMin,.48,kI); pMax=lerp(pMax,1.3,kI);}
+  if(kC>.001){dist=lerp(dist,Math.min(dist,3.6),kC); pMin=lerp(pMin,.42,kC); pMax=lerp(pMax,1.15,kC);}
+  if(kC>.3&&cam.pitch<.5*kC&&cam.idle>.3)cam.pitch=damp(cam.pitch,.5*kC,2.5,dt);
   const spd=Math.hypot(hv.x,hv.z);
   if(!P.alive){cam.yaw+=dt*.12; cam.pitch=damp(cam.pitch,.55,1.2,dt); dist=Math.min(dist,4.6);}
   else if(P.camPull){ const c=P.camPull; cam.yaw=U.dampAngle(cam.yaw,c.yaw,c.rate||4,dt); cam.pitch=damp(cam.pitch,c.pitch==null?.15:c.pitch,3,dt); dist=Math.min(dist,c.dist||3.4); cam.idle=0; }

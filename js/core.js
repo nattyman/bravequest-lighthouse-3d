@@ -228,7 +228,7 @@ const BIND={
   forward:['KeyW','ArrowUp'], back:['KeyS','ArrowDown'], left:['KeyA','ArrowLeft'], right:['KeyD','ArrowRight'],
   jump:['Space'], sprint:['ShiftLeft','ShiftRight'], roll:['KeyC','ControlLeft','AltLeft'],
   attack:['KeyJ','mouse0'], lock:['KeyQ','Tab','mouse2'], interact:['KeyE'], shutter:['KeyF'], potion:['KeyH'], pause:['Escape','KeyP'],
-  advance:['Enter','NumpadEnter'], // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
+  advance:['Enter','NumpadEnter'], log:['KeyL'], // L: straight to the message log (playtest 2026-11-07; the controller's View button stays on the map, map.js) // next caption (hud.js); Enter on a focused menu button only clicks that button (see keydown)
   glass:['KeyG'], // hold: raise the Remembering Glass (glass.js; the Undercroft). Controller: hold Y (see pollPad)
   fox:['KeyR'], raven:['KeyT'] // companions.js: Ember go / heel, Corvin go / scout (controller: D-pad left / right)
 };
