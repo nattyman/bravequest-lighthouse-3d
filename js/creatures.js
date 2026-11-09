@@ -1263,12 +1263,12 @@ function buildHalloran(){
     torso:chest,armL:shL,armR:shR,legL:thL,legR:thR,fore:elL,hand:inkHand,
     skirt:{geo:skG,pos:sp,prev:sprev,ang:sang,init:false},em,
     home,homeYaw,pos:home.clone(),heading:homeYaw,afraid:false,met:false,
-    pre:0,mid:0,post:0,fail:0,stand:false,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
+    talk:{start:{talks:0,heard:{}},failed:{talks:0,heard:{}},lantern:{talks:0,heard:{}},cured:{talks:0,heard:{}}},stand:false,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
     sit:1,fear:0,talkT:0,talkK:0,blinkT:2,shiftT:3,shift:0,shiftTo:0,twitchT:1,twitch:0,lookYaw:0,lookPitch:0,glanceT:0,creep:1};
   G.interact.add({pos:()=>hal.talkPos.copy(hal.pos),radius:2.8,priority:2,
     label:()=>hal.met?'Talk to Halloran':'Talk to the figure',
     enabled:()=>!hal.afraid&&isPlay(),
-    use:talkHalloran});
+    use:()=>talkHalloran()});
 }
 /* move him somewhere for a story beat (flow.js): teleports (the player is never watching), stands instead of sitting.
    halloranAt(null) sends him back to his barrel on the cliff path. */
@@ -1281,27 +1281,69 @@ function halloranAt(pos,yaw){
   hal.pos.copy(hal.home); hal.heading=hal.homeYaw; hal.afraid=false; hal.sit=hal.stand?0:1; hal.skirt.init=false;
   hal.g.position.copy(hal.pos); hal.g.rotation.y=hal.heading;
 }
-function talkHalloran(){
-  if(!hal||hal.afraid)return;
+/* Halloran talks on the conversation card (talk.js), like the people under the hamlet. Opening him shows the opening line
+   for where the story is (before the lamp · the storm lantern failed · Maren's lantern found · the lamp cured), then 2–3
+   replies that lead to the rest of what he has to say for that part; later parts are still only reached by progress.
+   One-time lines other modules hand him (API.halloranHooks: fn() -> line|null) come first, as lines on the card.
+   Every line he says is still a 'talk' event {who:'Halloran', line, index (in that part's list), phase} — flow.js moves
+   the objective on from those, audio.js murmurs them. */
+const HAL_TALK={
+  start:{lines:()=>HAL_PRE, open:s=>s.talks?[2]:[0], topics:[
+    {id:'lamp',text:'What happened to the lamp?',say:s=>s.heard[2]?[3]:[3,2]},
+    {id:'arm',text:'What happened to your arm?',say:[1]},
+    {id:'moths',text:'And the moths?',needs:s=>!!s.heard[3],say:[4]},
+    {id:'go',text:'I’ll go.',say:s=>s.heard[2]?[5]:[2,5],end:true}]},
+  failed:{lines:()=>HAL_FAIL, open:()=>[0], topics:[
+    {id:'maren',text:'Where did Maren go?',say:[1]},
+    {id:'woods',text:'What’s in the woods?',say:[2]},
+    {id:'go',text:'I’ll go.',say:s=>s.heard[1]?[3]:[1,3],end:true}]},
+  lantern:{lines:()=>HAL_MID, open:()=>[0], topics:[
+    {id:'why',text:'Why will hers work?',say:[1]},
+    {id:'go',text:'I’ll go.',say:[2],end:true}]},
+  cured:{lines:()=>HAL_POST, open:s=>s.talks?[2]:[0], topics:[
+    {id:'moths',text:'The moths did it.',say:[1]},
+    {id:'over',text:'Is it over?',needs:s=>!s.heard[2],say:[2]},
+    {id:'go',text:'I’ll go.',say:[3],end:true}]}
+};
+function halPhase(){
   const L=lantern();
-  const isCured=cured||(L&&L.cured);
-  const found=(L&&L.found)||G.flag('lanternFound');
-  const failed=!!((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'));
-  let line, index;
-  // one-time lines other modules hand him (the Undercroft: the hamlet, and Wren): API.halloranHooks = [fn() -> line|null]
-  for(const h of API.halloranHooks||[]){ let l=null; try{ l=h(); }catch(e){ console.error('halloran hook',e); } if(l){
-    hal.met=true; if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
-    hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3; G.ui.say(l,'Halloran'); G.emit('talk',{who:'Halloran',line:l,index:-1,phase:'hook'}); return; } }
-  if(isCured){index=Math.min(hal.post,HAL_POST.length-1);line=HAL_POST[index];hal.post++;}
-  else if(found){index=Math.min(hal.mid,HAL_MID.length-1);line=HAL_MID[index];hal.mid++;}
-  else if(failed){index=Math.min(hal.fail,HAL_FAIL.length-1);line=HAL_FAIL[index];hal.fail++;}
-  else{index=Math.min(hal.pre,HAL_PRE.length-1);line=HAL_PRE[index];hal.pre++;}
-  hal.met=true;
-  if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
-  hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3;
-  G.ui.say(line,'Halloran');
-  G.emit('talk',{who:'Halloran',line,index,phase:isCured?'cured':found?'lantern':failed?'failed':'start'});
+  if(cured||(L&&L.cured))return 'cured';
+  if((L&&L.found)||G.flag('lanternFound'))return 'lantern';
+  if((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'))return 'failed';
+  return 'start';
 }
+const halMeta=new Map();   // line text -> {phase, index}, for the 'talk' event
+function halLines(phase,idx){ const list=HAL_TALK[phase].lines(); return idx.map(i=>{ const t=list[Math.min(i,list.length-1)]; halMeta.set(t,{phase,index:Math.min(i,list.length-1)}); return t; }); }
+function halNode(phase,said,lines){
+  const P=HAL_TALK[phase], st=hal.talk[phase];
+  const choices=P.topics.filter(t=>!said.has(t.id)&&(!t.needs||t.needs(st))).map(t=>({id:t.id,text:t.text,
+    next:()=>{ said.add(t.id); const idx=typeof t.say==='function'?t.say(st):t.say; const ls=halLines(phase,idx); return t.end?{lines:ls}:halNode(phase,said,ls); }}));
+  return {lines,choices};
+}
+function halFace(){ if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z); }
+/** open the card. opening (optional): [{text, phase, index}] said first instead of his usual opening (cave_boss.js: the keepers' cave) */
+function talkHalloran(opening){
+  if(!hal||hal.afraid)return false;
+  if(G.talk&&G.talk.isOpen)return G.talk.who==='Halloran';
+  const phase=halPhase(), st=hal.talk[phase];
+  const lines=[];
+  for(const h of API.halloranHooks||[]){ for(let k=0;k<3;k++){ let l=null; try{ l=h(); }catch(e){ console.error('halloran hook',e); } if(!l)break; halMeta.set(l,{phase:'hook',index:-1}); lines.push(l); } }
+  if(opening&&opening.length){ for(const o of opening){ halMeta.set(o.text,{phase:o.phase||'extra',index:o.index==null?-1:o.index}); lines.push(o.text); } }
+  else lines.push(...halLines(phase,HAL_TALK[phase].open(st)));
+  st.talks++;
+  hal.met=true; halFace(); hal.talkT=2.6;
+  const node=halNode(phase,new Set(),lines);
+  if(!G.talk){ for(const l of lines)G.ui.say(l,'Halloran'); return false; }
+  return G.talk.open(Object.assign({who:'Halloran',name:'Halloran',title:G.portraits?G.portraits.title('halloran'):'',portrait:'halloran',
+    onClose:()=>{ hal.talkT=Math.max(hal.talkT,1.2); }},node));
+}
+G.on('talk:line',e=>{
+  if(!e||e.who!=='Halloran'||!hal)return;
+  const m=halMeta.get(e.text)||{phase:'extra',index:-1};
+  if(m.index>=0){ const st=hal.talk[m.phase]; if(st)st.heard[m.index]=1; }
+  hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3; halFace();
+  G.emit('talk',{who:'Halloran',line:e.text,index:m.index,phase:m.phase});
+});
 /* pose tables: standing / seated / afraid. Angles in radians (x: + = backward for limbs, − = forward) */
 const HP={
   stand:{hy:.92,hz:0,sp:.16,ch:.12,nk:-.12,hd:-.06,shLx:.05,shLz:.12,elL:-.25,shRx:.05,shRz:-.1,elR:-.2,thx:0,kn:0,an:0,sw:.0},
@@ -1486,7 +1528,7 @@ const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negat
   addCustom, freeCustom, claimFreed:null, buildAnimal:(k,m)=>buildAnimal(k,m), animAnimal, animalGeos:k=>animalGeos(k), animalSpec:k=>animalSpec(k), KINDS, negInk:o=>negInk(o),
   toPatch, toRoost, setRoost, inCaveRegion, get roost(){return roost;}, clingR:null, N_ROOST,
   lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
-  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),halloranAt:(p,yaw)=>halloranAt(p,yaw),
+  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:o=>talkHalloran(o),halloranAt:(p,yaw)=>halloranAt(p,yaw),
   get glassOpen(){return glassOpen;}, get cured(){return cured;}};
 
 G.system('creatures',{order:30,modes:'always',

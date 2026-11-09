@@ -90,7 +90,7 @@ function updateAttract(dt){
    failed (the ink drinks the plain flame; logbook on the sill) → halloran2 (he waits at the tower foot) →
    forest (the Hollow Stag guards Maren's lantern at the Resisting Tree) → return (the swarm follows) → ascend → cure →
    descend/finale ('finale:start'; finale_boss.js builds the Gloaming) → done on boss:dead {who:'gloaming'}. */
-let finaleArmed=false, finaleT=-1, bossDead=false, endingT=-1, sawDoor=false, stagDead=false, cradleObj=false, halAway=false;
+let finaleArmed=false, finaleT=-1, bossDead=false, endingT=-1, sawDoor=false, stagDead=false, cradleObj=false, halAway=false, halScene=null;
 const storm=()=>G.items.storm||{};
 function lighthouseDoor(){const lh=G.world.lighthouse; return lh&&lh.doorOut?lh.doorOut.clone():lmV('lighthouse',V(180,42,0)).add(V(-5,0,0));}
 function stormHome(){ const h=G.world.lighthouse&&G.world.lighthouse.stormHome; return h?h.clone():lmV('shed',V(150,42,33)); }
@@ -182,7 +182,10 @@ function onTowerExit(){
   if(G.quest.step==='failed'&&storm().failed&&!G.items.lantern.found){
     halToTower();
     setStep('halloran2','Talk to Halloran','He’s waiting at the foot of the tower',halPos(),'Halloran');
-    setTimeout(()=>G.ui.say('Halloran is standing at the foot of the tower, as if he’s been waiting a while. “Well,” he says. “I saw it go out from down here.”',{priority:'high'}),400);
+    // a story moment: his card when it's calm (talk.js), the caption otherwise
+    const scene={who:'HalloranScene',name:'Halloran',title:G.portraits?G.portraits.title('halloran'):'',portrait:'halloran',key:'halTower',
+      lines:[{text:'Halloran is standing at the foot of the tower, as if he’s been waiting a while.',who:''},{text:'“Well,” he says. “I saw it go out from down here.”',who:'Halloran'}]};
+    halScene={t:.4,o:scene};   // in game time (updateBeats), so it lands the same in a stepped test
   }
 }
 function onStormPlaced(){ setStep('failed','Watch','',null,''); }
@@ -237,8 +240,10 @@ function onBossDead(e){
   G.ui.say('Caught in the light, the fog giant comes loose from the bottom up and rises into the beam like breath into a lamp. Then there is only the beam, turning, and the fog lifting off the water.',{priority:'high'});
   setStep('done','The lamp burns','Explore the island freely',null,'');
 }
-function updateBeats(){
+function updateBeats(dt){
   const T=storm(), P=G.player, lh=G.world.lighthouse;
+  if(halScene&&(halScene.t-=dt||0)<=0){ const sc=halScene.o; halScene=null;
+    if(G.talk&&G.talk.moment)G.talk.moment(sc); else G.ui.say(sc.lines[0].text+' '+sc.lines[1].text,{priority:'high'}); }
   // in the lamp room with the plain flame: say where it goes
   if(!cradleObj&&T.carried&&!T.failed&&lh&&lh.inRoom&&lh.inRoom(P.pos)&&['climb','staff'].includes(G.quest.step)){
     cradleObj=true; setStep('climb','Set the storm lantern in the cradle','Beneath the great lens',lh.cradlePos?lh.cradlePos.clone():null,'Cradle'); }
@@ -412,7 +417,7 @@ G.system('flow',{order:60,modes:'always',
     if(mode==='play'){
       if(G.input.pressed('pause'))pause();
       else if(G.input.pressed('log')){ pause(); if(G.ui.pauseTab)G.ui.pauseTab('msgs',true); }
-      updatePickups(dt); updateBeats(); updateFinale(dt); trackSafe(dt);
+      updatePickups(dt); updateBeats(dt); updateFinale(dt); trackSafe(dt);
       if(endingT>0){ endingT-=dt; if(endingT<=0){ G.setMode('ending'); G.input.unlockPointer(); $('hud').hidden=true; $('ending').hidden=false; $('keep').focus(); } }
       // gentle nudge if the player wanders the cliff top without the light for a long time
       if(G.quest.step==='door'&&G.time>70&&!sawDoor){sawDoor=true;onDoorBlocked();}
