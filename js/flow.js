@@ -205,7 +205,7 @@ function onTowerExit(){
     setStep('halloran2','Talk to Halloran','He’s waiting at the foot of the tower',halPos(),'Halloran');
     // a story moment: his card when it's calm (talk.js), the caption otherwise
     const scene={who:'HalloranScene',name:'Halloran',title:G.portraits?G.portraits.title('halloran'):'',portrait:'halloran',key:'halTower',
-      lines:[{text:'Halloran is standing at the foot of the tower, as if he’s been waiting a while.',who:''},{text:'“Well,” he says. “I saw it go out from down here. She tried the plain flame too, Rowan. It was the first thing she tried.”',who:'Halloran'}]};
+      lines:[{text:'Halloran is standing at the foot of the tower, as if he’s been waiting a while.',who:''},{text:'“Well,” he says. “I saw it go out from down here.”',who:'Halloran'}]};
     halScene={t:.4,o:scene};   // in game time (updateBeats), so it lands the same in a stepped test
   }
 }

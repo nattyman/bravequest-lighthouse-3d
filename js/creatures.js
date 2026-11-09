@@ -987,7 +987,7 @@ const HAL_PRE=[
 ];
 /* after the storm lantern failed in the lamp room: he waits at the foot of the tower */
 const HAL_FAIL=[
-  'The moths left when the lamp went wrong. They nest in the old wood, west. Same way she went.',
+  'She tried the plain flame too, Tide. First thing she tried. The moths left when the lamp went wrong. They nest in the old wood, west. Same way she went.',
   'The night the fog came, Hesper took her lantern, the violet one, out to the old tree at the forest’s heart. She knew something about the moths. More than I did. She never came back, but the lantern might have stayed.',
   'Something big walks those woods now. I hear it at night, breaking the trees. Keep that staff in your hand, and don’t let it corner you.',
   'Follow the path down off the cliff and across the moor. Mind the hamlet. You knew those people, Rowan. They won’t know you. I’ll keep.'
