@@ -69,7 +69,7 @@ jobs:
       - name: Run ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/claude-0
-          python test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
+          python -u test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
           test ${PIPESTATUS[0]} -eq 0
         shell: bash
       - name: Failed checks
