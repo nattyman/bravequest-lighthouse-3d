@@ -639,7 +639,8 @@ function render(dt){
   const fightOn=B.state==='intro'||B.state==='fight'||B.state==='dying';
   inkRing.visible=fightOn&&B.phase===1&&B.inkR>T.inkR0+.05;
   if(inkRing.visible){ inkRing.position.set(seamP.x,floorY+.04,seamP.z); inkRing.scale.set(B.inkR,1,B.inkR); inkRing.rotation.y=t*.03; }
-  seamGlow.visible=fightOn||(!S.defeated&&inside());
+  seamGlow.visible=!TP()&&(fightOn||(!S.defeated&&inside()));   // temple.js draws the seam itself (setSeam)
+  seamTo(S.defeated?0:B.state==='dying'?0:B.phase===3&&fightOn?1-.6*B.seal:1);
   if(seamGlow.visible){ const k=B.state==='dying'?Math.max(0,1-B.deadT/3):1; seamGlow.position.set(seamP.x,floorY+.05,seamP.z);
     const r=2.6+Math.sin(t*1.7)*.2+(B.phase===3?B.seal*1.2:0); seamGlow.scale.set(r,1,r); M.seam.opacity=(.35+.15*Math.sin(t*2.3)+(B.sealOn?.35:0))*k; M.seam.color.set(B.sealOn?'#e9dcff':'#9a6cff'); }
   renderHands(dt);
@@ -668,6 +669,7 @@ function render(dt){
   }
 }
 
+function seamTo(k){ const t=TP(); if(t&&t.setSeam&&t.seam!==k){ try{ t.setSeam(k); }catch(e){} } }
 /* ---------------------------------------------------------------- dying + defeat */
 function startDying(){
   B.state='dying'; B.st=0; B.deadT=0; B.atk=null; clearDecals(); releaseMoths(); clearHands();
@@ -684,7 +686,7 @@ function onDefeated(restored){
   S.defeated=true; B.state='dead'; G.flag('answerDead',true);
   G.ui.bossBar(null); music(false); releaseMoths(); clearHands(); clearDecals();
   if(!B.built)build(); arenaGeo();
-  if(ans)ans.g.visible=false; if(inkRing)inkRing.visible=false; if(seamGlow)seamGlow.visible=false;
+  if(ans)ans.g.visible=false; if(inkRing)inkRing.visible=false; if(seamGlow)seamGlow.visible=false; seamTo(0);
   B.hesper.pose='free'; B.hesper.at.copy(hesperKneel());
   G.emit('temple:bossDead',{pos:seamP.clone(),restored:!!restored});
   if(restored)return;

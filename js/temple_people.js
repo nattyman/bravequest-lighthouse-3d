@@ -259,7 +259,7 @@ function talkSanctum(){
   if(S.met)return false;
   const asked={};
   const ok=G.talk.open({who:'hesper',name:'Hesper',title:'At the seam',portrait:inkPortrait(),
-    lines:['You’re late, Tide.','No — don’t come round to me. Stay where I can see you.','Seven years. You might have written.'],
+    lines:['You’re late, Tide.','No — don’t come round where I can see you. If I look at you, I’ll lose it.','Seven years. You might have written.'],
     choices:[
       {id:'wrote',text:'I did write. Every port.',next:()=>({lines:['I know. Dad kept them in the tea tin by the stove.','I read them all. Some of them twice.'].concat(explainNode(asked).lines),choices:explainChoices(asked)})},
       {id:'what',text:'What is this place?',next:()=>explainNode(asked)},
@@ -450,19 +450,21 @@ function halloranHook(){
 function hookHalloran(){ const C=G.creatures; if(!C)return; if(!C.halloranHooks)C.halloranHooks=[]; if(C.halloranHooks.indexOf(halloranHook)<0)C.halloranHooks.push(halloranHook); }
 
 /* ---------------------------------------------------------------- Hesper's pages (always one room ahead of you) */
+/* the texts are mine; temple.js (Place agent) places and reads its pages p1–p5 and asks G.templePeople.pages[id] for the words.
+   Without temple.js the pages below are placed here, at the same rooms. */
 const PAGES={
-  stair:{room:'vestibule',label:'Read Hesper’s note',title:'On the stair',at:[2.2,0,-3.5],
+  p1:{room:'vestibule',author:'Hesper',title:'On the stair',at:[-3.7,0,-4.3],
     text:'Whoever comes down after me: shut your lantern on the stair. Not all of the watchers are carvings. The ones that aren’t follow light. — H.'},
-  mirrors:{room:'nave',label:'Read Hesper’s note',title:'By the mirrors',at:[-4.5,-3,-16],
-    text:'The mirrors still work. The old keepers used them to carry light round corners, down to the dark at the bottom. I’ve left the first one as I found it, so you can see how. Don’t look into them for long. — H.'},
-  glass:{room:'reliquary',label:'Read Hesper’s note',title:'In the reliquary',at:[-20,-4,-37],
+  p2:{room:'reliquary',author:'Hesper',title:'In the reliquary',at:[-29.6,-4,-38],
     text:'There’s a glass on the altar, a keeper’s burning-glass. Put it in front of a lantern and the light comes out narrow, and hot enough to burn ink. I’ve left it for whoever comes next. I won’t need it where I’m going. — H.'},
-  cloister:{room:'cloister',label:'Read Hesper’s note',title:'In the cloister',at:[18,-6,-41],
-    text:'The floor’s gone here. Through the Glass it isn’t: there’s a whole walk of them, the old vigil, going down with their candles. Walk where they walk. I did, and I’m still here. More or less.'},
-  well:{room:'well',label:'Read Hesper’s note',title:'At the well',at:[5,-10,-64],
-    text:'Dad, if this gets back to you: I’m not sorry. The light was only ever holding off the edge of it. This is the middle, and somebody has to stand in the middle. Tell Tide — no. Don’t tell him anything. He’ll only come.'}
+  p3:{room:'cloister',author:'Hesper',title:'In the cloister',at:[18,-6,-41],
+    text:'The floor’s gone here. Through the Glass it isn’t: there’s a whole walk of them, the old vigil, going round with their candles. Walk where they walk. I did, and I’m still here. More or less.'},
+  p4:{room:'well',author:'Hesper',title:'At the well',at:[-2.4,-4,-60.6],
+    text:'Dad, if this gets back to you: I’m not sorry. The light was only ever holding off the edge of it. This is the middle, and somebody has to stand in the middle. Tell Tide — no. Don’t tell him anything. He’ll only come.'},
+  p5:{room:'well',author:'Hesper',title:'At the sanctum door',at:[1.9,-14,-77.6],
+    text:'It’s quiet while I hold it. That’s how I know it’s working. If you can hear it, I’ve let go.'}
 };
-const ORDER=['stair','mirrors','glass','cloister','well'];
+const ORDER=['p1','p2','p3','p4','p5'];
 const pageObjs={};
 let pagesBuilt=false;
 function pageMesh(){
@@ -473,31 +475,24 @@ function pageMesh(){
   const s=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#e3b46a'),transparent:true,opacity:.35,depthWrite:false,blending:THREE.AdditiveBlending})); s.scale.setScalar(1.3); s.position.y=.3; g.add(s); g.userData.glow=s;
   return g;
 }
-function pageSpots(){
-  // the Place agent's `pages` anchors ([{id,pos}]): one per room, by id if it matches, else by the room it stands in
-  const t=TP(), list=(t&&t.anchors&&t.anchors.pages)||(t&&t.pages)||(t&&t.rooms&&t.rooms.pages)||null, out={};
-  let arr=Array.isArray(list)?list:null;
-  if(!arr&&t&&t.rooms){ arr=[]; for(const id in t.rooms){ const a=t.rooms[id].anchors&&t.rooms[id].anchors.pages; if(Array.isArray(a))for(const q of a)arr.push(q&&q.pos?q:{id:id,pos:q}); } }
-  if(arr)for(const q of arr){ const p=q&&(q.pos||q); if(!p||!isFinite(p.x))continue; const id=q.id&&PAGES[q.id]?q.id:null;
-    const room=roomOf(V(p.x,p.y+.5,p.z)); const key=id||ORDER.find(k=>PAGES[k].room===room&&!out[k]); if(key&&!out[key])out[key]=V(p.x,p.y,p.z); }
-  return out;
-}
+const placePages=()=>!!(TP()&&Array.isArray(TP().pages)&&TP().readPage);   // temple.js places and reads them
 function buildPages(){
-  if(pagesBuilt)return; pagesBuilt=true;
-  const spots=pageSpots();
-  for(const id of ORDER){ const d=PAGES[id]; let at=spots[id]; if(!at){ at=W(d.at[0],d.at[1],d.at[2]); }
+  if(pagesBuilt||placePages())return; pagesBuilt=true;
+  for(const id of ORDER){ const d=PAGES[id]; const at=W(d.at[0],d.at[1],d.at[2]);
     at.y=floorAt(at.x,at.z,at.y+1.5);
     const g=pageMesh(); g.position.copy(at); g.rotation.y=(ORDER.indexOf(id)*1.7)%TAU; G.scene.add(g);
     const o=pageObjs[id]={g,pos:at};
-    G.interact.add({pos:()=>o.pos,radius:1.7,priority:3,label:()=>S.pages[id]?d.label+' again':d.label,enabled:()=>isPlay()&&inside()&&g.visible,use:()=>readPage(id)});
+    G.interact.add({pos:()=>o.pos,radius:1.7,priority:3,label:()=>S.pages[id]?'Read Hesper’s page again':'Read the page',enabled:()=>isPlay()&&inside()&&g.visible,use:()=>readPage(id)});
   }
 }
 function readPage(id){
+  if(placePages())return TP().readPage(id);
   const d=PAGES[id], first=!S.pages[id]; S.pages[id]=1;
   if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'Hesper',title:d.title,portrait:'page',key:'page',lines:[{text:d.text,who:'Hesper'}]});
   else G.ui.say(d.text,'Hesper',{priority:'high',key:'page'});
-  if(first){ G.emit('temple:page',{id}); G.ui.toast&&G.ui.toast('Hesper’s notes',Object.keys(S.pages).length+' of '+ORDER.length+' found'); }
+  if(first){ G.emit('temple:page',{id,first,author:'Hesper'}); G.ui.toast&&G.ui.toast('Hesper’s pages',Object.keys(S.pages).length+' of '+ORDER.length+' found'); }
 }
+G.on('temple:page',e=>{ if(e&&e.id&&PAGES[e.id])S.pages[e.id]=1; });
 function updatePages(){ const ins=inside(); if(ins&&!pagesBuilt)buildPages(); for(const id in pageObjs){ const o=pageObjs[id]; o.g.visible=ins; if(ins&&o.g.userData.glow)o.g.userData.glow.material.opacity=(S.pages[id]?.12:.32)+.1*Math.sin(G.time*1.7+id.length); } }
 
 /* ---------------------------------------------------------------- Wren at the hamlet well: about Hesper (unlocks the temple) */
@@ -525,7 +520,7 @@ function vigilDoor(){ const t=TP(); if(t&&t.door)return V(t.door.x,t.door.y,t.do
 function unlock(restored){
   S.wrenAsked=true;
   if(S.unlocked&&!restored)return; const first=!S.unlocked; S.unlocked=true;
-  if(first)G.emit('temple:unlock',{restored:!!restored});
+  if(first){ const t=TP(); if(t&&t.unlock){ if(!t.unlocked)t.unlock({restored:!!restored,quiet:!!restored}); } else G.emit('temple:unlock',{restored:!!restored}); }
   addMarker();
   if(restored)return;
   const d=vigilDoor();
@@ -556,7 +551,7 @@ G.system('templePeople',{order:62,
 });
 G.on('ready',()=>{ hookHalloran(); hookWren(); registerPortraits(); if(S.unlocked)addMarker(); syncHome(); });
 
-G.templePeople={state:S,PAGES,HOME_LINES,get met(){ return S.met; },get freed(){ return S.freed; },get home(){ return S.home; },
+G.templePeople={state:S,PAGES,pages:PAGES,HOME_LINES,get met(){ return S.met; },get freed(){ return S.freed; },get home(){ return S.home; },
   get hesper(){ return hs; },get atHome(){ return lh; },talk:()=>talkSanctum(),readPage,
   debug:{meet:()=>met(),talkWren,talkHome,talkEnding,reveal:revealCarving,unlock,goHome:goneHome,pageObjs,carving:()=>carving,lampSpot,halloranHook,
     reset(){ for(const k of ['met','freed','home','ending','carving','wrenAsked','unlocked','heardNorth','heardStay'])S[k]=false; S.pages={}; S.hal={}; S.homeTalks=0; S.said={}; endingWait=false;
