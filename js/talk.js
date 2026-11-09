@@ -244,7 +244,7 @@ function advance(){
 }
 function close(how){
   if(!T.open)return false;
-  const o=T.open; T.open=null; T.node=null; T.choices=[];
+  const o=T.open; T.open=null; T.node=null; T.choices=[]; T.closedAt=performance.now();
   root.hidden=true; document.body.classList.remove('talk-open'); textEl.textContent=''; listEl.innerHTML='';
   if(T.glass&&glassUp()&&G.glass.raise)try{ G.glass.raise(false); }catch(_){}   // a Glass raised inside the talk goes down with it
   T.glass=false; root.classList.remove('glass');
@@ -377,6 +377,8 @@ G.on('input:device',()=>{ if(T.open)updateHint(); });
 G.talk={
   open, moment, calm, close:()=>close('api'), advance, choose:i=>choose(i), select:i=>select(i,true), toggleGlass,
   get isOpen(){ return !!T.open; },
+  /** performance.now() of the last close: flow.js ignores the pointer unlock a card made if it lands after the card is gone */
+  get closedAt(){ return T.closedAt||0; },
   get who(){ return T.open?T.open.who:null; },
   /** for tests: what the card shows */
   state(){ const L=curLine(); return T.open?{who:T.open.who,name:nameEl.textContent,line:L?L.text:null,lie:!!(L&&L.lie),index:T.li,typing:!!(L&&T.typed<L.text.length),

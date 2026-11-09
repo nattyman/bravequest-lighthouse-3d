@@ -82,8 +82,6 @@ function ring(x,z,r){ r=r||12.5; const A={x:60,z:-15}, O=G.cave.origin, p=P().po
   for(let i=0;i<=n;i++){ const a=a0+d*i/n; pts.push([A.x+Math.cos(a)*r,A.z+Math.sin(a)*r]); } pts.push([x,z]); return walk(pts,{local:true}); }
 const losses={}; G.on('moths:lost',e=>{ const k=G.cave.inside?(G.cave.room(P().pos)||'cave'):'island'; losses[k]=(losses[k]||0)+e.n; });
 // story moments and readings open the conversation card (talk.js), which pauses: read each through as it opens (first reply)
-// a card unlocks the pointer and relocks it on close; in a headless page the unlock lands after the card is gone and reads as a pause (flow.js)
-G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{};
 const talkAuto={on:true,seen:[],names:[],read:[]}; G.on('talk:open',e=>{ talkAuto.seen.push(e&&e.who); if(!talkAuto.on)return; const st0=G.talk.state(); talkAuto.names.push(st0&&st0.name);
   let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.line&&talkAuto.read[talkAuto.read.length-1]!==s.line)talkAuto.read.push(s.line); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } });
 return {keys,release,steer,walk,where,tap,label,use,wait,swarm,near,states,until,guard,hud,marker,fight,bolt,leap,ring,losses,top,talkAuto};

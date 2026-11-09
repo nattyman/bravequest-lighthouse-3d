@@ -24,6 +24,8 @@ EXTRA=r"""(()=>{
   window.EV=window.EV||[]; if(!G._evHooked){ G._evHooked=1; for(const e of ['finale:start','boss:dead','lamp:failed','lamp:cured','storm:pickup','stag:engage','cave:enter','cave:exit','cave:bossStart','cave:bossDead','cave:wound','gloaming:cine','moths:cured','blight:cured'])G.on(e,d=>EV.push(e+(d&&d.who?':'+d.who:'')+(d&&d.on!=null?':'+d.on:''))); }
   T.OBJ=()=>document.getElementById('obj').textContent;
   T.useL=lab=>{ const c=G.interact.pick(G.player.pos); const l=c&&G.interact.label(c); if(c&&(!lab||l===lab||(lab instanceof RegExp&&lab.test(l))))c.use(); return l; };
+  // a card unlocks the pointer and relocks it on close; in a headless page the unlock lands after the card is gone and reads as a pause (flow.js)
+  G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{};
   // the conversation card (talk.js): cave_e2e's LIB reads each card through as it opens (T.talkAuto); T.talk() is what was read since last asked
   T.talk=()=>{ const r=T.talkAuto.read.join(' | '); T.talkAuto.read.length=0; return r; };
   T.card=()=>T.talkAuto.names[T.talkAuto.names.length-1]||'';

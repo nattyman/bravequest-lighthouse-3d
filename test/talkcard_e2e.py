@@ -26,6 +26,8 @@ def check(name,ok,info=None):
     R.append((name,bool(ok))); print(('ok   ' if ok else 'FAIL ')+name+('  '+json.dumps(info,default=str)[:400] if info is not None else ''),flush=True)
 
 async def shot(pg,name):
+    # a stepped headless page draws no frames between steps, so CSS fades and the slide animation sit at their first frame: finish them for the picture
+    await pg.evaluate("(()=>{ if(!document.getElementById('shotNoFade')){ const st=document.createElement('style'); st.id='shotNoFade'; st.textContent='.caption,.capback{transition:none!important}'; document.head.appendChild(st); } document.getAnimations().forEach(a=>{ try{ a.finish(); }catch(_){} }); })()")
     await pg.evaluate('G.headless&&G.headless.draw&&G.headless.draw(3)'); await pg.wait_for_timeout(800); await pg.evaluate('G.headless&&G.headless.draw&&G.headless.draw(2)')
     await pg.screenshot(path=os.path.join(SHOTS,name+'.png')); print('   shot',name)
 

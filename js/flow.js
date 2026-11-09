@@ -348,7 +348,8 @@ function syncQuality(){ document.querySelectorAll('#qualitySeg button').forEach(
 function resume(){ $('pause').hidden=true; G.setMode('play'); G.input.lockPointer(); }
 document.addEventListener('pointerlockchange',()=>{
   const locked=document.pointerLockElement!=null;
-  if(wasLocked&&!locked&&G.state.mode==='play'&&!G.isMobile)pause();
+  // (a conversation card unlocks the pointer; if it was closed before the unlock landed, that unlock isn't a pause)
+  if(wasLocked&&!locked&&G.state.mode==='play'&&!G.isMobile&&!(G.talk&&performance.now()-G.talk.closedAt<800))pause();
   wasLocked=locked;
 });
 
