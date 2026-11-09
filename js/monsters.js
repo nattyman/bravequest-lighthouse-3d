@@ -1632,12 +1632,13 @@ function buildVigilant(S,skinS){
   const eyes=[];
   for(const s of [-1,1]){ const e=eyeSprite('#e8e2ff',.07,1.6,.18); e.position.set(s*.05,.0,.2); head.add(e); eyes.push(e); }
   // arms: long sleeves; pale ink hands that hold nothing (they used to hold candles)
-  const arms=[], tips=[];
+  const arms=[], tips=[], skinArms=[];
   for(const s of [-1,1]){
     const sh=new THREE.Group(); sh.position.set(s*.22,.36,.03); upper.add(sh);
-    addMesh(sh,sweep([[0,0,0,.08],[s*.02,-.3,.02,.1],[s*.03,-.55,.04,.13]],8,3),robeMat);
+    const ug=sweep([[0,0,0,.08],[s*.02,-.3,.02,.1],[s*.03,-.55,.04,.13]],8,3); addMesh(sh,ug,robeMat);
     const el=new THREE.Group(); el.position.set(s*.03,-.55,.04); sh.add(el);
-    addMesh(el,sweep([[0,0,0,.12],[0,-.25,.03,.14],[0,-.42,.05,.16]],8,3),robeMat);
+    const lg=sweep([[0,0,0,.12],[0,-.25,.03,.14],[0,-.42,.05,.16]],8,3); addMesh(el,lg,robeMat);
+    const su=addMesh(sh,ug,skinMat); su.scale.setScalar(1.14); const sl=addMesh(el,lg,skinMat); sl.scale.setScalar(1.14); skinArms.push(su,sl);   // the ink on the sleeves
     const hand=new THREE.Group(); hand.position.set(0,-.44,.06); el.add(hand);
     const fg=[sweep([[0,.03,0,.045,.03],[0,-.05,.01,.05,.03]],8,2)];
     for(let k=0;k<4;k++){ const x=(k-1.5)*.024; fg.push(sweep([[x,-.04,0,.014],[x*1.4,-.17,.03,.01],[x*1.6,-.27,.06,.004]],5,3)); tips.push(anchor(hand,x*1.6,-.27,.06)); }
@@ -1653,14 +1654,14 @@ function buildVigilant(S,skinS){
   const hem=[]; for(let k=0;k<7;k++){ const a=k/7*TAU; hem.push(anchor(body,Math.sin(a)*.45,.12,Math.cos(a)*.45)); }
   hem.push(anchor(upper,0,.4,.05));
   const skinPts=[anchor(body,0,1.2,.25),anchor(body,.2,.7,.2),anchor(body,-.2,.9,.15),anchor(upper,0,.7,.15)];
-  return {root,body,upper,head,arms,eyes,hem,clawTips:tips,skin,skinPts,skinMat,mats:[robeMat,bodyMat,skinMat,handMat],extra:[hollow],tendrils:[]};
+  return {root,body,upper,head,arms,eyes,hem,clawTips:tips,skin,skinArms,skinPts,skinMat,mats:[robeMat,bodyMat,skinMat,handMat],extra:[hollow],tendrils:[]};
 }
 function initVigilant(m,opts){
   const p=P.vigilant;
   m.hb.name='Vigilant'; m.hb.lockOffset=1.6;
   m.skin=opts.skin===false||!G.lens?0:1; m.skinK=m.skin; m.burnT=0; m.burnH=null; m.lostT=0; m.lastSeen=null; m.sense=0; m.hunting=false;
   m.temple=opts.temple||null; m.skinPos=V(m.pos.x,m.pos.y+1.3,m.pos.z);
-  m.parts.skin.visible=!!m.skin; m.skinS.uFade.value=m.skin?1:0;
+  m.parts.skin.visible=!!m.skin; for(const a of m.parts.skinArms)a.visible=!!m.skin; m.skinS.uFade.value=m.skin?1:0;
   m.vigil=m.heading; void p;
 }
 function lensBurnAdd(m){
@@ -1768,12 +1769,12 @@ function updateVigilant(m,dt){
   // the skin shell follows the main dissolve; burned, it chars away in about a second
   m.skinK=U.damp(m.skinK,m.skin?1:0,m.skin?8:3.5,dt);
   m.skinS.uFade.value=Math.min(m.mat.uniforms.uFade.value,m.skinK); m.skinS.uFlash.value=m.mat.uniforms.uFlash.value;
-  m.parts.skin.visible=m.skinK>.02;
+  m.parts.skin.visible=m.skinK>.02; for(const a of m.parts.skinArms)a.visible=m.parts.skin.visible;
 }
 function vigilantGone(m){ lensBurnRemove(m); }
 function animVigilant(m,dt){
   const c=m.parts, t=G.time, sp=m.speedNow||0;
-  if(m.dying&&m.skinS){ m.skinS.uFade.value=Math.min(m.fade,m.skinK); c.skin.visible=m.skinK>.02&&m.fade>.02; }
+  if(m.dying&&m.skinS){ m.skinS.uFade.value=Math.min(m.fade,m.skinK); c.skin.visible=m.skinK>.02&&m.fade>.02; for(const a of c.skinArms)a.visible=c.skin.visible; }
   m.phase+=dt*(1+sp);
   const W=m.state==='windup', A=m.state==='attack', R=m.state==='recover', Hh=m.state==='hurt', idle=m.state==='idle'||m.state==='return';
   // it glides; the robe sways; at its vigil the head is bowed and the hands meet at the chest

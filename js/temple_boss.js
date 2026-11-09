@@ -798,7 +798,8 @@ G.templeBoss={
       if(G.state.mode==='title'){ const t=document.getElementById('title'); if(t)t.hidden=true; G.setMode('play'); }
       const t=TP(); room=room||'sanctum';
       if(t&&t.enter){ t.enter(room,{instant:true}); G.step&&G.step(1/30,2);
-        if(room==='sanctum'){ arenaGeo(); const k=3/Math.max(1,Math.hypot(door.x-C.x,door.z-C.z)), x=door.x+(C.x-door.x)*k, z=door.z+(C.z-door.z)*k; G.player.teleport(x,floorAt(x,z,door.y+2),z,Math.atan2(C.x-x,C.z-z)); } }
+        if(room==='sanctum'){ arenaGeo(); const k=3/Math.max(1,Math.hypot(door.x-C.x,door.z-C.z)), x=door.x+(C.x-door.x)*k, z=door.z+(C.z-door.z)*k; G.player.teleport(x,floorAt(x,z,door.y+2),z,Math.atan2(C.x-x,C.z-z)); }
+        else if(roomOf(G.player.pos)!==room){ const c=roomCentre(room), p=G.player.pos, k=Math.min(1,6/Math.max(1,Math.hypot(c.x-p.x,c.z-p.z))), x=p.x+(c.x-p.x)*k, z=p.z+(c.z-p.z)*k; G.player.teleport(x,floorAt(x,z,c.y+2),z,Math.atan2(c.x-x,c.z-z)); } }
       else { enableStub(true); arenaGeo(); const p=room==='sanctum'?door.clone():roomCentre(room); G.player.teleport(p.x,p.y+.2,p.z,room==='sanctum'?Math.atan2(C.x-p.x,C.z-p.z):PI); }
       arenaGeo(); return roomOf(G.player.pos); },
     start(){ build(); arenaGeo(); if(G.templePeople&&G.templePeople.debug)G.templePeople.debug.meet(); G.player.teleport(C.x,floorY+.2,C.z+8,PI); startFight(); B.state='fight'; return B.state; },

@@ -174,12 +174,12 @@ function buildHesper(name){
 }
 /* poses: hold (kneel, both hands flat on the seam) · seal (kneel, arms out over it) · stand · shield (standing, arms wide)
    free (kneeling up, sitting back on her heels) · home (standing at the glass) */
-const POSES={
-  hold:{hipY:.5,lean:.55,thigh:-1.45,knee:1.6,sh:-1.05,shz:.12,el:-.35,head:-.25},
-  seal:{hipY:.52,lean:.25,thigh:-1.45,knee:1.6,sh:-1.4,shz:.45,el:-.1,head:-.1},
-  stand:{hipY:.95,lean:.06,thigh:0,knee:0,sh:-.15,shz:.12,el:-.25,head:0},
+const POSES={   // (arms hang in the torso's frame: a forward lean swings them back, so sh = −(lean + reach))
+  hold:{hipY:.5,lean:1.05,thigh:-.35,knee:1.95,sh:-1.27,shz:.14,el:-.12,head:-.45},
+  seal:{hipY:.52,lean:.4,thigh:-.35,knee:1.95,sh:-1.65,shz:.5,el:-.1,head:-.15},
+  stand:{hipY:.95,lean:.06,thigh:0,knee:0,sh:-.18,shz:.12,el:-.25,head:0},
   shield:{hipY:.95,lean:-.05,thigh:-.1,knee:.15,sh:-1.2,shz:1.0,el:-.2,head:.05},
-  free:{hipY:.45,lean:.05,thigh:-1.5,knee:2.3,sh:-.3,shz:.1,el:-1.0,head:.15},
+  free:{hipY:.3,lean:.12,thigh:-1.35,knee:2.75,sh:-.65,shz:.1,el:-1.0,head:.18},
   home:{hipY:.95,lean:0,thigh:0,knee:0,sh:-.05,shz:.08,el:-.4,head:.08}
 };
 function poseHesper(h,dt,pose){
