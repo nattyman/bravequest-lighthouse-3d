@@ -59,8 +59,8 @@ seg('vesSouth','vestibule',0,-6.6,0,-12.8,1.3,vsF,null,{ceilH:3.8,vmax:.5,stair:
 rect('nave','nave',-7,7,-50.4,-10.4,-3,9.4,{vmax:2.4});
 const PIER_Z=[-16,-22,-28,-34,-40,-46];
 for(const s of [-1,1]) for(const z of PIER_Z) solid(s*4-.55,s*4+.55,z-.55,z+.55,{pier:1});
-// the watchers' alcove in the north wall over the stair (the eyes) — a shallow recess; its secret niche behind
-rect('eyesNiche','nave',-5.8,-4.2,-10.9,-9.4,-3,-.6,{vmax:.2,niche:1,secret:1});
+// the secret niche in the north-west corner, behind a slab (the great watchers' eyes open it)
+rect('eyesNiche','nave',-6.9,-5.5,-11.0,-9.2,-3,-.6,{vmax:.2,niche:1,secret:1});
 // west to the reliquary, east to the cloister, south (the sun-disc door) to the well
 const relF=stepF('x',-9.2,-12.6,-3,-4,3);
 seg('relHall','reliquary',-6.6,-40,-17.8,-40,1.25,relF,null,{ceilH:3.6,vmax:.5,stair:stair('x',-9.2,-12.6,-3,-4,3,-41.25,-38.75)});
@@ -72,15 +72,15 @@ seg('wellHall','well',0,-50,0,-61.2,1.4,welF,null,{ceilH:4.2,vmax:.6,stair:stair
 rect('reliquary','reliquary',-30.6,-17.4,-46,-34,-4,3.4,{vmax:1.4});
 rect('apse','reliquary',-32.6,-30.2,-41.6,-38.4,-4,.6,{vmax:.6});
 rect('recess','reliquary',-25.1,-22.9,-47.8,-45.6,-4,-1.4,{vmax:.3,niche:1});
-for(const z of [-37,-43]) solid(-24.6,-23.4,z-.6,z+.6,{pier:1});
+for(const x of [-27.6,-20.4]) for(const z of [-37,-43]) solid(x-.5,x+.5,z-.5,z+.5,{pier:1});
 // --- the Drowned Cloister (floor -6): a square arcade round a garth; half the floor is gone into black water
 const CL={x0:14,x1:34,z0:-56,z1:-36,walk:3.2};
 rect('clW','cloister',CL.x0,CL.x0+CL.walk,CL.z0,CL.z1,-6,1,{vmax:1.2});
 rect('clN','cloister',CL.x0,27.4,CL.z1-CL.walk,CL.z1,-6,1,{vmax:1.2});
 rect('garth','cloister',CL.x0+CL.walk-.05,CL.x1,CL.z0,CL.z1-CL.walk+.05,-9.4,1,{vmax:1.4,water:1});
-rect('clS','cloister',CL.x0+CL.walk-.4,CL.x1,CL.z0,CL.z0+CL.walk,-6,1,{past:1,vmax:0});
+rect('clS','cloister',CL.x0,CL.x1,CL.z0,CL.z0+CL.walk,-6,1,{past:1,vmax:0});   // (overlaps the west walk wholly: a shallow join reads as a wall to a body)
 rect('clE','cloister',CL.x1-CL.walk,CL.x1,CL.z0,-43.0,-6,1,{past:1,vmax:0});
-rect('winch','cloister',33.6,39.6,-48.6,-43.2,-6,-.6,{vmax:.7});
+rect('winch','cloister',32.4,39.6,-48.6,-43.2,-6,-.6,{vmax:.7});
 solid(27.4,34.6,-39.6,-35.4,{rubble:1});           // the north-east corner fell in long ago (then, and now)
 // --- the Moth Well (floor -4 at the rim, -14 at the bottom): a deep round shaft; a walk spirals down its wall
 const WC={x:0,z:-70,r:10,ri:7.0,top:-4,bot:-14,a0:90,a1:630};
@@ -177,7 +177,7 @@ const presentOnly=who=>!(glassUp()&&(who==null||who==='player'));
 blockers.garthW={x:CL.x0+CL.walk+.15,z:(CL.z0+CL.walk+CL.z1-CL.walk)/2,hw:.15,hd:(CL.z1-CL.z0-2*CL.walk)/2,y0:-12,y1:2};
 blockers.garthN={x:(CL.x0+CL.walk+27.4)/2,z:CL.z1-CL.walk-.15,hw:(27.4-CL.x0-CL.walk)/2,hd:.15,y0:-12,y1:2};
 blockers.garthSW={x:CL.x0+CL.walk+.15,z:CL.z0+CL.walk/2,hw:.15,hd:CL.walk/2+.05,y0:-12,y1:2,when:presentOnly};
-blockers.winchW={x:33.45,z:-45.9,hw:.15,hd:2.7,y0:-12,y1:2,when:presentOnly};
+blockers.winchW={x:32.25,z:-45.9,hw:.15,hd:2.7,y0:-12,y1:2,when:presentOnly};
 const GATEBOX={
   cloisterDoor:{x:8.0,z:-44,hw:.45,hd:1.4,y0:-8,y1:2},
   sunDoor:{x:0,z:-50.9,hw:1.6,hd:.4,y0:-8,y1:4},
@@ -186,7 +186,7 @@ const GATEBOX={
   wellSide:null,
   exit:{x:18.4,z:-100,hw:.35,hd:1.4,y0:-20,y1:-10},
   sanctum:{x:0,z:-82.9,hw:1.6,hd:.35,y0:-20,y1:-10},
-  eyes:{x:-5,z:-9.75,hw:.9,hd:.4,y0:-6,y1:0},
+  eyes:{x:-6.2,z:-10.55,hw:.9,hd:.3,y0:-6,y1:0},
 };
 const UPPER_A=152, UPPER_Y=rampY(UPPER_A);
 { const a=UPPER_A*PI/180, r=(WC.ri+WC.r)/2; GATEBOX.wellUpper={x:Math.cos(a)*r,z:WC.z+Math.sin(a)*r,hw:(WC.r-WC.ri)/2+.5,hd:.45,yaw:-a,y0:UPPER_Y-2.5,y1:UPPER_Y+3}; }
@@ -229,9 +229,9 @@ const ANCH={
     watchers:[W(-2.2,stairF(0,9.6),9.6),W(2.2,stairF(0,9.6),9.6),W(-2.2,stairF(0,7.4),7.4),W(2.2,stairF(0,7.4),7.4),
       W(-5.6,0,-4.2),W(5.6,0,-4.2),W(-5.6,0,.8),W(5.6,0,.8)]},
   nave:{plinth:W(1.4,-3,-14.2),
-    mirrors:[W(-4,1.9,-22),W(4,1.9,-40),W(-4,1.9,-46)],
-    cranks:[W(-3.0,-3,-22),W(3.0,-3,-40),W(-3.0,-3,-46)],
-    disc:W(0,1.6,-50.1),sunDoor:W(0,-3,-50.6),eyes:W(-5,1.0,-10.5),eyesNiche:W(-5,-3,-10.1),
+    mirrors:[W(-2.65,1.9,-22),W(2.65,1.9,-40)],
+    cranks:[W(-3.1,-3,-22),W(3.1,-3,-40)],
+    disc:W(0,1.6,-50.1),sunDoor:W(0,-3,-50.6),eyes:W(-2.65,1.03,-11.81),eyesNiche:W(-6.2,-3,-9.9),watchers:[W(-2.65,-3,-11.3),W(2.65,-3,-11.3)],
     seals:[W(7.9,-3,-44),W(-6.9,3.4,-28)],cloisterDoor:W(8.0,-3,-44),reliquaryDoor:W(-7.4,-3,-40),wellDoor:W(0,-3,-50.6),
     gallery:W(-6.9,3.4,-28)},
   reliquary:{lens:W(-31.2,-4,-40),altar:W(-31.2,-4,-40),recess:W(-24,-4,-46.6),seal:W(-24,-4,-45.6),door:W(-17.6,-4,-40),
@@ -253,7 +253,7 @@ const PAGES=[ // Hesper's pages (texts: the Boss agent, via G.temple.pageText / 
   {id:'p4',room:'well',pos:W(-2.4,-4,-60.6),kind:'page'},
   {id:'p5',room:'well',pos:W(1.9,-14,-77.6),kind:'page'},
   {id:'i1',room:'vestibule',pos:W(1.5,2.6,11.0),kind:'inscription',wall:[-1,0]},
-  {id:'i2',room:'nave',pos:W(-5,-3,-10.1),kind:'inscription',secret:1},
+  {id:'i2',room:'nave',pos:W(-6.2,-3,-9.7),kind:'inscription',secret:1},
 ];
 const PAGE_FALLBACK={
   p1:{author:'Hesper',text:'If you find this, Tide, go home. I mean it. Go home and keep the light. (You won’t. You never could leave a door alone.)'},
@@ -379,16 +379,16 @@ const tUni={uTime:{value:0},uSeam:{value:1}};
 /* ---------- textures: cut ashlar (tall courses), dressed floor flags ---------- */
 function ashlarCanvas(g,s){
   const r=U.rng(4417); g.fillStyle='#3e3c43'; g.fillRect(0,0,s,s);
-  const rows=6, bh=s/rows;
+  const rows=4, bh=s/rows;
   for(let j=0;j<rows;j++){ let x=-r()*s*.3; const y=j*bh;
-    while(x<s){ const w=s*(.24+r()*.2), l=38+r()*12, hue=230+r()*60, sat=4+r()*6;
+    while(x<s){ const w=s*(.3+r()*.26), l=38+r()*12, hue=230+r()*60, sat=4+r()*6;
       for(const ox of [0,-s,s]){ const x0=x+ox+2, y0=y+2, ww=w-4, hh=bh-4;
         g.fillStyle=`hsl(${hue},${sat}%,${l}%)`; g.fillRect(x0,y0,ww,hh);
         const gr=g.createLinearGradient(0,y0,0,y0+hh); gr.addColorStop(0,'rgba(255,250,240,.10)'); gr.addColorStop(.15,'rgba(255,250,240,0)'); gr.addColorStop(1,'rgba(0,0,0,.18)'); g.fillStyle=gr; g.fillRect(x0,y0,ww,hh);
         g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x0,y0,ww,2); g.fillStyle='rgba(0,0,0,.18)'; g.fillRect(x0,y0+hh-2,ww,2);
-        for(let k=0;k<26;k++){ g.fillStyle=r()<.5?'rgba(0,0,0,.08)':'rgba(255,250,240,.05)'; g.fillRect(x0+r()*ww,y0+r()*hh,1+r()*3,6+r()*10); } } // chisel marks
+        for(let k=0;k<40;k++){ g.fillStyle=r()<.5?'rgba(0,0,0,.09)':'rgba(255,250,240,.05)'; const cx=x0+r()*ww, cy=y0+r()*hh; g.save(); g.translate(cx,cy); g.rotate(.6+r()*.3); g.fillRect(0,0,1.2,3+r()*3); g.restore(); } } // chisel marks
       x+=w; } }
-  for(let i=0;i<34;i++){ const x=r()*s, w=3+r()*16; const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(10,8,14,0)'); gr.addColorStop(r(),'rgba(10,8,14,.16)'); gr.addColorStop(1,'rgba(10,8,14,0)'); g.fillStyle=gr; g.fillRect(x,0,w,s); }
+  for(let i=0;i<12;i++){ const x=r()*s, w=10+r()*30; const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(10,8,14,0)'); gr.addColorStop(r(),'rgba(10,8,14,.12)'); gr.addColorStop(1,'rgba(10,8,14,0)'); g.fillStyle=gr; g.fillRect(x,0,w,s); }
   for(let i=0;i<26;i++){ g.fillStyle=`rgba(${120+r()*30},${140+r()*20},${110+r()*20},${.05+r()*.07})`; g.beginPath(); g.arc(r()*s,r()*s,3+r()*10,0,TAU); g.fill(); }
 }
 function flagsCanvas(g,s){
@@ -412,15 +412,18 @@ function triMaterial(kind,scale,o){
     sh.vertexShader='varying vec3 vWP;varying vec3 vWN;'+(glow?'attribute float aGlow;varying float vGl;':'')+'\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.)).xyz; vWN=normalize(mat3(modelMatrix)*objectNormal);'+(glow?' vGl=aGlow;':''));
     sh.fragmentShader='uniform sampler2D uAsh,uFlag;uniform float uTime;varying vec3 vWP;varying vec3 vWN;'+(glow?'varying float vGl;':'')+'\n'+sh.fragmentShader.replace('#include <map_fragment>',`
       vec4 tc; { vec3 n=abs(normalize(vWN));
-        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:kind==='stone'?`vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.)); tc=texture2D(uFlag,vWP.zy*${sc})*bw.x+texture2D(uFlag,vWP.xz*${sc})*bw.y+texture2D(uFlag,vWP.xy*${sc})*bw.z;`:
+        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:kind==='stone'?`vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.)); tc=texture2D(uAsh,vWP.zy*${sc})*bw.x+texture2D(uFlag,vWP.xz*${sc}*.5)*bw.y+texture2D(uAsh,vWP.xy*${sc})*bw.z;`:
           `vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.));
            vec4 tx=texture2D(uAsh,vec2(vWP.z,vWP.y*1.15)*${sc}), tz=texture2D(uAsh,vec2(vWP.x,vWP.y*1.15)*${sc}), ty=texture2D(uFlag,vWP.xz*${sc});
            tc=tx*bw.x+ty*bw.y+tz*bw.z;`}
         diffuseColor.rgb*=pow(tc.rgb,vec3(2.2))*${kind==='stone'?'2.3':'2.1'}; }`)
       .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+(glow?`
       { float lum=dot(tc.rgb,vec3(.33)); float joint=1.-smoothstep(.12,.2,lum);
+        vec2 q=vWP.xz*.13+vec2(vWP.y*.07); vec2 i=floor(q), f=fract(q); f=f*f*(3.-2.*f);
+        float h00=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5), h10=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5), h01=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5), h11=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+        float vn=mix(mix(h00,h10,f.x),mix(h01,h11,f.x),f.y); float crack=smoothstep(.4,.7,vn);
         float pulse=.75+.25*sin(uTime*.9+vWP.x*.31+vWP.z*.23);
-        totalEmissiveRadiance+=vec3(.42,.14,.9)*vGl*(joint*1.6+.05)*pulse; }`:''));
+        totalEmissiveRadiance+=vec3(.42,.14,.9)*vGl*(joint*crack*2.2+.04)*pulse; }`:''));
   };
   m.customProgramCacheKey=()=>'tpTri'+kind+sc;
   return m;
@@ -449,12 +452,12 @@ class Builder{ constructor(){this.list=[];}
 function tube(points,r,seg,rseg){ return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),seg||Math.max(4,points.length*4),r,rseg||5,false); }
 const jit=(c,r,k)=>{ const o=C(c); const f=1+(r()-.5)*(k||.18); return o.multiplyScalar(f); };
 /** violet underglow by depth: nothing at the vestibule, strongest in the sanctum */
-const depthGlow=y=>smooth(-1,-16,y)*.85+.06;
+const depthGlow=y=>smooth(-2,-16,y)*.9+.02;
 
 /* ---------- the shell: floor + vaulted ceiling heightfields, ashlar walls from the field's zero contour ---------- */
 const TAGCOL={vestibule:['#7a7680','#6a6670'],nave:['#6e6b78','#5e5b6a'],reliquary:['#77706e','#655e60'],cloister:['#68706c','#575e5c'],well:['#5f5a6a','#4f4a5c'],sanctum:['#5a5068','#463e56']};
 function buildShell(){
-  const floorMat=triMaterial('floor',.36), wallMat=triMaterial('wall',.42,{side:THREE.DoubleSide}), ceilMat=triMaterial('ceil',.42);
+  const floorMat=triMaterial('floor',.3), wallMat=triMaterial('wall',.3,{side:THREE.DoubleSide}), ceilMat=triMaterial('ceil',.34);
   VIS.mats={floorMat,wallMat,ceilMat};
   const tc=new THREE.Color();
   const fp=[],fc=[],fg=[],fi=[], cp=[],cc=[],ci=[]; const fV=new Int32Array(NX*NZ).fill(-1), cV=new Int32Array(NX*NZ).fill(-1);
@@ -558,10 +561,11 @@ function buildProps(){
   // --- the nave: pier capitals, gallery ledges, the sun-disc door, the watchers' alcove (the eyes)
   for(const s of [-1,1]) for(const z of PIER_Z){ St.box(1.25,.5,1.25,stoneC(),s*4,1.5,z).box(1.45,.25,1.45,darkStone(),s*4,1.85,z).box(1.3,.3,1.3,darkStone(),s*4,-2.85,z);
     for(let k=0;k<4;k++)St.box(1.18,.04,.04,darkStone(),s*4,-1.6+k*.8,z+.575).box(1.18,.04,.04,darkStone(),s*4,-1.6+k*.8,z-.575); }
+  for(const [x,z] of [[-2.65,-22],[2.65,-40]]){ const sd=Math.sign(x); St.box(1.4,.36,1.0,stoneC(),x+sd*.35,.62,z).box(1.0,.5,.8,darkStone(),x+sd*.55,.2,z).box(.6,.6,.6,darkStone(),x+sd*.75,-.3,z); }  // the corbels the mirrors stand on
   for(const s of [-1,1]){ St.box(.9,.3,40,darkStone(),s*6.6,3.2,-30.4); for(let k=0;k<16;k++)St.box(.25,.5,.25,stoneC(),s*6.25,3.55,-11.6-k*2.5); }
   St.box(4.2,.6,.8,darkStone(),0,3.6,-50.0).box(.7,6.6,.7,darkStone(),-2.05,0,-50.1).box(.7,6.6,.7,darkStone(),2.05,0,-50.1);
-  // the watchers' alcove: two great faces with hollow eyes over the north stair; the secret niche behind the left one
-  for(const x of [-5,5]){ const p=watcher(St,x,-3,-10.1,0,2.1,jit('#8c8894',r,.06)); if(x<0)VIS.eyesAt=p; else eyes.push(...p); }
+  // two great watchers either side of the north stair, facing down the hall; the left one's eyes take the mirrors' light
+  for(const x of [-2.65,2.65]){ const p=watcher(St,x,-3,-11.3,PI,2.1,jit('#8c8894',r,.06)); if(x<0)VIS.eyesAt=p; else eyes.push(...p); circleCol(x,-11.3,.95,-3,1.4); St.box(2.0,.4,2.0,darkStone(),x,-2.8,-11.3); }
   // --- the reliquary: offering shelves of urns and small bronze moths, the altar in the apse, the recess
   for(const z of [-35.2,-44.8]){ for(let l=0;l<3;l++){ St.box(8,.12,.7,stoneC(),-24,-3.2+l*1.1,z+(z<-40?.15:-.15)); }
     for(let k=0;k<16;k++){ const x=-27.6+k*.5+(r()-.5)*.1, l=(k*7)%3, y=-3.14+l*1.1;
@@ -671,7 +675,7 @@ function buildGates(){
   VIS.exitGrate=eg.mesh(M.bronze,'tpExitGrate'); VIS.exitGrate.position.set(18.4,-16,-100); tpRoot.add(VIS.exitGrate);
   const sg=new Builder(); for(let k=-4;k<=4;k++)sg.cyl(.05,.05,3.4,'#2c2830',k*.36,1.7,0,5); for(const y of [.4,1.6,2.8])sg.box(3.1,.08,.08,'#2c2830',0,y,0);
   VIS.sanGrate=sg.mesh(M.bronze,'tpSanctumGrate'); VIS.sanGrate.position.set(0,-16,-82.9); tpRoot.add(VIS.sanGrate);
-  const es=new Builder(); es.box(1.9,2.4,.3,'#6a6672',0,1.2,0); VIS.eyesSlab=es.mesh(M.stone,'tpEyesSlab'); VIS.eyesSlab.position.set(-5,-3,-9.55); tpRoot.add(VIS.eyesSlab);
+  const es=new Builder(); es.box(1.5,2.5,.3,'#6a6672',0,1.25,0); VIS.eyesSlab=es.mesh(M.stone,'tpEyesSlab'); VIS.eyesSlab.position.set(-6.2,-3,-10.55); tpRoot.add(VIS.eyesSlab);
 }
 function updateGateVis(snap,dt){
   if(!VIS.sunDoor)return; dt=dt||0;
@@ -679,7 +683,7 @@ function updateGateVis(snap,dt){
   VIS.sunDoor.position.y=d(VIS.sunDoor.position.y,S.gates.sunDoor?-9.4:-3,.9);
   VIS.exitGrate.position.y=d(VIS.exitGrate.position.y,S.gates.exit?-19.6:-16,1.3);
   VIS.sanGrate.position.y=d(VIS.sanGrate.position.y,S.gates.sanctum?-19.6:-16,2.4);
-  VIS.eyesSlab.position.x=d(VIS.eyesSlab.position.x,S.gates.eyes?-6.9:-5,1.2);
+  VIS.eyesSlab.position.y=d(VIS.eyesSlab.position.y,S.gates.eyes?-5.6:-3,1.2);
 }
 
 /* ---------- roots through the stone, and ink in the joints near the seals (one merged mesh) ---------- */
@@ -1032,6 +1036,18 @@ function openDoor(restored){
 }
 G.on('undercroft:saved',e=>{ if(e&&e.who==='wren')unlock(); });
 
+/* ---------- the lantern shutter down here: player.js only offers it before the cure, the cave inside the cave. The Vigilants hunt
+   by light and the Answer is only solid in the dark, so the cured lantern gets its shutter back inside the Vigil. ---------- */
+let shutEvT=-1;
+G.on('lantern:shutter',()=>{ shutEvT=G.time; });
+function updateShutter(){
+  const L=G.items&&G.items.lantern, P=G.player; if(!L||!L.carried||!L.cured||!P||P.alive===false||G.state.mode!=='play')return;
+  G.hint(G.input.device==='gamepad'?'RB':'F',L.shut?'Open the shutter':'Close the shutter');
+  if(G.input.pressed('shutter')&&shutEvT!==G.time){ L.shut=!L.shut; G.emit('lantern:shutter',{shut:L.shut,temple:true}); shutEvT=G.time;
+    if(L.shut&&!S.said.shut){ S.said.shut=1; G.ui.say('You close the shutter. The dark of the Vigil comes down at once, close and old, and the violet under the floor seems brighter for it.',{priority:'normal'}); } }
+}
+API.updateShutter=updateShutter;
+
 /* ================================================================ 11. PERSISTENCE */
 if(G.persist&&G.persist.register) G.persist.register('temple',{
   save:()=>{ const o={v:1,unlocked:S.unlocked,open:S.open,lit:[...S.lit],reached:[...S.reached],gates:Object.assign({},S.gates),freeUsed:S.freeUsed,
@@ -1093,7 +1109,7 @@ G.system('temple',{order:14,modes:'always',
     updateBraziers(dt); updateGateVis(false,dt); updatePages();
     if(VIS.seamLight){ VIS.seamLight.intensity=tUni.uSeam.value*(2.2+.6*Math.sin(G.time*2.3)); VIS.seamGlow.material.opacity=.55*tUni.uSeam.value; }
     if(VIS.pastRubble){ const k=G.glass?G.glass.k:0; VIS.pastRubbleMat.opacity=1-k*.9; VIS.pastRubble.visible=k<.98; }
-    if(mode==='play')updatePast(dt);
+    if(mode==='play'){ updatePast(dt); updateShutter(); }
   }
 });
 G.system('templeLate',{order:21,modes:['play','dead'],update(){ // after player.js: heads under the vaults
