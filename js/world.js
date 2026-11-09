@@ -1012,7 +1012,7 @@ function buildMoorStructures(){
    swings inward on interact. Hearth on the east wall (under the chimney),
    bed, table + chairs, dresser with jars & books, window seat, rug,
    hanging herbs, the keeper's logbook, a ship in a bottle, and the chest
-   holding the Traveler's Cloak against the south wall.
+   holding Rowan's old coat (the Traveler's Cloak item) against the south wall.
    ===================================================================== */
 const CS={}; // cottage runtime state (door / chest / fire)
 const HEMI0={c:new THREE.Color(),g:new THREE.Color(),ci:col('#c9a27a'),gi:col('#5a3a24')};
@@ -1348,7 +1348,7 @@ function buildCottage(kit,r){
   let logRead=0;
   G.interact.add({pos:new THREE.Vector3(X+TX+.25,TOP+F,Z+TZ-.05),radius:1.25,priority:1,label:'Read the logbook',
     use(){const L=['The keeper’s logbook lies open. The last entry, in a tidy hand: “Fog off the water again. Lamp lit at dusk. The moths are restless tonight.” Below it the page is blank.',
-      'Older pages: tide times, a sketch of a heron, a list of jars to refill. Halfway down one page: “The old cloak is in the chest, should anyone ever need it more than I do.”'];
+      'Older pages: tide times, a sketch of a heron, a list of jars to refill. Halfway down one page, in a different, rounder hand: “Da says throw out the Knox boy’s old coat. It’s in the chest. It stays in the chest. — H.”'];
       const t=L[logRead%L.length]; logRead++;
       if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'The keeper’s logbook',title:logRead===1?'The last entry':'Older pages',portrait:'page',lines:[{text:t,who:'The keeper’s logbook'}],key:'cottageLog'}); else G.ui.say(t);}});
 
@@ -1394,8 +1394,8 @@ function takeCloak(){
   const had=c.owned; c.owned=true;
   if(had)return;
   G.emit('cloak:found');
-  try{G.ui.toast('The Traveler’s Cloak','Jump again in the air to flutter · hold jump while falling to glide');}catch(e){}
-  try{G.ui.say('Deep violet wool, with gold leaves stitched all along the hem. You swing it around your shoulders and pull up the hood. It fits as if it has been waiting for you. When you turn, the hem lifts and fills like a sail: hold jump while you fall, and it will carry you on the wind.');}catch(e){}
+  try{G.ui.toast('Your Old Coat','Jump again in the air to flutter · hold jump while falling to glide');}catch(e){}
+  try{G.ui.say('Your old coat. Deep violet wool, with the gold leaves still stitched along the hem. Seven years in a chest, and somebody has kept it mended. You pull it on and turn up the hood. It still fits. When you turn, the hem lifts and fills like a sail: hold jump while you fall, and it will carry you on the wind.');}catch(e){}
 }
 function updateCottage(dt){
   if(!CS.hinge)return;
@@ -1528,6 +1528,87 @@ function buildHeadland(){
   mats.glass=G.toon('#7fa39a',{vertexColors:true,emissive:'#20302c'});
   kit.build(mats,root,{stone:.45,slate:.55,timber:.7});
 }
+
+/* ---------- THE WRECK (Story agent): Rowan's boat on the rocks of the south beach, where a new game starts ----------
+   Self-contained: a landmark (LM.wreck, LM.wreckStart: flow.js begins a new game there), one merged vertex-coloured mesh
+   (rocks, both halves of the hull, ribs, the mast and yard, rope, crates, the sea-bag) and a few colliders.
+   Built by its own system right after the world (order 1), so world.js's init is untouched. */
+const WRECK={x:84,z:69.5};
+LM.wreck=LP(WRECK.x,WRECK.z);
+LM.wreckStart=LP(71,64.2,{yaw:1.8});
+KEEP.push({x:79,z:66,r:9},{x:72,z:63.5,r:3});
+function buildWreck(){
+  const r=rnd(7311), parts=[], H=(x,z)=>height(x,z);
+  const wood=col('#94704f'), wood2=col('#5a4231'), wet=col('#3d2f27'), paint=col('#40606e'), paint2=col('#8c4a3a'), weed=col('#3f5230');
+  const rk=col('#6a6f80'), rk2=col('#4c5262'), canvas=col('#b9ab8c'), canvas2=col('#8e8268'), rope=col('#a08a5e');
+  const plank=(p,n,o,base,band)=>{ o.copy(base).lerp(wood2,.2+.2*Math.sin(p.y*9+vnoise(p.x*.8,p.z*.8)*3));
+    if(band&&p.y>band-.18)o.lerp(paint,.85); if(p.y<0)o.lerp(wet,.5); if(p.y<-.2)o.lerp(weed,.35); };
+  // rocks: a low reef at the waterline, the bow half wedged on top
+  const rocks=[[86.5,70.5,2.1],[84.2,72.4,1.6],[88.6,68.6,1.5],[83.2,69.4,1.1],[87.4,73.2,1.3],[89.8,71.4,1.0],[81.6,71.2,.8],[85.6,67.6,.9]];
+  for(const [x,z,s] of rocks){ const g=new THREE.DodecahedronGeometry(1,1), P=g.attributes.position;
+    for(let i=0;i<P.count;i++){_v.fromBufferAttribute(P,i); const k=.78+vnoise(_v.x*2+x,_v.y*2+_v.z*1.7+z)*.45; P.setXYZ(i,_v.x*k,_v.y*k,_v.z*k);}
+    g.computeVertexNormals();
+    parts.push({g,m:mat4(x,H(x,z)+s*.25,z,r()*3,r()*3,r()*3,s*1.25,s*(.7+r()*.3),s),
+      c:(p,n,o)=>{ o.copy(rk2).lerp(rk,vnoise(p.x*3,p.z*3+p.y*2)); if(p.y<.35)o.lerp(wet,.55); if(n.y>.5&&p.y>.6)o.lerp(weed,.3); }});
+    G.addCollider({x,z,r:s*1.05,y0:-6,y1:H(x,z)+s*1.05}); }
+  // a hull half: the lower half of a tapered cylinder, open at the broken end, ragged along the break
+  function hullHalf(L,seed){
+    const g=new THREE.CylinderGeometry(1.55,1.55,L,16,10,true,PI,PI); g.rotateZ(PI/2); // axis along x, open side up
+    const P=g.attributes.position, rr=rnd(seed);
+    const rag=[]; for(let k=0;k<17;k++)rag.push(rr()*.7);
+    for(let i=0;i<P.count;i++){ const hx=P.getX(i), t=Math.min(1,Math.max(0,(hx+L/2)/L));               // t: 0 at the break, 1 at the bow / stern
+      const w=Math.max(.05,1-Math.pow(t,2.2)*.92), y=P.getY(i), z=P.getZ(i);
+      const a=Math.atan2(z,-y), ai=Math.min(16,Math.max(0,Math.round((a/PI+.5)*16)));
+      const x2=t<.02?hx+rag[ai]:hx;                                                  // the break: planks sprung at different lengths
+      P.setXYZ(i,x2,y*.72*(1-.2*t*t)+.38*t*t,z*w); }
+    g.computeVertexNormals(); return g;
+  }
+  // the bow half: up on the reef, heeled hard over, nose in the air
+  const bx=85.6, bz=70.4, by=H(bx,bz)+1.7;
+  parts.push({g:hullHalf(5.6,3),m:mat4(bx,by,bz,.55,2.35,.42),c:(p,n,o)=>plank(p,n,o,wood,by+.15)});
+  // the stern half: dragged up onto the sand by the tide, on its side
+  const sx=79.6, sz=66.4, sy=H(sx,sz)+1.15;
+  parts.push({g:hullHalf(4.8,9),m:mat4(sx,sy,sz,-.62,-.85,-.18),c:(p,n,o)=>plank(p,n,o,wood,sy+.05)});
+  // a transom board and the tiller lying by the stern
+  parts.push({g:new THREE.BoxGeometry(1.5,.9,.08),m:mat4(77.2,H(77.2,65.6)+.32,65.6,-.2,.6,1.15),c:(p,n,o)=>o.copy(paint2).lerp(wood2,vnoise(p.x*4,p.y*4)*.6)});
+  parts.push({g:new THREE.CylinderGeometry(.05,.07,1.6,6),m:mat4(76.4,H(76.4,64.2)+.06,64.2,PI/2,0,.9),c:wood2});
+  // ribs: three bare frames standing out of the sand between the halves
+  for(let k=0;k<3;k++){ const x=82.2+k*.9, z=68.2+k*.5, s=1-k*.12;
+    const g=new THREE.TorusGeometry(1.05*s,.07,4,10,PI*.85);
+    parts.push({g,m:mat4(x,H(x,z)-.35,z,0,.75+k*.08,PI+.25+k*.1),c:(p,n,o)=>o.copy(wood2).lerp(wet,p.y<.3?.6:.1)}); }
+  // the mast, snapped at the step, lying from the reef up the beach; the yard across it; a rag of sail
+  const m0=V3(83.6,H(83.6,68.4)+.35,68.4), m1=V3(75.2,H(75.2,67.8)+.18,67.8), mm=m0.clone().add(m1).multiplyScalar(.5), mL=m0.distanceTo(m1);
+  parts.push({g:new THREE.CylinderGeometry(.11,.15,mL,8),m:new THREE.Matrix4().compose(mm,new THREE.Quaternion().setFromUnitVectors(V3(0,1,0),m1.clone().sub(m0).normalize()),V3(1,1,1)),c:(p,n,o)=>o.copy(wood).lerp(wood2,.4)});
+  parts.push({g:new THREE.CylinderGeometry(.07,.07,3.4,6),m:mat4(77.8,H(77.8,67.9)+.32,67.9,PI/2,0,.35),c:wood2});
+  { const g=new THREE.PlaneGeometry(2.6,1.6,6,4), P=g.attributes.position;
+    for(let i=0;i<P.count;i++){ const x=P.getX(i), y=P.getY(i); P.setZ(i,Math.sin(x*2.1+y*1.3)*.12+(vnoise(x*2,y*2)-.5)*.25); }
+    g.computeVertexNormals(); const x=77.4, z=68.9;
+    parts.push({g,m:mat4(x,H(x,z)+.12,z,-PI/2+.12,0,.5),c:(p,n,o)=>o.copy(canvas).lerp(canvas2,vnoise(p.x*2,p.z*2)).lerp(wet,p.y<.12?.4:0)}); }
+  // rope: a coil on the sand and a line trailing from the stern into the wash
+  { const x=74.2, z=62.6, y=H(x,z)+.05;
+    for(let k=0;k<3;k++)parts.push({g:new THREE.TorusGeometry(.32-k*.05,.035,4,14),m:mat4(x+k*.02,y+k*.05,z,PI/2,0,0),c:rope});
+    const pts=[V3(79.2,H(79.2,66.9)+.4,66.9),V3(80.4,H(80.4,68.2)+.05,68.2),V3(81.2,H(81.2,69.6)+.02,69.6),V3(80.6,H(80.6,71.4)+.02,71.4)];
+    parts.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.035,4,false),c:rope}); }
+  // crates: one whole, one burst, one half under the sand
+  const crates=[[76.2,63.4,.62,.3],[78.4,61.4,.55,1.1],[73.2,65.6,.6,-.5]];
+  crates.forEach(([x,z,s,yaw],k)=>{ const y=H(x,z)+(k===2?s*.15:s*.48);
+    parts.push({g:new THREE.BoxGeometry(s*1.3,s,s),m:mat4(x,y,z,k===1?.25:0,yaw,k===2?.32:0),c:(p,n,o)=>{ o.copy(wood).lerp(wood2,.5+.5*Math.sin((p.y-y)*14)); if(Math.abs(n.y)>.9)o.lerp(wood2,.3); }});
+    if(k===1){ for(let j=0;j<3;j++){ const px=x+.7+j*.35, pz=z-.4+j*.5; parts.push({g:new THREE.BoxGeometry(.9,.04,.16),m:mat4(px,H(px,pz)+.03,pz,0,r()*3,0),c:wood}); } }
+    G.addCollider({x,z,r:s*.75,y0:-3,y1:y+s*.5}); });
+  // the sea-bag: canvas, cinched at the neck with a lanyard, lying where the water left it, near where you wake
+  { const x=72.5, z=62.3, y=H(x,z);
+    const g=blob(.42,2,11,.12);
+    parts.push({g,m:mat4(x,y+.3,z,0,.4,PI/2-.15,1.55,.85,.95),c:(p,n,o)=>{ o.copy(canvas).lerp(canvas2,vnoise(p.x*3,p.z*3+p.y)); if(p.y<y+.12)o.lerp(wet,.5); }});
+    parts.push({g:new THREE.TorusGeometry(.17,.04,4,10),m:mat4(x+.6*Math.cos(.4),y+.34,z-.6*Math.sin(.4),0,.4+PI/2,0),c:rope});
+    parts.push({g:new THREE.ConeGeometry(.18,.3,7),m:mat4(x+.78*Math.cos(.4),y+.34,z-.78*Math.sin(.4),0,.4,-PI/2),c:canvas2}); }
+  const mesh=new THREE.Mesh(mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide}));
+  mesh.castShadow=true; mesh.receiveShadow=true; mesh.name='wreck'; root.add(mesh);
+  // the hull halves are solid: a pair of circles along each
+  for(const [x,z,rad,top] of [[85.2,70.2,1.2,2.4],[86.6,71.4,1,2.6],[79.8,66.2,1.15,1.6],[78.6,66.9,.9,1.4]])G.addCollider({x,z,r:rad,y0:-6,y1:H(x,z)+top});
+  W.wreck={mesh,parts:parts.length};
+}
+function V3(x,y,z){return new THREE.Vector3(x,y,z);}
+G.system('wreck',{order:1,modes:'always',init(){ try{ buildWreck(); }catch(e){ console.error('wreck',e); } }});
 
 /* ---------- sea stacks & spires ---------- */
 function buildStacks(){
