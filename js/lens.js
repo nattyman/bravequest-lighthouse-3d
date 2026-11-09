@@ -58,6 +58,7 @@ const API=G.lens={
 };
 
 /* ================================================================ THE BEAM */
+const p0=()=>G.player.pos;
 const inTemple=p=>!!(G.temple&&G.temple.contains&&G.temple.contains(p));
 /** the world along one segment: temple stone (analytic), or the island (combat.js's aim raycast) */
 function worldHit(from,dir,max){
@@ -148,7 +149,8 @@ function buildVis(){
   VIS.mouth=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:C('#fff0c8'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending}));
   VIS.mouth.scale.setScalar(.9); VIS.root.add(VIS.mouth);
   // one light rides the beam's end (always in the scene, so the light count never changes and no shader recompiles)
-  VIS.light=new THREE.PointLight(0xffd29a,0,9,1.7); G.scene.add(VIS.light);
+  // it only exists inside the Vigil (temple:enter/exit): a light in the scene costs every lit surface on the island a little, every frame
+  VIS.light=new THREE.PointLight(0xffd29a,0,9,1.7); VIS.light.visible=false; G.scene.add(VIS.light);
 }
 const _q=new THREE.Quaternion(), _z=V(0,0,1);
 function updateVis(dt){
@@ -198,19 +200,24 @@ function updateFocus(dt){
   // hints: what holding does (once the Lens is yours), and how to let go
   // the hint only where there is something for it: inside the Vigil, or near anything that burns or a mirror
   if(ok&&!S.focused){ S.hintT-=dt; if(S.hintT<=0){ S.hintT=.5; const p=G.player.pos; S.hintNear=inTemple(p)||burnables.some(q=>!(q.burned&&!q.keep)&&(!q.enabled||q.enabled())&&q.pos.distanceTo(p)<16); }
-    if(S.hintNear)G.hint(keyName()==='the lantern button'?'Hold':keyName()+' hold','Focus the Lens'); }
+    if(S.hintNear&&!inTemple(p0()))G.hint(keyName()==='the lantern button'?'Hold':keyName()+' hold','Focus the Lens'); }
   else if(S.focused)G.hint(keyName()==='the lantern button'?'Let go':keyName(),'Let go: open the lantern');
 }
 /* the swarm hangs back from a focused beam (the moths won't follow a burning thread) */
 function updateMoths(){
+  if(!S.focused&&!S.mothsHeld)return; let held=false;
   const ms=(G.creatures&&G.creatures.moths)||[];
   for(const m of ms){
-    if(S.focused&&m.tgt==='lantern'){ if(m._lensRad==null){ m._lensRad=m.rad; m._lensHy=m.hy; } m.rad=m._lensRad+3.4; m.hy=(m._lensHy||0)+1.6; }
+    if(S.focused&&m.tgt==='lantern'){ if(m._lensRad==null){ m._lensRad=m.rad; m._lensHy=m.hy; } m.rad=m._lensRad+3.4; m.hy=(m._lensHy||0)+1.6; held=true; }
     else if(m._lensRad!=null){ if(m.tgt==='lantern'){ m.rad=m._lensRad; m.hy=m._lensHy; } m._lensRad=null; m._lensHy=null; } }
+  S.mothsHeld=held;
 }
 G.system('lens',{order:23,modes:['play','dead','paused'],
   init(){ try{ buildVis(); }catch(e){ console.error('lens vis',e); } if(S.owned)attachToLantern(); },
   update(dt){
+    const inT=!!(G.temple&&G.temple.inside); if(VIS.light&&VIS.light.visible!==inT){ VIS.light.visible=inT; VIS.light.intensity=0; }
+    // nothing to do until the Lens is yours (and nothing left over from a beam): don't spend a frame on it
+    if(!S.owned&&!S.focused&&!S.mothsHeld&&S.focusT===0)return;
     if(G.state.mode!=='play'){ if(S.focused){ S.focused=false; G.emit('lens:focus',{on:false}); } updateVis(dt); return; }
     updateFocus(dt);
     if(S.focused&&aim())trace(beam.origin,beam.dir); else { beam.hit=null; beam.segments.length=0; beam.length=0; beam.bounces=0; }

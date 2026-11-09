@@ -456,9 +456,10 @@ G.system('templePuzzles',{order:24,modes:'always',
     try{ buildShortcuts(); }catch(e){ console.error('lens shortcuts',e); }
   },
   update(dt){
-    root.visible=inside(); isle.visible=!inside();
-    updateLensSeals(dt); updateLadder(dt);
-    if(!inside())return;
+    const ins=inside(); if(root.visible!==ins)root.visible=ins; if(isle.visible===ins)isle.visible=!ins;
+    if(!ins){ // outside the Vigil: only the island's thickets (once the Lens is yours) and a ladder climb in progress
+      if(LAD.t)updateLadder(dt); if(G.lens&&G.lens.owned)updateLensSeals(dt); return; }
+    updateLensSeals(dt);
     updateAltar(dt); updateMirrors(dt); updateTargets(dt); updateWinch(dt); updateBoxes(dt); updateWell(dt);
   }
 });
