@@ -204,7 +204,7 @@ function buildMoths(){
     const m={i,p:V(),v:V(),ph:rnd()*TAU,sp:(1.2+rnd()*2.2)*(rnd()<.5?-1:1),rad:.6+rnd()*1.6,hy:rnd()*1.4,
       tgt:'patch',idx:patches.length?i%patches.length:0,prey:null,gp:null,home:null,jx:(rnd()-.5)*.8,jy:(rnd()-.5)*.8,
       scale:.11+rnd()*.05,delay:0,press:rnd()*TAU};
-    if(i<N_GLASS){m.tgt='spot';m.rad=.6+rnd()*3.2;m.hy=rnd()*3;m.scale*=1.1;} // Act 1 v12: the moths left the lamp when it went wrong; they nest in the old wood with Maren's lantern
+    if(i<N_GLASS){m.tgt='spot';m.rad=.6+rnd()*3.2;m.hy=rnd()*3;m.scale*=1.1;} // Act 1 v12: the moths left the lamp when it went wrong; they nest in the old wood with Hesper's lantern
     else if(i<N_GLASS+N_SPOT){m.tgt='spot';m.rad=.35+rnd()*1.2;}
     else if(i>=NM-N_ROOST){m.tgt='roost';m.cave=true;m.scale*=.85;m.p.set(0,-999,0);} // hidden until a roost exists
     else if(i>=NM-N_ROOST-N_WANDER||!patches.length){m.tgt='wander';m.rad=3+rnd()*4;}
@@ -368,7 +368,7 @@ function preyList(){
     out.push({key:hb,hb,center:hb._swarmCenter,alive:()=>!(hb.alive&&!hb.alive()),r:(hb.radius||.6)+1.4,
       range:hb.mothRange||7,want:hb.mothWant||0,dmg:hb.mothDamage==null?1:hb.mothDamage,
       lure:()=>typeof hb.mothPrey==='function'?!!hb.mothPrey():!!hb.mothPrey}); }
-  // negatives: the swarm frees them in Act 1 (Maren's lantern); in the core loop a baited lantern draws it to them too.
+  // negatives: the swarm frees them in Act 1 (Hesper's lantern); in the core loop a baited lantern draws it to them too.
   // n.lure (companions.js' raven) can say no: the raven has to be weakened first.
   for(const n of negatives){ if(n.dead||n.dying&&n.fade<.3)continue; if(n.lure&&!n.lure())continue;
     out.push({key:n,neg:n,center:n.center,alive:()=>!n.dead,r:n.preyR||1.9,lure:()=>!!(G.loop&&G.loop.active&&baited())}); }
@@ -973,31 +973,37 @@ function updateNegatives(dt){
 }
 /* ---------------------------------------------------------------- Halloran, one of the Unmade */
 let hal=null;
+/* Act 1 (story pass): he knows the man in front of him. Rowan Knox, the boy he half raised; Hesper's "Tide". */
 const HAL_PRE=[
-  'You can see me. Most things out here can’t, anymore. Name was Halloran, once. I kept that light for nineteen years.',
-  'Don’t look at the arm. I know. It started with the arm.',
-  'You’ll want a light before you go in there. My old storm lantern hangs on the oil shed, back past the cottage. Plain oil, plain flame. It’ll see you up the stair.',
-  'The lamp went out the night the fog came. Nobody’s been up since. Nobody who came back down, anyway.',
-  'Funny thing about moths. Out here they gather where there’s nothing to see at all.',
-  'Go on. I’ll keep.'
+  'You can see me. Most things out here can’t, anymore.',
+  '...No. Hold still. Let me look at you.',
+  'You’re Rowan. You’re Tide. Seven years, boy. Seven years, and you pick tonight.',
+  'She kept the light. Right to the end, she kept it. Then she took her lantern into the wood, and she didn’t come back. Go up the tower. Read what she left. I can’t say it any better than she did.',
+  'You’ll want a light before you go in there. My old storm lantern hangs on the oil shed, back past the cottage. Plain oil, plain flame. It’ll see you up the stair.',   // [4]: flow.js moves the objective to the storm lantern
+  'Last spring. The night before the fair. The fog came in, the lamp went wrong, and by morning Wickham’s End was gone. Not burned. Unmade. Nobody’s been up the tower since. Nobody who came back down, anyway.',
+  'Don’t look at the arm. I know. It started with the arm, the night the lamp went wrong, and it’s been climbing since. Nineteen years I kept that light. Now I can’t stand to be near it.',
+  'Funny thing about moths. Out here they gather where there’s nothing to see at all. She said that meant something. I never asked what.',
+  'Go on, Tide. I’ll keep.'
 ];
 /* after the storm lantern failed in the lamp room: he waits at the foot of the tower */
 const HAL_FAIL=[
-  'The moths left when the lamp went wrong. They nest in the old wood, west.',
-  'Maren knew something about them. The night the fog came she took her lantern, the violet one, out to the old tree at the forest’s heart. She never came back. The lantern might have stayed.',
+  'The moths left when the lamp went wrong. They nest in the old wood, west. Same way she went.',
+  'The night the fog came, Hesper took her lantern, the violet one, out to the old tree at the forest’s heart. She knew something about the moths. More than I did. She never came back, but the lantern might have stayed.',
   'Something big walks those woods now. I hear it at night, breaking the trees. Keep that staff in your hand, and don’t let it corner you.',
-  'Follow the path down off the cliff and across the moor. Mind the hamlet. I’ll keep.'
+  'Follow the path down off the cliff and across the moor. Mind the hamlet. You knew those people, Rowan. They won’t know you. I’ll keep.'
 ];
 const HAL_MID=[
-  'That’s her lantern. Then Maren’s... well. Keep it close. And keep those moths off me.',
-  'My old flame only fed that thing up there. Hers is different. The moths know it.',
-  'Go on, then. Up you go.'
+  'That’s her lantern. She’d not have left that without a reason. Keep it close, Tide. And keep those moths off me.',
+  'My old flame only fed that thing up there. Hers is different. The moths know it. She always said they did.',
+  'Go on, then. Up you go. Light it for her.',
+  'Then she meant to go on without it. That’s her all over. She never once went where I told her.'
 ];
 const HAL_POST=[
   'You lit it. I felt it from down here, like sun on a bad tooth.',
   'Those moths went through the dark up there and didn’t leave a scrap of it.',
   'There’s more of it out on the island. More of me, too, if you go looking.',
-  'Mind the swarm when you come by. I’d like to stay as much myself as I’ve got left.'
+  'Mind the swarm when you come by, Tide. I’d like to stay as much myself as I’ve got left.',
+  'Still out there somewhere. She went on past that tree without a light, and the island doesn’t end at the tree. I’ve read her pages. She wasn’t done. Find her, Rowan. I can’t.'
 ];
 /* corruption stain: a toon material whose surface goes to ink where (aCor × uCreep + noise) passes a threshold,
    with a bruised, violet-lit creeping edge. aCor is a per-vertex 0..1 "how close to the source" value. */
@@ -1282,27 +1288,30 @@ function halloranAt(pos,yaw){
   hal.g.position.copy(hal.pos); hal.g.rotation.y=hal.heading;
 }
 /* Halloran talks on the conversation card (talk.js), like the people under the hamlet. Opening him shows the opening line
-   for where the story is (before the lamp · the storm lantern failed · Maren's lantern found · the lamp cured), then 2–3
+   for where the story is (before the lamp · the storm lantern failed · Hesper's lantern found · the lamp cured), then 2–3
    replies that lead to the rest of what he has to say for that part; later parts are still only reached by progress.
    One-time lines other modules hand him (API.halloranHooks: fn() -> line|null) come first, as lines on the card.
    Every line he says is still a 'talk' event {who:'Halloran', line, index (in that part's list), phase} — flow.js moves
    the objective on from those, audio.js murmurs them. */
 const HAL_TALK={
-  start:{lines:()=>HAL_PRE, open:s=>s.talks?[2]:[0], topics:[
-    {id:'lamp',text:'What happened to the lamp?',say:s=>s.heard[2]?[3]:[3,2]},
-    {id:'arm',text:'What happened to your arm?',say:[1]},
-    {id:'moths',text:'And the moths?',needs:s=>!!s.heard[3],say:[4]},
-    {id:'go',text:'I’ll go.',say:s=>s.heard[2]?[5]:[2,5],end:true}]},
+  start:{lines:()=>HAL_PRE, open:s=>s.talks?[4]:[0,1,2], topics:[
+    {id:'hesper',text:'Where’s Hesper?',say:s=>s.heard[4]?[3]:[3,4]},
+    {id:'here',text:'What happened here?',say:[5]},
+    {id:'arm',text:'What happened to you?',say:[6]},
+    {id:'moths',text:'And the moths?',needs:s=>!!s.heard[5],say:[7]},
+    {id:'go',text:'I’ll go.',say:s=>s.heard[4]?[8]:[4,8],end:true}]},
   failed:{lines:()=>HAL_FAIL, open:()=>[0], topics:[
-    {id:'maren',text:'Where did Maren go?',say:[1]},
+    {id:'hesper',text:'Where did Hesper go?',say:[1]},
     {id:'woods',text:'What’s in the woods?',say:[2]},
     {id:'go',text:'I’ll go.',say:s=>s.heard[1]?[3]:[1,3],end:true}]},
   lantern:{lines:()=>HAL_MID, open:()=>[0], topics:[
     {id:'why',text:'Why will hers work?',say:[1]},
+    {id:'set',text:'She set it down on purpose.',say:[3]},
     {id:'go',text:'I’ll go.',say:[2],end:true}]},
   cured:{lines:()=>HAL_POST, open:s=>s.talks?[2]:[0], topics:[
     {id:'moths',text:'The moths did it.',say:[1]},
     {id:'over',text:'Is it over?',needs:s=>!s.heard[2],say:[2]},
+    {id:'hesper',text:'And Hesper?',say:[4]},
     {id:'go',text:'I’ll go.',say:[3],end:true}]}
 };
 function halPhase(){

@@ -1,7 +1,7 @@
 /* =====================================================================
    BRAVE QUEST: LIGHTHOUSE — cave_boss.js  (Boss agent)
    The Drowned Keepers' Cave: cave monster packs (brinelings + hollows),
-   THE UNDERTOW (boss in the arena), Maren's three logbook pages, the
+   THE UNDERTOW (boss in the arena), Hesper's three logbook pages, the
    discovery beat (caption + quest), Halloran's cave line. Persist 'caveBoss'.
 
    The Undertow can't be seen in light. With the lantern shut, the swarm
@@ -655,12 +655,12 @@ G.on('player:respawn',()=>{
 });
 
 /* =====================================================================
-   3. MAREN'S LOGBOOK — three pages
+   3. HESPER'S LOGBOOK — three pages
    ===================================================================== */
 const PAGES={
-  1:{room:'gallery',fb:[-6,3,-41],text:'“Down to the keepers’ cave at low water, the way old Tam said every keeper does once — to see the faces. I counted thirty-one, and room left for more. Past the stair there was a light under the water. Low, and violet, and patient. I didn’t go after it. Not today.” — M.'},
-  2:{room:'channel',fb:[22,4,-86],text:'“Brought the lamp down again. The dark gives way to it here, like it always does — but then it comes back closer, as if it has been listening for the place where the light stops. Close the shutter and you can hear it. The moths hear it too. They go quiet, and then they go toward it.” — M.'},
-  3:{room:'arena',fb:[60,1,-3],text:'“It isn’t a light. It’s a seam in the floor of the sea, and something comes in through it the way water comes into a hull — slowly, and then all at once. The thing in the pool was a keeper’s lens once. I think it was trying to hold the seam shut. If the tide turns and I’m not back, don’t come after me. I’m going down to where it comes in.”'}
+  1:{room:'gallery',fb:[-6,3,-41],text:'“Down to the keepers’ cave at low water, the way old Tam said every keeper does once — to see the faces. Tide used to dare me to come down here. He never did either. I counted thirty-one, and room left for more. Past the stair there was a light under the water. Low, and violet, and patient. I didn’t go after it. Not today.” — H.'},
+  2:{room:'channel',fb:[22,4,-86],text:'“Brought the lamp down again. The dark gives way to it here, like it always does — but then it comes back closer, as if it has been listening for the place where the light stops. Close the shutter and you can hear it. The moths hear it too. They go quiet, and then they go toward it.” — H.'},
+  3:{room:'arena',fb:[60,1,-3],text:'“It isn’t a light. It’s a seam in the floor of the sea, and something comes in through it the way water comes into a hull — slowly, and then all at once. The thing in the pool was a keeper’s lens once. I think it was trying to hold the seam shut. I’m going down to where it comes in. If the tide turns and I’m not back, don’t come after me. That’s for Da. Tide won’t listen anyway.”'}
 };
 const pageObjs={};
 function pageTex(){
@@ -690,18 +690,18 @@ function buildPage(n){
   G.scene.add(g);
   const o={n,g,pos,paper,glow,shown:n!==3,fade:n!==3?1:0};
   g.visible=o.shown;
-  G.interact.add({pos:()=>o.pos,radius:1.8,priority:2,label:()=>S.pages[n]?'Read Maren’s page again':'Read the page',
+  G.interact.add({pos:()=>o.pos,radius:1.8,priority:2,label:()=>S.pages[n]?'Read Hesper’s page again':'Read the page',
     enabled:()=>o.shown&&isPlay(),use:()=>readPage(n)});
   pageObjs[n]=o; return o;
 }
 function showPage(n,instant){ const o=buildPage(n); o.shown=true; o.g.visible=true; if(instant)o.fade=1; }
 function readPage(n){
   // a reading: the conversation card with the book (talk.js; captions instead if something is after you)
-  const card={who:'page',name:'Maren’s logbook',title:'Page '+n+' of 3',portrait:'page',lines:[PAGES[n].text],key:'page'};
-  if(G.talk&&G.talk.moment)G.talk.moment(card); else G.ui.say(PAGES[n].text,'Maren’s logbook',{priority:'high',key:'page'});
+  const card={who:'page',name:'Hesper’s logbook',title:'Page '+n+' of 3',portrait:'page',lines:[PAGES[n].text],key:'page'};
+  if(G.talk&&G.talk.moment)G.talk.moment(card); else G.ui.say(PAGES[n].text,'Hesper’s logbook',{priority:'high',key:'page'});
   const first=!S.pages[n]; S.pages[n]=true;
   G.emit('cave:page',{n,first});
-  if(first){ const k=Object.keys(S.pages).length; G.ui.toast&&G.ui.toast('Maren’s logbook',k+' of 3 pages'); }
+  if(first){ const k=Object.keys(S.pages).length; G.ui.toast&&G.ui.toast('Hesper’s logbook',k+' of 3 pages'); }
 }
 function updatePages(dt){
   if(!inCave())return;
@@ -739,7 +739,7 @@ G.on('tide:low',()=>{ // a nudge each low tide until the player has been inside
   if(!S.discovered||S.entered||!looping())return; const P=G.player, mp=mouthPos(); if(!P||!mp)return;
   if(Math.hypot(P.pos.x-mp.x,P.pos.z-mp.z)<150)later(2.5,()=>{ if(!S.entered)setQuest(); });
 });
-const HAL_LINE='You’ll have seen the arch at the foot of the cliff when the sea goes out. The keepers’ cave. Maren went down there once — came back up quieter than she went, and never said what she’d found. I never asked.';
+const HAL_LINE='You’ll have seen the arch at the foot of the cliff when the sea goes out. The keepers’ cave. Hesper went down there once and came back quieter than she went, and never said what she’d found. I never asked. I wish I had.';
 let halInter=null;
 function setupHalloran(){
   if(halInter)return; const C=G.creatures; if(!C)return;
