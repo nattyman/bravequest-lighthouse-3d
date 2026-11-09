@@ -7,7 +7,9 @@ URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&he
 SHOTS='/tmp/claude-0/act1'; os.makedirs(SHOTS,exist_ok=True)
 from playwright.async_api import async_playwright
 OBJ="document.getElementById('obj').textContent"
-USE="""(lab=>{ const c=G.interact.pick(G.player.pos); const l=c&&G.interact.label(c); if(c&&(!lab||l===lab))c.use(); return l; })"""
+# the conversation card (talk.js): any card up is read through (first reply each time) before and after a use
+TALK="""(()=>{ let n=0; while(G.talk&&G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } if(G.state.mode==='paused'&&document.getElementById('pause').hidden)G.setMode('play'); })"""
+USE="""(lab=>{ ("""+TALK+""")(); G.step(1/30,1); const c=G.interact.pick(G.player.pos); const l=c&&G.interact.label(c); if(c&&(!lab||l===lab)){ c.use(); ("""+TALK+""")(); } return l; })"""
 STEPS=[
  ("start","window._ev=[]; for(const e of ['finale:start','boss:dead','lamp:failed','storm:pickup','lamp:pulse'])G.on(e,d=>_ev.push(e+(d&&d.who?':'+d.who:''))); document.getElementById('begin').click(); G.step(1/30,10); [G.quest.step, G.lighthouse.darkK>0.9, !!G.lighthouse.beam, typeof G.lighthouse.beam.yaw()]",
    lambda r:r[0]=='cottage' and r[1] and r[2] and r[3]=='number'),

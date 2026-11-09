@@ -93,7 +93,7 @@ BOSS=[
    " B.debug.hold(true); B.debug.start(); G.step(1/30,5); B.debug.kill(); G.step(1/30,240); const m0=G.player.maxHp, k0=G.progress.marks;"
    " const d=G.progress.drops.crane; const dp=d&&d.pos.clone(); if(dp){ P.teleport(dp.x,dp.y,dp.z,0); G.step(1/30,10); } T.settle(60);"
    " const lp=B.debug.lectern(); P.teleport(lp.x,lp.y,lp.z+1.2,Math.PI); G.step(1/30,4); const ia=G.interact.pick(P.pos); const lab=ia&&G.interact.label(ia); if(ia)ia.use(); G.step(1/30,20); const card=(document.getElementById('rewardCard')||{}).textContent||''; T.settle(60);"
-   " B.readLastPage(); G.step(1/30,2);"
+   " B.readLastPage(); G.step(1/30,2); const lpCard=G.talk.isOpen&&G.talk.state().name; if(G.talk.isOpen)G.talk.close(); G.step(1/30,2); window.__lpCard=lpCard;"
    " return {state:B.state,defeated:B.defeated,events:__ucDead.length,bossDead,heartDrop:!!dp,dmax:G.player.maxHp-m0,marks:G.progress.marks-k0,lab,ledger:B.ledger,card,page:B.pageRead,hearts:G.progress.state.hearts}; })()",
    lambda r: r['defeated'] and r['events']==1 and r['bossDead']==0 and r['heartDrop'] and r['dmax']==2 and r['marks']==2 and r['lab'] and 'Ledger' in r['lab'] and r['ledger'] and 'Tithe Ledger' in r['card'] and r['page']),
  ("boss:lastPage", "(()=>{ const msgs=[...document.querySelectorAll('#caption, .caption, #captions')].map(e=>e.textContent).join(' '); return {ok:msgs.includes('I kept my name. I didn’t keep anything else.')||G.undercroftBoss.LAST_PAGE==='I kept my name. I didn’t keep anything else.'}; })()",
@@ -145,10 +145,11 @@ PLACE=[
    " const after=T.place.L(); T.place.at(16.25,-6,-49.5,0); T.place.walk(75); const noGlass=T.place.L(); return {top,mid,after,noGlass}; })()",
    lambda r: abs(r['top'][1]+3)<.2 and r['mid'][1]>-5.6 and abs(r['after'][1]+6)<.2 and abs(r['noGlass'][1]+6)<.2 and r['noGlass'][2]<-44.0),
  # an echo: the Glass raised at the chapel altar plays 'the bargain' (a caption + glass:echo)
- ("place:echo", "(()=>{ const e=G.undercroft.echoes.find(q=>q.id==='bargain'); G.debugEnterUndercroft('chapel'); G.step(1/30,4); G.player.teleport(e.pos.x+.6,e.pos.y,e.pos.z+2.2,Math.PI); G.step(1/30,4); let ev=null; G.on('glass:echo',x=>{ if(x.id==='bargain')ev=x; });"
-   " T.place.glass(true,40); const fig=G.glass._debug.echoes.find(q=>q.id==='bargain'); const vis=!!(fig&&fig.root&&fig.root.visible); G.step(1/30,40); T.place.glass(false,20);"
-   " return {ev:!!ev,first:ev&&ev.first,vis,n:G.glass.echoes.length,msg:G.ui.messages().some(m=>/ledger open/.test(m.text))}; })()",
-   lambda r: r['ev'] and r['vis'] and r['n']>=9 and r['msg']),
+ ("place:echo", "(()=>{ const e=G.undercroft.echoes.find(q=>q.id==='bargain'); G.debugEnterUndercroft('chapel'); G.step(1/30,4); G.player.teleport(e.pos.x+.6,e.pos.y,e.pos.z+2.2,Math.PI); G.step(1/30,4); for(const m of G.monsters.list.slice())if(m.alive&&!m.dying&&m.pos.distanceTo(G.player.pos)<30)G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)}); G.step(1/30,20); const calm=G.talk.calm(); let ev=null; G.on('glass:echo',x=>{ if(x.id==='bargain')ev=x; });"
+   " T.place.glass(true,40); const fig=G.glass._debug.echoes.find(q=>q.id==='bargain'); const vis=!!(fig&&fig.root&&fig.root.visible);"
+   " const card=G.talk.isOpen&&G.talk.state().name; G.step(1/30,40); const vis2=!!(fig&&fig.root&&fig.root.visible); let k=0; while(G.talk.isOpen&&k<20){ G.talk.advance(); k++; } G.step(1/30,2); T.place.glass(false,20);"   # two lines: a story moment on the card, the Glass held up behind it
+   " return {ev:!!ev,first:ev&&ev.first,vis,calm,card,vis2,mode:G.state.mode,glass:G.glass.raised,n:G.glass.echoes.length,msg:G.ui.messages().some(m=>/ledger open/.test(m.text))}; })()",
+   lambda r: r['ev'] and r['vis'] and r['n']>=9 and r['msg'] and (r['card']=='An echo' or not r['calm']) and r['mode']=='play' and not r['glass']),
  # checkpoints: the deepest room stood in with an open way back; the stranded fallback when there's none
  ("place:checkpoint", "(()=>{ G.debugEnterUndercroft('mill'); G.step(1/30,40); const cp=G.state.checkpointName, reached=G.undercroft.reached();"
    " G.glass._debug.S.owned=false; G.step(1/30,10); const str=G.undercroft.stranded(), cp2=G.state.checkpointName; const lab=T.place.use(/draught/); T.place.trans();"
@@ -287,7 +288,7 @@ PEOPLE=[
    " const ch=G.talk.state()&&G.talk.state().choices; G.talk.choose(0); const after=p.hp; T.people.finish(s=>s.choices.length-1);"
    " return {w:true,vis:w.root.visible,lab,title:s&&s.name,ch,healed:after-hp0,left:P.state.wren.left}; })()",
    lambda r: r['w'] and r['vis'] and r['left'] and r['healed']==2 and r['ch'] and 'loaf' in r['ch'][0]),
- ("people:halloran", "(()=>{ const C=G.creatures; const hooks=(C.halloranHooks||[]).length; const lines=[]; const off=G.on('talk',e=>{ if(e.who==='Halloran')lines.push(e.line); }); C.talk(); C.talk(); off&&off(); return {hooks,lines}; })()",
+ ("people:halloran", "(()=>{ const C=G.creatures; const hooks=(C.halloranHooks||[]).length; const lines=[]; const off=G.on('talk',e=>{ if(e.who==='Halloran')lines.push(e.line); }); C.talk(); C.talk(); off&&off(); const card=G.talk.isOpen&&G.talk.state().name; if(G.talk.isOpen)G.talk.close(); G.step(1/30,2); return {hooks,lines,card}; })()",
    lambda r: r['hooks']>=1 and any('came back' in l for l in r['lines'])),
 ]
 PEOPLE_SHOTS={'people:mouseOpen':'talk-desktop','people:lieShown':'talk-lie','people:restShot':'rest','people:wrenShot':'wren-saved','people:hamlet':'wren-hamlet'}

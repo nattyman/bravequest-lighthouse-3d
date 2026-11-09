@@ -22,6 +22,8 @@ window.T={
   charge(frames){ const C=G._playerDbg.charge; G.input.setVirtual('attack',true); G.step(1/30,frames); const t=C.t; G.input.setVirtual('attack',false); G.step(1/30,4);
     const b=G.combat.projectiles.filter(p=>p.team==='player'&&p.kind==='bolt').pop(); const out={t:+t.toFixed(3),speed:b?+b.vel.length().toFixed(1):null,pierce:b?!!b.pierce:null}; G.step(1/30,40); return out; }
 };
+// story moments (a companion's first meeting, a reading) open the conversation card, which pauses: read each through as it opens
+if(!window.__talkAuto){ window.__talkAuto=1; G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{}; G.on('talk:open',()=>{ let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } }); }
 'ok'"""
 
 STEPS=[

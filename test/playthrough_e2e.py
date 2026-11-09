@@ -24,6 +24,9 @@ EXTRA=r"""(()=>{
   window.EV=window.EV||[]; if(!G._evHooked){ G._evHooked=1; for(const e of ['finale:start','boss:dead','lamp:failed','lamp:cured','storm:pickup','stag:engage','cave:enter','cave:exit','cave:bossStart','cave:bossDead','cave:wound','gloaming:cine','moths:cured','blight:cured'])G.on(e,d=>EV.push(e+(d&&d.who?':'+d.who:'')+(d&&d.on!=null?':'+d.on:''))); }
   T.OBJ=()=>document.getElementById('obj').textContent;
   T.useL=lab=>{ const c=G.interact.pick(G.player.pos); const l=c&&G.interact.label(c); if(c&&(!lab||l===lab||(lab instanceof RegExp&&lab.test(l))))c.use(); return l; };
+  // the conversation card (talk.js): cave_e2e's LIB reads each card through as it opens (T.talkAuto); T.talk() is what was read since last asked
+  T.talk=()=>{ const r=T.talkAuto.read.join(' | '); T.talkAuto.read.length=0; return r; };
+  T.card=()=>T.talkAuto.names[T.talkAuto.names.length-1]||'';
   T.cap=()=>{ const c=G.ui.captions?G.ui.captions():null; return c&&c.cur?c.cur.text:''; };
   T.capAll=()=>{ const c=G.ui.captions?G.ui.captions():null; return c?[c.cur&&c.cur.text||''].concat(c.queue.map(q=>q.text)).join(' | '):''; };
   T.god=on=>{ if(G.devtools&&G.devtools.cheats)G.devtools.cheats.god=!!on; };   // the flag only: toggle() would switch saves to the test slot
@@ -38,8 +41,8 @@ ACT1=[
    return {ok:G.quest.step==='cottage'&&G.lighthouse.darkK>.9&&!!G.lighthouse.beam&&G.state.mode==='play',step:G.quest.step,obj:T.OBJ()}; })()"""),
  ("door", r"""(()=>{ G.player.teleport(172,42,0,Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,45); G.input.setVirtual('forward',false);
    const c=T.capAll(); return {ok:T.OBJ()==='Find a light'&&G.player.pos.x<176&&/doorway is black/.test(c),obj:T.OBJ(),cap:c.slice(0,80)}; })()"""),
- ("halloran", r"""(()=>{ const p=G.creatures.halloran.pos; G.player.teleport(p.x+1.6,p.y,p.z,0); G.step(1/30,10); const ls=[]; for(let i=0;i<3;i++){ls.push(T.useL()); G.step(1/30,5);}
-   return {ok:T.OBJ()==='Take Halloran’s storm lantern',obj:T.OBJ(),first:ls[0]}; })()"""),
+ ("halloran", r"""(()=>{ const p=G.creatures.halloran.pos; G.player.teleport(p.x+1.6,p.y,p.z,0); G.step(1/30,10); T.talk(); const l=T.useL(); const card=T.card()==='Halloran'; const said=T.talk();
+   return {ok:card&&T.OBJ()==='Take Halloran’s storm lantern'&&/storm lantern/.test(said),obj:T.OBJ(),first:l,said:said.slice(0,80)}; })()"""),
  ("storm", r"""(()=>{ const S=G.items.storm; G.player.teleport(S.pos.x-1.2,null,S.pos.z,Math.PI/2); G.step(1/30,10); const l=T.useL('Take the storm lantern'); G.step(1/30,10);
    return {ok:S.carried&&T.OBJ()==='Climb to the lamp room'&&!G.items.lantern.found&&G.creatures.lanternCount===0,l,obj:T.OBJ()}; })()"""),
  ("climb", r"""(()=>{ G.player.teleport(172,42,0,Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,70); G.input.setVirtual('forward',false);
@@ -51,19 +54,21 @@ ACT1=[
    return {ok:/Halloran’s lantern in the cradle/.test(c0)&&S.failed&&S.carried&&!S.inCradle&&T.OBJ()==='Go back down'&&G.flag('stormFailed')&&EV.includes('lamp:failed')&&!G.lighthouse.cured,
      l,cap0:c0.slice(0,60),obj:T.OBJ(),failed:S.failed}; })()"""),
  ("logbook", r"""(()=>{ const lb=G.interact.list.find(o=>G.interact.label(o)==='Read the logbook on the sill'); const p=lb.pos(); G.player.teleport(p.x,66,p.z,0); G.player.pos.y=66; G.step(1/30,6);
-   const l=T.useL('Read the logbook on the sill'); G.step(1/30,2); const c=T.capAll();
-   return {ok:G.flag('logbook')&&/They always came to the lamp/.test(c),l,cap:c.slice(0,60)}; })()"""),
+   T.talk(); const l=T.useL('Read the logbook on the sill'); G.step(1/30,2); const card=T.card(); const c=T.talk();
+   return {ok:G.flag('logbook')&&card==='The keeper’s logbook'&&/They always came to the lamp/.test(c)&&G.state.mode==='play',l,card,read:c.slice(0,60)}; })()"""),
  ("downToHalloran", r"""(()=>{ G.player.teleport(181.4,66,1.6,0); G.player.pos.y=66; G.step(1/30,90);
    const d=G.world.lighthouse.doorIn; G.player.teleport(d.x,d.y,d.z,-Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,50); G.input.setVirtual('forward',false); G.step(1/30,10);
-   const h=G.creatures.halloran.pos; const o=T.OBJ(); G.player.teleport(h.x-1.6,null,h.z,Math.PI/2); G.step(1/30,10); for(let i=0;i<3;i++){ T.useL(); G.step(1/30,5); }
-   return {ok:o==='Talk to Halloran'&&T.OBJ()==='Find Maren’s lantern'&&Math.hypot(h.x-180,h.z)<14,o,obj:T.OBJ()}; })()"""),
- ("stag", r"""(()=>{ const e=G.flow.stagEdge(); G.player.teleport(e.x-8,null,e.z,-Math.PI/2); G.step(1/30,30); const b=G.monsters.boss; G.step(1/30,20);
+   const scene=T.talk();   // his scene at the foot of the tower (a card when it's calm)
+   const h=G.creatures.halloran.pos; const o=T.OBJ(); G.player.teleport(h.x-1.6,null,h.z,Math.PI/2); G.step(1/30,10); T.useL(); const said=T.talk();
+   return {ok:o==='Talk to Halloran'&&T.OBJ()==='Find Maren’s lantern'&&Math.hypot(h.x-180,h.z)<14,o,obj:T.OBJ(),scene:scene.slice(0,50),said:said.slice(0,60)}; })()"""),
+ ("stag", r"""(()=>{ let walkT=0; while((G.ui.captions().queue.length||G.ui.captions().cur)&&walkT<1200){ G.step(1/30,1); walkT++; }   // the walk west (minutes, in play) lets the lamp room's lines finish; the teleport would otherwise stack them in front of the Stag's
+   const e=G.flow.stagEdge(); G.player.teleport(e.x-8,null,e.z,-Math.PI/2); G.step(1/30,30); const b=G.monsters.boss; G.step(1/30,20);
    // the Stag's entrance line is high priority: on screen at once, or after at most one other high line's minimum (teleports here
    // compress minutes of walking into frames, so the previous beat's lines are still up)
    let wait=0; while(!/stag made of absence/.test(T.cap())&&wait<150){ G.step(1/30,1); wait++; } const cap=T.cap();
    G.step(1/30,70); const L=G.items.lantern.pos;
    return {ok:!!b&&b.kind==='stag'&&T.OBJ()==='Take back Maren’s lantern'&&G.state.checkpointName==='the edge of the old wood'&&/stag made of absence/.test(cap)&&wait<=120&&MUS.last!=='boss',capWait:+(wait/30).toFixed(1),
-     kind:b&&b.kind,obj:T.OBJ(),cp:G.state.checkpointName,cap:cap.slice(0,50),stagState:b&&b.state}; })()"""),
+     kind:b&&b.kind,obj:T.OBJ(),cp:G.state.checkpointName,cap:cap.slice(0,50),stagState:b&&b.state,walk:+(walkT/30).toFixed(1)}; })()"""),
  ("stagDown", r"""(()=>{ T.god(true); const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; }
    G.step(1/30,150); T.god(false); const lo=T.leftovers();
    return {ok:EV.includes('boss:dead:stag')&&G.flow.stagDead&&T.OBJ()==='Take Maren’s lantern'&&G.state.mode==='play'&&document.getElementById('ending').hidden&&!lo.bosses.includes('stag')&&!lo.bossBar,
@@ -140,7 +145,7 @@ LOOP_CAVE=[
    const f=T.fight({room:'gallery'}); T.wait(2);
    return {ok:r.ok&&T.swarm()>=sw0+20&&f.left===0,swarm0:sw0,swarm:T.swarm(),fight:f,ichor:G.inv.count('ichor')}; })()"""),
  ("galleryVeinPage", r"""(()=>{ const r=T.walk([[-12.3,-33]],{local:true}); const u=T.use(/vein/i); T.wait(1.5);
-   const r2=T.walk([[-4.6,-40.2],[-6.5,-41.6]],{local:true}); const p=T.use(/page/i); T.wait(.5); const cap=T.cap();
+   const r2=T.walk([[-4.6,-40.2],[-6.5,-41.6]],{local:true}); T.talk(); const p=T.use(/page/i); T.wait(.5); const read=T.talk(); const cap=T.cap()||read;   // a reading: the card when calm (read through by T.talkAuto), else a caption
    return {ok:G.cave.isLit('gallery')&&p==='Read the page'&&G.caveBoss.pages.includes(1)&&cap.length>0,u,p,cap:cap.slice(0,50)}; })()"""),
  ("gallerySeal", r"""(()=>{ const s=G.cavePuzzles.seals.gallery; T.walk([[0,-41.5]],{local:true}); const t=T.wait(18,{until:()=>s.cured}); T.wait(3);
    return {ok:s.cured&&G.cavePuzzles.open('gallery'),t,swarm:T.swarm()}; })()"""),
