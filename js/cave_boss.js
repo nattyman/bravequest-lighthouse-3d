@@ -696,7 +696,9 @@ function buildPage(n){
 }
 function showPage(n,instant){ const o=buildPage(n); o.shown=true; o.g.visible=true; if(instant)o.fade=1; }
 function readPage(n){
-  G.ui.say(PAGES[n].text,'Maren’s logbook',{priority:'high',key:'page'});
+  // a reading: the conversation card with the book (talk.js; captions instead if something is after you)
+  const card={who:'page',name:'Maren’s logbook',title:'Page '+n+' of 3',portrait:'page',lines:[PAGES[n].text],key:'page'};
+  if(G.talk&&G.talk.moment)G.talk.moment(card); else G.ui.say(PAGES[n].text,'Maren’s logbook',{priority:'high',key:'page'});
   const first=!S.pages[n]; S.pages[n]=true;
   G.emit('cave:page',{n,first});
   if(first){ const k=Object.keys(S.pages).length; G.ui.toast&&G.ui.toast('Maren’s logbook',k+' of 3 pages'); }
@@ -744,9 +746,10 @@ function setupHalloran(){
   halInter=G.interact.add({pos:()=>{const h=C.halloran; return h&&h.pos?h.pos:null;},radius:2.8,priority:4,label:'Talk to Halloran',
     enabled:()=>{ const h=C.halloran; return looping()&&!S.hal&&!!h&&!h.afraid&&isPlay(); },
     use:()=>{ const h=C.halloran, P=G.player; S.hal=true;
-      if(h&&P&&P.pos){ if(!(h.sit>.5))h.heading=Math.atan2(P.pos.x-h.pos.x,P.pos.z-h.pos.z); h.talkT=2.6; }
-      G.ui.say(HAL_LINE,'Halloran');
-      G.emit('talk',{who:'Halloran',line:HAL_LINE,index:-1,phase:'cave'});
+      // his card, opening on the cave (creatures.js emits the 'talk' event {phase:'cave'} as the line shows); his usual replies follow
+      if(!(C.talk&&C.talk([{text:HAL_LINE,phase:'cave',index:-1}]))){
+        if(h&&P&&P.pos){ if(!(h.sit>.5))h.heading=Math.atan2(P.pos.x-h.pos.x,P.pos.z-h.pos.z); h.talkT=2.6; }
+        G.ui.say(HAL_LINE,'Halloran'); G.emit('talk',{who:'Halloran',line:HAL_LINE,index:-1,phase:'cave'}); }
       if(!S.discovered)later(5,()=>discover('halloran')); }});
 }
 

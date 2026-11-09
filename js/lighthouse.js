@@ -664,8 +664,12 @@ function buildSill(){
   logInteract=G.interact.add({pos:()=>V(wx(LOG_A,GLASS_R-.75),TOP,wz(LOG_A,GLASS_R-.75)),radius:1.7,priority:4,
     label:'Read the logbook on the sill',
     enabled:()=>inRoom(G.player.pos)&&!S.fail,
-    use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook',{priority:'high',key:'logbook'});
-      if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Outside the glass, the dead moths lie in drifts against the parapet.'),400); }
+    use(){ const first=!S.said.logbook; S.said.logbook=true;
+      const lines=[{text:'“They always came to the lamp. I thought it was the light they wanted.”',who:'The keeper’s logbook'}];
+      if(first)lines.push({text:'The last entry, in Maren’s small, careful hand. Outside the glass, the dead moths lie in drifts against the parapet.',who:''});
+      // a reading on the conversation card (talk.js), captions if it can't pause now
+      if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'The keeper’s logbook',title:'The last entry',portrait:'page',lines,key:'logbook'});
+      else{ G.ui.say(lines[0].text,'The keeper’s logbook',{priority:'high',key:'logbook'}); if(lines[1])setTimeout(()=>G.ui.say(lines[1].text),400); }
       G.flag('logbook',true); G.emit('logbook:read'); }});
 }
 

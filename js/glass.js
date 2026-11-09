@@ -125,7 +125,11 @@ function echoDur(e){ if(e.dur)return e.dur; const n=e.lines.join(' ').length; re
 function playEcho(e){
   buildEcho(e); e.t=0; e.root.visible=true;
   const first=!S.seen[e.id]; S.seen[e.id]=1;
-  e.lines.forEach((l,i)=>{ try{ G.ui.say(l,e.who||'An echo',{priority:i?'normal':'high',key:'echo:'+e.id+':'+i}); }catch(_){} });
+  // a scene of more than one line is a story moment: the conversation card (talk.js) with the Glass held up behind it, so the
+  // scene plays on while you read. One line, or not calm: captions, as ever.
+  let shown='';
+  if(e.lines.length>1&&G.talk&&G.talk.moment){ try{ shown=G.talk.moment({who:'echo',name:e.who||'An echo',title:e.title||'',portrait:'echo',glass:true,key:'echo:'+e.id,lines:e.lines.map(l=>({text:l,who:e.who||'An echo'}))}); }catch(err){ console.error('echo card',err); } }
+  if(!shown)e.lines.forEach((l,i)=>{ try{ G.ui.say(l,e.who||'An echo',{priority:i?'normal':'high',key:'echo:'+e.id+':'+i}); }catch(_){} });
   G.emit('glass:echo',{id:e.id,first,pos:e.pos.clone()});
 }
 function updateEchoes(dt){

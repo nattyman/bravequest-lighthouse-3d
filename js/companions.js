@@ -820,7 +820,7 @@ function ravenNegHit(info){
   if(RN.dead||RN.dying)return;
   RN.flash=1; RN.dmgN++; if(G.creatures&&G.creatures.ash)G.creatures.ash(RN.center,8,.5);
   if(RN.dmgN>=2&&RN.weak<=0){ RN.weak=30; RN.dmgN=0;
-    if(!RN.said.weak){ RN.said.weak=1; G.ui.say('The raven-shape sags on its stone, too tired to lift. If the moths came now, it couldn’t get away.',null,{key:'ravenWeak'}); }
+    if(!RN.said.weak){ RN.said.weak=1; G.ui.say('The raven-shape sags on its stone, too tired to lift. If the moths came now, it couldn’t get away.',null,{key:'ravenWeak',portrait:'corvin'}); }
     G.emit('raven:weak',{}); }
   else if(RN.weak>0)RN.weak=Math.max(RN.weak,20);
 }
@@ -845,13 +845,13 @@ function ravenNegStep(dt){
   const L=G.items&&G.items.lantern, lp=G.creatures&&G.creatures.lanternPos?G.creatures.lanternPos():null;
   const swarmNear=lp&&(G.creatures.lanternCount|0)>3&&L&&L.found&&Math.hypot(lp.x-RN.pos.x,lp.z-RN.pos.z)<9;
   const dP=pp?Math.hypot(pp.x-RN.pos.x,pp.z-RN.pos.z):1e9;
-  if(isPlay()&&dP<26&&!RN.said.seen){ RN.said.seen=1; G.ui.say('On the standing stones sits a raven-shaped hole in the dusk. It hops, and flaps, and makes no sound at all.',null,{key:'ravenSeen'}); }
+  if(isPlay()&&dP<26&&!RN.said.seen){ RN.said.seen=1; G.ui.say('On the standing stones sits a raven-shaped hole in the dusk. It hops, and flaps, and makes no sound at all.',null,{key:'ravenSeen',portrait:'corvin'}); }
   if(RN.state==='perch'){
     RN.pos.copy(stones[RN.stone]);
     const want=pp?Math.atan2(pp.x-RN.pos.x,pp.z-RN.pos.z):RN.heading; RN.heading=U.dampAngle(RN.heading,want+(RN.weak>0?.4:0)+Math.sin(t*.5)*.4,2,dt);
     const spook=isPlay()&&RN.weak<=0&&(dP<5.2||swarmNear||(p&&p.lockTarget===RN.hb&&dP<9&&Math.random()<dt*.15));
     if(spook){ const to=stoneFarFrom(swarmNear?lp:pp); RN.from.copy(RN.pos); RN.to.copy(stones[to]); RN.stone=to; RN.flyT=0; RN.flyDur=1.1+RN.from.distanceTo(RN.to)*.07; RN.state='fly'; RN.flee++;
-      if(RN.flee===2&&!RN.said.flee){ RN.said.flee=1; G.ui.say('It lifts off before you’re close and settles on another stone, just out of reach. Too quick to catch on foot. A bolt from the staff might reach it while it perches.',null,{key:'ravenFlee'}); } }
+      if(RN.flee===2&&!RN.said.flee){ RN.said.flee=1; G.ui.say('It lifts off before you’re close and settles on another stone, just out of reach. Too quick to catch on foot. A bolt from the staff might reach it while it perches.',null,{key:'ravenFlee',portrait:'corvin'}); } }
     else if(Math.random()<dt*.06&&RN.weak<=0&&dP>14){ const to=(RN.stone+1+((Math.random()*(stones.length-1))|0))%stones.length; RN.from.copy(RN.pos); RN.to.copy(stones[to]); RN.stone=to; RN.flyT=0; RN.flyDur=1.4; RN.state='fly'; }
   } else if(RN.state==='fly'){
     RN.flyT+=dt; const u=Math.min(1,RN.flyT/RN.flyDur), e=u*u*(3-2*u);
@@ -877,7 +877,7 @@ function earnEmber(quiet,at,yaw){
   const p=P();
   if(at){ emberPlace(at,yaw); }
   else if(p&&p.pos){ const h=p.heading||0; _b.set(p.pos.x+Math.cos(h)*1.1-Math.sin(h)*.6,0,p.pos.z-Math.sin(h)*1.1-Math.cos(h)*.6); _b.y=floorNear(_b.x,_b.z,p.pos.y); if(Math.abs(_b.y-p.pos.y)>1)_b.copy(p.pos); emberPlace(_b,h); }
-  if(!quiet){ E.mode='intro'; E.introT=0; G.ui.say('The fox doesn’t run. It sits, and looks at you, and waits.',null,{key:'ember',priority:'high'}); }
+  if(!quiet){ E.mode='intro'; E.introT=0; moment({who:'ember',name:NM.ember,title:'The fox',portrait:'ember',key:'ember',lines:[{text:'The fox doesn’t run. It sits, and looks at you, and waits.',who:''}]}); }
   refreshUI(); G.emit('companion:earned',{id:'ember',quiet:!!quiet}); if(!quiet)autosave();
 }
 function earnCorvin(quiet){
@@ -885,8 +885,14 @@ function earnCorvin(quiet){
   C.on=true; C.opa=1; C.fade=1; C.vel.set(0,0,0);
   if(RN.model&&!RN.dead){ RN.dead=true; RN.model.root.visible=false; if(RN.hb)G.combat.remove(RN.hb); }
   if(quiet){ C.mode='fly'; ravenReappearNear(); }
-  else { C.mode='intro'; C.introT=0; G.ui.say('The raven lands on your shoulder, light as a glove. It doesn’t leave.',null,{key:'corvin',priority:'high'}); }
+  else { C.mode='intro'; C.introT=0; moment({who:'corvin',name:NM.corvin,title:'The raven',portrait:'corvin',key:'corvin',lines:[{text:'The raven lands on your shoulder, light as a glove. It doesn’t leave.',who:''}]}); }
   refreshUI(); G.emit('companion:earned',{id:'corvin',quiet:!!quiet}); if(!quiet)autosave();
+}
+/* a story beat: the conversation card when it's calm (talk.js), captions (with the portrait) when it isn't */
+function moment(o){
+  if(G.talk&&G.talk.moment)return G.talk.moment(o);
+  o.lines.forEach((l,i)=>{ const L=typeof l==='string'?{text:l}:l; G.ui.say(L.text,L.who||null,{key:o.key+i,priority:i?'normal':'high',portrait:o.portrait}); });
+  return 'caption';
 }
 function ravenReappearNear(){ const p=P(); if(!p||!p.pos)return; if(interior()){ shoulderPos(C.pos); C.mode='shoulder'; return; } C.pos.set(p.pos.x,p.pos.y+6,p.pos.z); C.opa=0; C.fade=1; C.mode='fly'; }
 /* intros: Ember shakes herself, looks at you, trots to heel; Corvin to your shoulder, then a circle overhead */
@@ -927,7 +933,7 @@ function taskStepEmber(dt){
   else if(k.phase==='inside'){ E.fade=0; if(k.t>1.8){ k.phase='out'; k.t=0; E.carry=s.id==='log'?'bundle':s.id==='grate'?'key':'rope'; E.heading+=PI; E.fade=1; if(s.id==='log'&&DYN.bundleLog)DYN.bundleLog.visible=false; } }
   else if(k.phase==='out'){ E.fade=1; E.k.squeeze=Math.max(0,1-k.t*1.6); E.pos.x+=(k.door.x-E.pos.x)*Math.min(1,dt*3); E.pos.z+=(k.door.z-E.pos.z)*Math.min(1,dt*3);
     if(s.id==='crack'){ ladderDrop(k.t); }
-    if(k.t>1){ k.phase=s.id==='crack'?'ret':'bring'; k.t=0; if(s.id==='crack'){ E.carry=null; spotDone(s); G.ui.say('Somewhere above, a rope gives. A rolled rope ladder tumbles off the ledge and hangs to the sand.',null,{key:'ladder'}); } } }
+    if(k.t>1){ k.phase=s.id==='crack'?'ret':'bring'; k.t=0; if(s.id==='crack'){ E.carry=null; spotDone(s); G.ui.say('Somewhere above, a rope gives. A rolled rope ladder tumbles off the ledge and hangs to the sand.',NM.ember,{key:'ladder'}); } } }
   else if(k.phase==='bring'){ const h=P().heading||0; want=_c.set(pp.x+Math.sin(h)*.9,pp.y,pp.z+Math.cos(h)*.9); sp=T.run*.8;
     if(Math.hypot(want.x-E.pos.x,want.z-E.pos.z)<.35||k.t>10){ k.phase='drop'; k.t=0; E.heading=Math.atan2(pp.x-E.pos.x,pp.z-E.pos.z); } }
   else if(k.phase==='drop'){ E.k.carry=Math.max(0,1-k.t*2); if(k.t>.5){ E.carry=null; carryItem(null); spotDone(s); spotReward(s); k.phase='ret'; k.t=0; } }
@@ -1013,11 +1019,11 @@ function spotReward(s){
     const lines=['The note goes down into the dark and comes back changed. For a moment the chapel is full of people, and a girl is ringing this same bell, too hard, laughing.',
       '“Wren! Gently. It’s a bell, not a pan.” — “It wants to be heard, Mother.”',
       'Then only the dark again, and one candle burning that wasn’t.'];
-    lines.forEach((l,i)=>later(.4+i*.1,()=>G.ui.say(l,i===1?'An echo':null,{key:'bellEcho'+i})));
+    later(.4,()=>moment({who:'echo',name:'An echo',title:'The chapel bell',portrait:'echo',key:'bellEcho',lines:lines.map((l,i)=>({text:l,who:i===1?'An echo':''}))}));
     try{ if(G.undercroft&&G.undercroft.lightCandle){ const c=(G.undercroft.candles||[]).find(c=>c.room==='chapel'&&!G.undercroft.isLit('chapel')); if(c)G.undercroft.lightCandle(c.id,{free:true}); } }catch(e){ console.error('bell candle',e); }
     if(G.alchemy)G.alchemy.etherUnits=(G.alchemy.etherUnits||0)+5;
     G.emit('companion:echo',{id:'wren'}); }
-  else if(s.id==='nest'){ if(G.progress&&G.progress.grantShard)G.progress.grantShard('nest'); G.ui.say('Corvin drops something warm into your hand and looks very satisfied with himself.',null,{key:'nestShard'}); }
+  else if(s.id==='nest'){ if(G.progress&&G.progress.grantShard)G.progress.grantShard('nest'); G.ui.say(NM.corvin+' drops something warm into your hand and looks very satisfied with himself.',NM.corvin,{key:'nestShard'}); }
   else if(s.id==='bundleOpen')giveBundle({ichor:2,brine:1,glowcap:1},{name:'A bundle from the tree',eyebrow:NM.corvin+' · the dead tree',desc:'Snagged in the branches since some storm. The twine is pecked clean through.'});
   else if(s.id==='ledge')giveBundle({vial:1,pearl:1},{name:'A keeper’s bundle',eyebrow:NM.ember+' · the cave ledge',desc:'Left high and dry on a ledge by a keeper who knew the tide.'});
 }
@@ -1027,7 +1033,8 @@ function openSeaChest(){
     if(!S.ember)return; if(!S.said.chestHint){ S.said.chestHint=1; later(.3,()=>G.ui.say('Somewhere small. Under the cottage, perhaps, where only a fox could go.',null,{key:'chestHint'})); } return; }
   S.chest=true; sfx('lid',V(SEACHEST.x,SEACHEST.y,SEACHEST.z));
   if(G.progress&&G.progress.grantShard)G.progress.grantShard('chest');
-  later(2.6,()=>G.ui.say('Under a folded oilskin, a note in a small, square hand: “If you’re reading this, you found the key, so you found the fox, so you’re all right. Keep the light. Keep the fox. — M.”','Maren',{key:'chestNote'}));
+  later(2.6,()=>moment({who:'maren',name:'Maren',title:'A note under the oilskin',portrait:'maren',key:'chestNote',
+    lines:[{text:'Under a folded oilskin, a note in a small, square hand: “If you’re reading this, you found the key, so you found the fox, so you’re all right. Keep the light. Keep the fox. — M.”',who:'Maren'}]}));
   G.emit('companion:chest',{}); autosave();
 }
 
@@ -1051,7 +1058,7 @@ function startScout(){
   for(const s of SPOTS){ if(S.spots[s.id]||s.place!==place)continue; if(near(s.at)){ found.push('comp:'+s.id); S.seen[s.id]=1; shimmer(s.at); } }
   if(G.map){ for(const id of found)if(G.map.markSeen)G.map.markSeen(id); if(place==='island'&&G.map.reveal)G.map.reveal(p.x,p.z,T.scoutFind); }
   G.emit('companion:scout',{found:found.length,ids:found});
-  if(!S.said.scout){ S.said.scout=1; later(2.2,()=>G.ui.say(found.length?NM.corvin+' circles wide and comes back pleased with himself. Whatever he saw is on your map now.':NM.corvin+' circles wide and comes back with nothing to show. Nothing hidden here, then.',null,{key:'scout'})); }
+  if(!S.said.scout){ S.said.scout=1; later(2.2,()=>G.ui.say(found.length?NM.corvin+' circles wide and comes back pleased with himself. Whatever he saw is on your map now.':NM.corvin+' circles wide and comes back with nothing to show. Nothing hidden here, then.',NM.corvin,{key:'scout'})); }
   return true;
 }
 function scoutStep(dt){

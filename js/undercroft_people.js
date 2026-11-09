@@ -128,6 +128,9 @@ function portrait(id){
   };
 }
 
+/* the same cameos for the caption (hud.js) when one of them speaks in play (G.portraits, portraits.js) */
+if(G.portraits)for(const id in WHO)G.portraits.add(id,portrait(id),{title:WHO[id].title,names:[new RegExp('^'+WHO[id].name+'$','i')]});
+
 /* ---------------------------------------------------------------- villager models
    parts are built in local space and split into a toon mesh (vertex colours, outlined) and an ink mesh (G.negMaterial)
    by each part's `ink`: true / false / fn(x,y,z) per triangle. The echo of who they were is one additive mesh in the past layer. */
@@ -435,7 +438,9 @@ function buildPage(id){
   G.scene.add(g);
   const o={id,g,gl,pos:at};
   G.interact.add({pos:()=>o.pos,radius:1.7,priority:2,label:()=>S.pages[id]?d.label+' again':d.label,enabled:()=>isPlay()&&inside()&&o.g.visible,
-    use:()=>{ G.ui.say(d.text,d.author,{priority:'high',key:'page'}); const first=!S.pages[id]; S.pages[id]=true; G.emit('undercroft:page',{id,first});
+    use:()=>{ // a reading on the conversation card (talk.js), captions if it can't pause now
+      if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:d.author,title:'',portrait:'page',key:'page',lines:[{text:d.text,who:d.author}]}); else G.ui.say(d.text,d.author,{priority:'high',key:'page'});
+      const first=!S.pages[id]; S.pages[id]=true; G.emit('undercroft:page',{id,first});
       if(first)G.ui.toast(d.author,Object.keys(S.pages).length+' of '+Object.keys(PAGES).length+' pages found'); }});
   props.pages[id]=o; return o;
 }
@@ -445,9 +450,11 @@ function buildRegister(){
   props.register={at};
   G.interact.add({pos:()=>at,radius:2,priority:2,label:'Read the parish register',enabled:()=>isPlay()&&inside(),
     use:()=>{ S.register=true;
-      G.ui.say('The parish register of Wickham’s End. Every name on every page has been struck through, hard enough to tear the paper.','The register',{priority:'high',key:'reg'});
-      G.ui.say('Between Hollis, Hob and Lark, Ann, a leaf has been torn out. Only a stub is left, and a thumbprint of ink.','The register',{key:'reg2'});
-      if(glassOwned()&&!S.registerEcho)G.ui.say('If anything of that page is still here, the Glass might show it.',{key:'reg3',priority:'low'}); }});
+      const lines=[{text:'The parish register of Wickham’s End. Every name on every page has been struck through, hard enough to tear the paper.',who:'The register'},
+        {text:'Between Hollis, Hob and Lark, Ann, a leaf has been torn out. Only a stub is left, and a thumbprint of ink.',who:'The register'}];
+      if(glassOwned()&&!S.registerEcho)lines.push({text:'If anything of that page is still here, the Glass might show it.',who:''});
+      if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'The parish register',title:'Wickham’s End',portrait:'page',key:'reg',lines});
+      else lines.forEach((l,i)=>G.ui.say(l.text,l.who||null,{priority:i?(i>1?'low':'normal'):'high',key:'reg'+(i?i+1:'')})); }});
 }
 /* the register's echo (undercroft.js): the clerk carries the torn page down toward the store */
 G.on('glass:echo',e=>{ if(!e||e.id!=='register'||S.registerEcho)return; S.registerEcho=true;

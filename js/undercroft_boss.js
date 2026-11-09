@@ -749,7 +749,9 @@ function placeLastPage(pos){
   lastPage.pos.copy(pos); lastPage.pos.y=groundAt(pos,floorY); lastPage.g.position.copy(lastPage.pos); lastPage.g.visible=true;
 }
 function readLastPage(){
-  G.ui.say('“'+LAST_PAGE+'”','Aldous Crane’s last page',{priority:'high',key:'page'});
+  const t='“'+LAST_PAGE+'”';   // a reading on the conversation card (talk.js), the caption if it can't pause now
+  if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'Aldous Crane’s last page',title:'',portrait:'page',key:'page',lines:[{text:t,who:'Aldous Crane’s last page'}]});
+  else G.ui.say(t,'Aldous Crane’s last page',{priority:'high',key:'page'});
   const first=!S.pageRead; S.pageRead=true; G.emit('undercroft:lastPage',{first});
 }
 function updateProps(dt){

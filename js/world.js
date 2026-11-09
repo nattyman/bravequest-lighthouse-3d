@@ -1349,7 +1349,8 @@ function buildCottage(kit,r){
   G.interact.add({pos:new THREE.Vector3(X+TX+.25,TOP+F,Z+TZ-.05),radius:1.25,priority:1,label:'Read the logbook',
     use(){const L=['The keeper’s logbook lies open. The last entry, in a tidy hand: “Fog off the water again. Lamp lit at dusk. The moths are restless tonight.” Below it the page is blank.',
       'Older pages: tide times, a sketch of a heron, a list of jars to refill. Halfway down one page: “The old cloak is in the chest, should anyone ever need it more than I do.”'];
-      G.ui.say(L[logRead%L.length]); logRead++;}});
+      const t=L[logRead%L.length]; logRead++;
+      if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'The keeper’s logbook',title:logRead===1?'The last entry':'Older pages',portrait:'page',lines:[{text:t,who:'The keeper’s logbook'}],key:'cottageLog'}); else G.ui.say(t);}});
 
   /* ---------------- interior lights + fire FX ---------------- */
   const fire=new THREE.PointLight(col('#ff9a48'),0,8.5,1.6); fire.position.set(X+fx0-.35,TOP+F+.55,Z+HZ); root.add(fire);
