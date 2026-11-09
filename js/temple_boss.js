@@ -178,16 +178,6 @@ G.on('vigilant:glance',e=>{ if(!inside()||!e||e.kind==='swarm')return;
   say('vigGlance',lensOwned()?'The staff skids off its skin of ink. Burn the ink off with the Lens first.':'The staff skids off its skin of ink as if off wet slate. Shut the lantern: it hunts your light.',null,{priority:'high'}); });
 G.on('vigilant:burn',()=>{ if(!inside())return; say('vigBurn','Under the beam the ink chars and peels away. Underneath it’s only grey robes and fog. That you can hit.',null,{priority:'high'}); snd('vigilant_burn',null); });
 
-/* the shutter in the temple, until lens.js lands (it owns the shutter hold): a cured lantern can still be shut down here, as
-   in the cave. Skipped when lens.js is loaded or player.js already toggled it this frame. */
-let shutEvT=-1;
-G.on('lantern:shutter',()=>{ shutEvT=G.time; });
-function updateShutterFallback(){
-  if(G.lens||!inside())return; const L=lantern(), P=G.player; if(!L||!L.carried||!L.cured||!P||P.alive===false)return;
-  G.hint('F',L.shut?'Open the shutter':'Close the shutter');
-  if(G.input&&G.input.pressed&&G.input.pressed('shutter')&&shutEvT!==G.time){ L.shut=!L.shut; G.emit('lantern:shutter',{shut:L.shut,temple:true}); shutEvT=G.time; }
-}
-G.on('temple:exit',()=>{ const L=lantern(); if(L&&L.shut&&!G.lens){ L.shut=false; G.emit('lantern:shutter',{shut:false,temple:true}); } });
 
 /* =====================================================================
    2. THE ANSWER
@@ -338,7 +328,7 @@ function build(){
   // phase 3: what the swarm sees (creatures.js only lets moths hunt corrupt hurtboxes that opt in): the Answer's open hollow,
   // which pulls them all, and Hesper's shield, which keeps the ones she catches (neither takes damage from them)
   const p3=()=>B.state==='fight'&&B.phase===3;
-  seamHB={team:'enemy',pos:V(),radius:1.2,height:2.6,targetable:false,corrupt:true,name:'The Answer',answerHollow:true,
+  seamHB={team:'neutral',pos:V(),radius:1.2,height:2.6,targetable:false,corrupt:true,name:'The Answer',answerHollow:true,
     mothPrey:p3,mothRange:30,mothWant:999,mothDamage:0,alive:p3,hit:()=>{}};
   shieldHB={team:'neutral',pos:V(),radius:1,height:2,targetable:false,corrupt:true,name:'Hesper',hesperShield:true,
     mothPrey:p3,mothRange:.1,mothWant:1,mothDamage:0,alive:p3,hit:()=>{}};
@@ -365,8 +355,8 @@ function telegraph(kind,pos,lead){ G.emit('temple:bossTelegraph',{kind,pos:pos.c
 
 /* ---------------------------------------------------------------- phase 1: the hands */
 const lensBurn={
-  add(h){ const L=G.lens; if(!L||!h.skinOn||h.burnH)return; const o={id:'answer-hand-'+h.i,kind:'hand',pos:h.burnPos||(h.burnPos=V()),radius:.85,needs:T.skinNeeds,
-      alive:()=>h.skinOn&&(h.state==='reach'||h.state==='slamWind'||h.state==='grip'),onBurn:()=>burnHand(h)};
+  add(h){ const L=G.lens; if(!L||!h.skinOn||h.burnH)return; const live=()=>h.skinOn&&(h.state==='reach'||h.state==='slamWind'||h.state==='grip');
+    const o={id:'answer-hand-'+h.i,kind:'hand',hb:h.hb,pos:h.burnPos||(h.burnPos=V()),radius:.85,needs:T.skinNeeds,alive:live,enabled:live,onBurn:()=>burnHand(h)};
     let r=null; try{ const b=L.burnable; if(b&&typeof b.add==='function')r=b.add(o)||o; else if(typeof b==='function')r=b(o)||o; }catch(e){ console.error('lens burnable',e); }
     h.burnH=r||'self'; },
   remove(h){ const r=h.burnH; h.burnH=null; if(!r||r==='self')return; try{ const b=G.lens&&G.lens.burnable; if(b&&typeof b.remove==='function')b.remove(r); else if(r.remove)r.remove(); }catch(e){} }
@@ -580,6 +570,22 @@ function pullMoths(dt){
 function releaseMoths(){ for(const set of [pulled,shielded])for(const m of set){ if(m.tgt==='hunt'){ m.prey=null; if(G.moths&&G.moths.baited&&G.moths.toLantern)G.moths.toLantern(m); else if(G.moths&&G.moths.release)G.moths.release(m); else m.tgt='wander'; } }
   pulled.clear(); shielded.clear(); eatAcc=0; }
 
+/* the seam as a Lens target (phase 3): a burnable that never burns (keep), riding the Answer's body so the beam that strikes
+   the light standing in the seam counts as on the seam; lens.js heats it, we read the hit */
+let seamTarget=null;
+function seamTargetOn(){
+  const L=G.lens; if(!L||typeof L.burnable!=='function'||seamTarget)return;
+  const live=()=>B.state==='fight'&&B.phase===3;
+  seamTarget={id:'answer-seam',kind:'seam',pos:V(seamP.x,floorY+1,seamP.z),radius:T.seamR,needs:1e9,keep:true,hb:ansHB,alive:live,enabled:live,onBurn:()=>{}};
+  try{ L.burnable(seamTarget); }catch(e){ console.error('lens seam',e); seamTarget=null; }
+}
+function sealBeam(){
+  const L=G.lens;
+  if(L&&L.beam&&'hit' in L.beam&&seamTarget){ if(!L.focused)return false; const h=L.beam.hit; if(!h)return false;
+    if(h.object===seamTarget)return true;
+    return !!(h.pos&&h.kind!=='monster'&&h.kind!=='burnable'&&Math.hypot(h.pos.x-seamP.x,h.pos.z-seamP.z)<T.seamR&&Math.abs(h.pos.y-floorY)<1.2); }
+  return beamOn(V(seamP.x,floorY+.4,seamP.z),T.seamR)||beamOn(V(seamP.x,floorY+1.6,seamP.z),T.seamR);
+}
 /* ---------------------------------------------------------------- phases */
 function enterPhase(n){
   B.phase=n; B.atk=null; clearDecals(); B.cool=n===2?3.2:2.6;
@@ -591,7 +597,7 @@ function enterPhase(n){
     later(1.2,()=>G.ui.say('Hesper takes her hands off the seam. What comes up out of it is tall and made of violet light, and where its heart should be there’s nothing at all. The light that was not light.',null,{priority:'high'}));
     later(4.2,()=>G.ui.toast&&G.ui.toast('The Answer','Shut your lantern: in the dark it has a body'));
   }else{
-    B.seal=0; B.sealOn=false; B.hesper.pose='seal'; B.hesper.at.copy(hesperKneel());
+    B.seal=0; B.sealOn=false; B.hesper.pose='seal'; B.hesper.at.copy(hesperKneel()); seamTargetOn(); if(seamTarget)seamTarget.pos.set(seamP.x,floorY+1,seamP.z);
     snd('answer_rise',seamP);
     later(.6,()=>G.ui.say('It opens, and the moths begin to stream toward it. Hesper throws her arms wide and catches the ones that come near her.',null,{priority:'high'}));
     later(3.4,()=>G.ui.toast&&G.ui.toast('The Sealing',lensOwned()?'Hold the Lens beam on the seam while she seals it':'Hold your light on the seam while she seals it'));
@@ -633,7 +639,7 @@ function updateAnswer(dt){
   if(B.phase===2){ B.underT=d<T.pulseR-.6?B.underT+dt:Math.max(0,B.underT-dt*2); }
   if(B.phase===3){
     pullMoths(dt);
-    const on=beamOn(V(seamP.x,floorY+.4,seamP.z),T.seamR)||beamOn(V(seamP.x,floorY+1.6,seamP.z),T.seamR);
+    const on=sealBeam();
     if(on!==B.sealOn){ B.sealOn=on; G.emit('temple:seal',{k:B.seal,on}); }
     B.seal=U.clamp(B.seal+(on?dt/T.sealNeed:-dt*T.sealDecay),0,1);
     B.hp=T.p3*(1-B.seal);
@@ -710,7 +716,7 @@ function onDefeated(restored){
 function grantSecond(){
   if(S.reward)return;
   const Ls=G.lens; let lens=false;
-  try{ if(Ls){ if(typeof Ls.upgrade==='function'){ lens=Ls.upgrade('long')!==false; } else if(Ls.beam&&'length' in Ls.beam&&('range' in Ls||'maxLength' in Ls)){ if('range' in Ls)Ls.range=Math.max(Ls.range||14,20); else Ls.maxLength=Math.max(Ls.maxLength||14,20); lens=true; } } }catch(e){ console.error('lens upgrade',e); }
+  try{ if(Ls){ if(typeof Ls.upgrade==='function'){ const r0=Ls.range||14, r1=Ls.upgrade(20); lens=+r1>r0; } else if(Ls.beam&&'length' in Ls.beam&&('range' in Ls||'maxLength' in Ls)){ if('range' in Ls)Ls.range=Math.max(Ls.range||14,20); else Ls.maxLength=Math.max(Ls.maxLength||14,20); lens=true; } } }catch(e){ console.error('lens upgrade',e); }
   S.reward=lens?'lens':'ether';
   if(!lens){ try{ if(G.lamp&&G.lamp.feed)G.lamp.feed(30); }catch(e){} }
   try{ G.progress&&G.progress.reward&&G.progress.reward(lens?{id:'lensLong',icon:'mark',name:'The Lens, ground true',eyebrow:'The Answer',desc:'Where the seam closed, the floor is warm, and the Lens comes out of the light clearer than it went in. The beam reaches further.',sub:'A longer beam'}
@@ -791,7 +797,6 @@ G.system('templeBoss',{order:43,modes:['play','dead'],
       runBeats();
       if(!G.monsters)return;
       updateRooms(dt);
-      if(isPlay())updateShutterFallback();
       updateBoss(dt);
       updateObjective(dt);
       if(stubOn&&!TP()&&inside()){ G.atmo.darkTarget=Math.max(G.atmo.darkTarget||0,.7); }

@@ -211,7 +211,7 @@ VIGIL=[
    lambda r: r['seen'] is not None and r['seen']<.5),
  ("vig:lose", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); const P=G.player; T.b.near(m,9); T.b.shut(true); let lost=null, t=0; for(let i=0;i<200;i++){ T.hold(); G.step(1/30,1); t+=1/30; if(m.state!=='chase'&&lost==null&&!['windup','attack','recover','hurt'].includes(m.state))lost=t; } return {state:m.state,lost:lost&&+lost.toFixed(2)}; })()",
    lambda r: r['lost'] is not None and 2.5<=r['lost']<=5 and r['state'] in ('search','return','idle')),
- ("vig:beamHear", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); G.step(1/30,240); T.b.near(m,20); T.b.shut(true); G.step(1/30,5); const s0=m.state; const P=G.player;"
+ ("vig:beamHear", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); T.b.shut(true); G.step(1/30,240); T.b.near(m,20); T.b.shut(false); G.step(1/30,5); const s0=m.state; const P=G.player;"
    " T.b.aim({x:P.pos.x+Math.sin(P.heading+1.5)*5,y:P.pos.y+1,z:P.pos.z+Math.cos(P.heading+1.5)*5}); G.step(1/30,20); const s1=m.state; T.b.unaim(); T.b.shut(false); return {s0,s1}; })()",
    lambda r: r['s0']!='chase' and r['s1']=='chase'),
  ("vig:glance", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); T.hold(); T.b.near(m,2.2); G.step(1/30,2); const hp0=m.hp; let g=0; const f=()=>g++; G.on('vigilant:glance',f); T.b.strike(m.pos,3); T.b.strike(m.pos,4,'bolt'); G.step(1/30,2); return {hp0,hp:m.hp,glances:g,skin:m.skin}; })()",

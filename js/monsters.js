@@ -1666,8 +1666,8 @@ function initVigilant(m,opts){
 }
 function lensBurnAdd(m){
   const L=G.lens; if(!L||!m.skin||m.burnH)return;
-  const o={id:'vigilant-'+m.id,kind:'vigilant',monster:m,pos:m.skinPos,radius:.95,needs:P.vigilant.burn,
-    alive:()=>m.alive&&!m.dying&&m.skin>0,onBurn:()=>burnSkin(m)};
+  const o={id:'vigilant-'+m.id,kind:'vigilant',monster:m,hb:m.hb,pos:m.skinPos,radius:.95,needs:P.vigilant.burn,
+    alive:()=>m.alive&&!m.dying&&m.skin>0,enabled:()=>m.alive&&!m.dying&&m.skin>0,onBurn:()=>burnSkin(m)};
   let h=null;
   try{ const b=L.burnable; if(b&&typeof b.add==='function')h=b.add(o)||o; else if(typeof b==='function')h=b(o)||o; }catch(e){ console.error('lens burnable',e); }
   m.burnH=h||'self';   // 'self': lens.js offers no burnable API; burnByBeam() below watches the beam
