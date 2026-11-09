@@ -276,9 +276,9 @@ STEPS=[
    return {ok:CB.defeated&&G.cave.wallDown&&G.cave.gate('shortcut')&&G.cave.isLit('arena')&&G.moths.jar.owned&&u==='Read the page'&&G.caveBoss.pages.includes(3)&&document.getElementById('boss').hidden,
      t,wall:G.cave.wallDown,shortcut:G.cave.gate('shortcut'),lit:G.cave.isLit('arena'),jar:G.moths.jar.owned,page:u,pages:CB.pages,hud:T.hud()}; })()"""),
  ("shot:arena-lit",None),
- ("wound", r"""(()=>{ const r=T.ring(60,-3.2,12.2); T.walk([[60,-2.6]],{local:true}); for(let i=0;i<14;i++){ T.steer(G.cave.origin.x+60,G.cave.origin.z+8); G.step(1/30,1);} T.release(); T.wait(1.5);
+ ("wound", r"""(()=>{ window.WPRE=T.where(); const r=T.ring(60,-3.2,12.2); T.walk([[60,-2.6]],{local:true}); for(let i=0;i<14;i++){ T.steer(G.cave.origin.x+60,G.cave.origin.z+8); G.step(1/30,1);} T.release(); T.wait(1.5);
    const cv=document.querySelector('canvas'); cv.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,button:0})); window.dispatchEvent(new MouseEvent('mousemove',{movementX:0,movementY:90})); G.step(1/30,2); window.dispatchEvent(new MouseEvent('mouseup',{bubbles:true})); G.step(1/30,10);
-   return {ok:G.cave.wallDown&&r.ok,at:T.where()}; })()"""),
+   return {ok:G.cave.wallDown&&r.ok,at:T.where(),r,wall:G.cave.wallDown,pre:window.WPRE,isOpen:!!(G.talk&&G.talk.isOpen),vel:G.player.vel?[+G.player.vel.x.toFixed(2),+G.player.vel.z.toFixed(2)]:null,hp:G.player.hp,state:G.player.state,mode:G.state.mode,lock:!!G.player.lockTarget,act:G.player.actionLock,spd:G.player.speedMul,inp:G.player.inputEnabled,talk:!!(G.talk&&G.talk.active),cols:(G.colliders||[]).filter(c=>Math.hypot(c.x-G.player.pos.x,c.z-G.player.pos.z)<3).map(c=>[+(c.x-G.cave.origin.x).toFixed(1),+(c.z-G.cave.origin.z).toFixed(1),c.r])}; })()"""),
  ("shot:the-wound",None),
  # ---------------------------------------------------------------- save -> reload -> Continue after the boss
  ("saveAfterBoss", r"""(()=>{ T.wait(2); G.setMode('paused'); document.getElementById('saveBtn').click(); const d=JSON.parse(localStorage.getItem('bq-save-v1')||'null');
