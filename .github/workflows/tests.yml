@@ -1,0 +1,85 @@
+# Brave Quest: Lighthouse — the browser test suites, one job per suite, all in parallel.
+# Runs on GitHub's machines by default; choose "aws" to use the self-hosted runner (label: bq-aws).
+name: tests
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      runner:
+        description: 'Where to run: github (GitHub-hosted) or aws (self-hosted runner labelled bq-aws)'
+        type: choice
+        options: [github, aws]
+        default: github
+      suites:
+        description: 'Suites to run, comma separated (blank = all), e.g. cave_e2e,map_e2e'
+        type: string
+        default: ''
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.m.outputs.matrix }}
+    steps:
+      - id: m
+        shell: python
+        env:
+          WANT: ${{ inputs.suites }}
+        run: |
+          import json, os
+          # suite -> query string the suite expects (each test's own default)
+          S = {'quick':'?debug&headless','playthrough_e2e':'?debug&headless','progress_e2e':'?debug&headless',
+               'glide_e2e':'?debug&headless','hud_e2e':'?debug&headless','captions_e2e':'?debug&headless',
+               'companions_e2e':'?debug&headless','finale_e2e':'?debug&headless','loop_e2e':'?debug',
+               'map_e2e':'?debug&headless','raft_e2e':'?debug&headless','travel_e2e':'?debug&headless',
+               'devtools_e2e':'','cave_e2e':'?debug&headless','undercroft_e2e':'?debug&headless',
+               'houndsfx_e2e':'?debug&headless','stagsfx_e2e':'?debug&headless','bossmusic_e2e':'?debug',
+               'cloud_e2e':'?cloud'}
+          want = [w.strip() for w in (os.environ.get('WANT') or '').split(',') if w.strip()]
+          inc = [{'suite':k,'q':v} for k,v in S.items() if not want or k in want]
+          open(os.environ['GITHUB_OUTPUT'],'a').write('matrix='+json.dumps({'include':inc})+'\n')
+  suite:
+    needs: plan
+    name: ${{ matrix.suite }}
+    runs-on: ${{ inputs.runner == 'aws' && fromJSON('["self-hosted","bq-aws"]') || 'ubuntu-latest' }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Playwright
+        run: |
+          python -m pip install --quiet playwright
+          python -m playwright install chromium
+          test -x /usr/bin/google-chrome || { echo "::error::google-chrome is missing on this runner"; exit 1; }
+      - name: Build dev.html and serve
+        run: |
+          python test/build_dev.py
+          (python -m http.server 8991 >/dev/null 2>&1 &)
+          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:8991/dev.html && break; sleep 1; done
+      - name: Run ${{ matrix.suite }}
+        run: |
+          mkdir -p /tmp/claude-0
+          python test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
+          test ${PIPESTATUS[0]} -eq 0
+        shell: bash
+      - name: Failed checks
+        if: failure()
+        run: grep -E '^(FAIL|RESULT)' result.log | cut -c1-400 >> "$GITHUB_STEP_SUMMARY" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ${{ matrix.suite }}
+          path: |
+            result.log
+            /tmp/claude-0/**/*.png
+          if-no-files-found: ignore
+          retention-days: 7
