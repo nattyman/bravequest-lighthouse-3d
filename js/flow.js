@@ -88,8 +88,18 @@ function updateAttract(dt){
 /* ---------- beats (Act 1, v12) ----------
    cottage → door → light (Halloran) → storm (his storm lantern on the oil shed) → climb (staff on the way up) →
    failed (the ink drinks the plain flame; logbook on the sill) → halloran2 (he waits at the tower foot) →
-   forest (the Hollow Stag guards Maren's lantern at the Resisting Tree) → return (the swarm follows) → ascend → cure →
+   forest (the Hollow Stag guards Hesper's lantern at the Resisting Tree) → return (the swarm follows) → ascend → cure →
    descend/finale ('finale:start'; finale_boss.js builds the Gloaming) → done on boss:dead {who:'gloaming'}. */
+let wake=null;   // the opening lines on the beach, still to say
+/* the opening: each line waits for the one before to finish; anything left unsaid is dropped once you've moved on */
+function updateWake(dt){
+  if(!wake)return;
+  if((wake.t-=dt||0)>0)return;
+  const P=G.player, far=P&&P.pos&&Math.hypot(P.pos.x-wake.from.x,P.pos.z-wake.from.z)>70;
+  if(far||!['cottage','door'].includes(G.quest.step)){ wake=null; return; }
+  const c=G.ui.captions?G.ui.captions():null; if(c&&(c.cur||c.queue.length))return;
+  G.ui.say(wake.lines.shift(),null,{key:'wake'}); wake.t=1.2; if(!wake.lines.length)wake=null;
+}
 let finaleArmed=false, finaleT=-1, bossDead=false, endingT=-1, sawDoor=false, stagDead=false, cradleObj=false, halAway=false, halScene=null;
 const storm=()=>G.items.storm||{};
 function lighthouseDoor(){const lh=G.world.lighthouse; return lh&&lh.doorOut?lh.doorOut.clone():lmV('lighthouse',V(180,42,0)).add(V(-5,0,0));}
@@ -106,17 +116,23 @@ function begin(fromSave){
   $('title').hidden=true; $('hud').hidden=false; $('pauseBtn').hidden=false;
   const save=fromSave===true?readSave():(fromSave&&typeof fromSave==='object'?fromSave:null); // devtools.js passes a built save object
   if(save){ G.setMode('play'); G.input.lockPointer(); applySave(save); if(!save.quiet)setTimeout(()=>G.ui.say('You pick up where you left off: '+(save.objective||'the island')+'.'),500); return; }
-  const st=LM().start||{x:164,y:42,z:-4,yaw:Math.PI/2};
-  G.state.checkpoint.set(st.x,st.y,st.z); G.state.checkpointYaw=st.yaw; G.state.checkpointName='the lighthouse';
+  // a new game: Rowan washes up on the south beach beside the wreck of his boat (world.js, LM.wreckStart); the lighthouse start is the fallback
+  const wr=LM().wreckStart, st=wr||LM().start||{x:164,y:42,z:-4,yaw:Math.PI/2};
+  G.state.checkpoint.set(st.x,st.y,st.z); G.state.checkpointYaw=st.yaw; G.state.checkpointName=wr?'the south beach':'the lighthouse';
   if(G.player.teleport)G.player.teleport(st.x,st.y,st.z,st.yaw);
   G.setMode('play'); G.input.lockPointer();
-  if(G.items.cloak&&!G.items.cloak.owned){
-    setStep('cottage','Get out of the cold','There’s a light in the keeper’s cottage',cottageDoor(),'Cottage');
-    setTimeout(()=>G.ui.say('You wake on cold stone at the top of a sea cliff, shivering. Fog is rolling in off the water. The great lamp of the lighthouse is dark, and something darker turns slowly around it. But there is warm light in the cottage windows.'),600);
-  }else{
-    setStep('door','Get inside the lighthouse','',lighthouseDoor(),'Lighthouse door');
-    setTimeout(()=>G.ui.say('You wake on cold stone at the top of a sea cliff. Fog is rolling in off the water. Above you, the great lamp of the lighthouse is dark, and something darker turns slowly around it.'),600);
-  }
+  const coat=G.items.cloak&&!G.items.cloak.owned;
+  if(coat)setStep('cottage','Get out of the cold',wr?'Take the path up the cliff to the keeper’s cottage':'There’s a light in the keeper’s cottage',cottageDoor(),'Cottage');
+  else setStep('door','Get inside the lighthouse','',lighthouseDoor(),'Lighthouse door');
+  // his first lines: the boat is gone, and the light he steered for wasn't the lighthouse
+  const open=wr?[
+    'Cold sand, and the sea dragging at your boots. Down the beach, your boat lies across the rocks in two pieces. Your sea-bag washed up beside you.',
+    '“That wasn’t the lighthouse.” Up on the headland the great lamp is dark, and something darker turns slowly around it. Whatever light you steered for in the fog, it wasn’t that one.',
+    coat?'“Told her I’d be home for the spring fair.” It’s autumn. A path climbs off the sand toward the headland, and there is warm light in the cottage windows.'
+        :'“Told her I’d be home for the spring fair.” It’s autumn. A path climbs off the sand toward the headland.'
+  ]:[coat?'You wake on cold stone at the top of a sea cliff, shivering. Fog is rolling in off the water. The great lamp of the lighthouse is dark, and something darker turns slowly around it. But there is warm light in the cottage windows.'
+        :'You wake on cold stone at the top of a sea cliff. Fog is rolling in off the water. Above you, the great lamp of the lighthouse is dark, and something darker turns slowly around it.'];
+  wake={lines:open,t:.6,from:V(st.x,st.y,st.z)};   // said one at a time as the captions come free (updateWake)
 }
 function cottageDoor(){ const c=LM().cottageDoor||LM().cottage; return c?V(c.x,c.y,c.z):lmV('lighthouse',V(180,42,0)).add(V(-22,0,24)); }
 function onCloak(){
@@ -138,10 +154,10 @@ function onDoorBlocked(){
 function onTalk(e){
   if(!e||e.who!=='Halloran')return;
   const L=G.items.lantern;
-  if(e.phase==='start'&&!storm().found&&['light','door','cottage'].includes(G.quest.step)&&e.index>=2)
+  if(e.phase==='start'&&!storm().found&&['light','door','cottage'].includes(G.quest.step)&&e.index===4)   // creatures.js HAL_PRE[4]: his storm lantern
     setStep('storm','Take Halloran’s storm lantern','It hangs on the oil shed behind the cottage',stormHome(),'Storm lantern');
   if(e.phase==='failed'&&!L.found&&['halloran2','failed'].includes(G.quest.step)&&e.index>=1){
-    setStep('forest','Find Maren’s lantern',G.items.staff.owned?'At the old tree in the forest, far to the west':'Take the Keeper’s Staff from the stairwell first, then go west',lanternSpot(),'The old wood');
+    setStep('forest','Find Hesper’s lantern',G.items.staff.owned?'At the old tree in the forest, far to the west':'Take the Keeper’s Staff from the stairwell first, then go west',lanternSpot(),'The old wood');
     autosave();
   }
 }
@@ -154,7 +170,7 @@ function onStormPickup(e){
 function onStaffPickup(e){
   if(e&&e.restored)return;
   if(G.quest.step==='staff'&&!storm().failed&&!G.items.lantern.found){ cradleObj=false; setStep('climb','Climb to the lamp room','The cradle beneath the great lens',null,''); }
-  if(G.quest.step==='forest'&&!G.items.lantern.found)setStep('forest','Find Maren’s lantern','At the old tree in the forest, far to the west',lanternSpot(),'The old wood');
+  if(G.quest.step==='forest'&&!G.items.lantern.found)setStep('forest','Find Hesper’s lantern','At the old tree in the forest, far to the west',lanternSpot(),'The old wood');
 }
 function onLanternPickup(){
   if(G.flag('lanternBeat'))return; G.flag('lanternBeat',true); G.items.lantern.found=true;
@@ -167,12 +183,14 @@ function onLanternPickup(){
     setTimeout(()=>G.ui.say('You leave Halloran’s storm lantern in the roots where hers lay. It did what a plain flame could.'),2600);
   }
   G.ui.toast('The Keeper’s Lantern','Its flame burns a bruised violet');
+  // his own line: it wasn't dropped
+  setTimeout(()=>G.ui.say('It wasn’t dropped. It was set down, upright in the roots, with the shutter open. “You put it down on purpose.” Wherever she went from here, she went on without a light.',null,{key:'herLantern'}),1200);
   setStep('return','Carry the lantern to the lighthouse','The moths have found it. Let them follow.',lighthouseDoor(),'Lighthouse');
 }
 function onTowerEnter(){
   const T=storm(), L=G.items.lantern;
   if(L.carried&&['return','door','light','forest','cottage','climb','storm','failed','halloran2'].includes(G.quest.step)){
-    setStep('ascend','Climb to the lamp room','Set Maren’s lantern in the cradle',null,''); return; }
+    setStep('ascend','Climb to the lamp room','Set Hesper’s lantern in the cradle',null,''); return; }
   if(T.carried&&!T.failed&&['climb','storm','light','door','cottage'].includes(G.quest.step)){
     if(!G.items.staff.owned) setStep('staff','Take the Keeper’s Staff','It hangs on the stairwell wall, partway up',G.items.staff.pos&&G.items.staff.pos.lengthSq()>0?G.items.staff.pos.clone():null,'Staff');
     else setStep('climb','Climb to the lamp room','The cradle beneath the great lens',null,'');
@@ -184,13 +202,13 @@ function onTowerExit(){
     setStep('halloran2','Talk to Halloran','He’s waiting at the foot of the tower',halPos(),'Halloran');
     // a story moment: his card when it's calm (talk.js), the caption otherwise
     const scene={who:'HalloranScene',name:'Halloran',title:G.portraits?G.portraits.title('halloran'):'',portrait:'halloran',key:'halTower',
-      lines:[{text:'Halloran is standing at the foot of the tower, as if he’s been waiting a while.',who:''},{text:'“Well,” he says. “I saw it go out from down here.”',who:'Halloran'}]};
+      lines:[{text:'Halloran is standing at the foot of the tower, as if he’s been waiting a while.',who:''},{text:'“Well,” he says. “I saw it go out from down here. She tried the plain flame too, Rowan. It was the first thing she tried.”',who:'Halloran'}]};
     halScene={t:.4,o:scene};   // in game time (updateBeats), so it lands the same in a stepped test
   }
 }
 function onStormPlaced(){ setStep('failed','Watch','',null,''); }
 function onLampFailed(){
-  setStep('failed',G.items.staff.owned?'Go back down':'Take the staff on your way down',G.flag('logbook')?'The plain flame wasn’t enough':'Maren’s logbook lies open on the sill',null,'');
+  setStep('failed',G.items.staff.owned?'Go back down':'Take the staff on your way down',G.flag('logbook')?'The plain flame wasn’t enough':'Hesper’s logbook lies open on the sill',null,'');
   halToTower(); autosave();
 }
 /* the forest: the Stag rises over the lantern when you come within ~30 m of it */
@@ -203,14 +221,14 @@ function updateForest(){
   const e=stagEdge(); G.state.checkpoint.copy(e); G.state.checkpointYaw=-Math.PI/2; G.state.checkpointName='the edge of the old wood';
   if(!G.flag('stagSeen')){ G.flag('stagSeen',true);
     G.ui.say('Something vast stands up out of the roots: a stag made of absence, its crown burning with ink. It plants itself over the violet light.',{priority:'high'});
-    G.ui.toast('The Hollow Stag','It guards Maren’s lantern'); }
+    G.ui.toast('The Hollow Stag','It guards Hesper’s lantern'); }
   if(!G.items.staff.owned)setTimeout(()=>G.ui.say('It watches you, and waits. Not with empty hands. The Keeper’s Staff still hangs in the tower.',{key:'stagStaff'}),3800);
-  setStep('forest','Take back Maren’s lantern','The Hollow Stag stands over it',sp,'Lantern');
+  setStep('forest','Take back Hesper’s lantern','The Hollow Stag stands over it',sp,'Lantern');
 }
 function onStagDead(){
   if(stagDead)return; stagDead=true; G.flag('stagDead',true);
   G.ui.say('The Stag comes apart like smoke in a high wind. Among the roots, the violet lantern is still burning.',{priority:'high'});
-  setStep('forest','Take Maren’s lantern','It lies in the roots of the old tree',lanternSpot(),'Lantern');
+  setStep('forest','Take Hesper’s lantern','It lies in the roots of the old tree',lanternSpot(),'Lantern');
   autosave();
 }
 function onLampPlaced(){ setStep('cure','Watch','',null,''); }
@@ -249,7 +267,10 @@ function updateBeats(dt){
     cradleObj=true; setStep('climb','Set the storm lantern in the cradle','Beneath the great lens',lh.cradlePos?lh.cradlePos.clone():null,'Cradle'); }
   // Halloran goes back to his barrel once you've set off west
   if(halAway&&!['failed','halloran2'].includes(G.quest.step)&&lh&&Math.hypot(P.pos.x-lh.x,P.pos.z-lh.z)>90)halHome();
-  updateForest();
+  // the first step into the cottage: he grew up half in this room
+  if(!G.flag('cottageIn')&&G.world.cottage&&G.world.cottage.inside&&P.pos&&G.world.cottage.inside(P.pos)){ G.flag('cottageIn',true);
+    G.ui.say('“Hesper?” Nobody answers. The fire is in, the lamp over the table is lit, and a chair is pushed back as if someone only just got up.',null,{key:'cottageIn'}); }
+  updateForest(); updateWake(dt);
 }
 
 /* ---------- saving ----------
@@ -317,7 +338,8 @@ function applySave(d){
   if(d.cp){ G.state.checkpoint.set(d.cp[0],d.cp[1],d.cp[2]); G.state.checkpointYaw=d.cpYaw; G.state.checkpointName=d.cpName; }
   const p=d.pos||d.cp; if(p&&P.teleport)P.teleport(p[0],p[1],p[2],d.yaw||0);
   if(d.hp)P.hp=Math.max(2,Math.min(d.hp,P.maxHp));
-  setStep(d.step,d.objective,d.sub,v3(d.target),d.targetName);
+  const renamed=t=>typeof t==='string'?t.replace(/Maren/g,'Hesper'):t;   // saves from before the story pass name her Maren
+  setStep(d.step,renamed(d.objective),renamed(d.sub),v3(d.target),d.targetName);
   cradleObj=d.objective==='Set the storm lantern in the cradle';
   if(d.step==='failed'||d.step==='halloran2'){ halToTower(); if(d.step==='halloran2')G.quest.target=halPos(); }
 }
@@ -404,7 +426,7 @@ G.system('flow',{order:60,modes:'always',
     G.on('lamp:failed',onLampFailed);
     G.on('staff:pickup',onStaffPickup);
     G.on('tower:exit',onTowerExit);
-    // Maren's lantern can't be taken while the Stag stands over it
+    // Hesper's lantern can't be taken while the Stag stands over it
     G.interact.add({pos:()=>G.items.lantern.pos,radius:2.2,priority:9,label:'The Hollow Stag stands over it',
       enabled:()=>{ const L=G.items.lantern; return !L.found&&!L.carried&&!stagDead&&!!(G.monsters&&G.monsters.boss&&G.monsters.boss.kind==='stag'); },
       use(){ G.ui.say('You reach for the lantern and the Stag’s crown flares. Not while it stands.',{priority:'high',key:'stagLantern'}); }});
