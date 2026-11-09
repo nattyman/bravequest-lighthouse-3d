@@ -39,6 +39,12 @@ function inlandRaw(x,z){
   return h;
 }
 for(const f of FZ) if(f.h==null) f.h=inlandRaw(f.x,f.z);
+/* VIGIL (1/2) — the sunken hollow in the old wood past the Resisting Tree (temple.js, Place agent; TEMPLE.md). A flatten zone
+   sunk 4.4 m below the wood: last in FZ, so it only shapes the ground inside its own 12 m. The rest of the section is below
+   the Tiled class ("VIGIL (2/2)"). */
+const VIGIL={x:-192,z:2,r0:4.6,r1:12,drop:4.4};
+VIGIL.h=inlandRaw(VIGIL.x,VIGIL.z)-VIGIL.drop;
+FZ.push({x:VIGIL.x,z:VIGIL.z,r0:VIGIL.r0,r1:VIGIL.r1,k:1,h:VIGIL.h});
 function inland(x,z){
   let h=inlandRaw(x,z);
   for(let i=0;i<FZ.length;i++){const f=FZ[i],dx=x-f.x,dz=z-f.z,d2=dx*dx+dz*dz; if(d2>f.r1*f.r1)continue;
@@ -276,6 +282,79 @@ class Tiled{
   }
   get count(){let n=0;for(const [,v] of this.t)n+=v.length;return n;}
 }
+/* VIGIL (2/2) — the hollow's furniture (temple.js, Place agent; TEMPLE.md): a ring of leaning standing stones on the rim, a
+   stone stair down its east bank, the door in a carved portal against the west bank (temple.js grows the ink roots in the
+   doorway and opens the way in), and the landmarks LM.vigilDoor {x,y,z,yaw: facing the door} and LM.vigilHollow {x,y,z,r}.
+   Nothing grows inside the hollow: Tiled builds (trees, ferns, bushes, flowers, rocks) leave out the instances that stand in
+   it, and the colliders of the trees and rocks there are dropped once the world is built. No random draws are added or
+   skipped, so the rest of the island is laid out exactly as before. */
+const VIGIL_SEC=(()=>{
+  const VX=VIGIL.x, VZ=VIGIL.z, VR=VIGIL.r1+1.2, H0=VIGIL.h;
+  const inHollow=(x,z)=>Math.hypot(x-VX,z-VZ)<VR;
+  const tb=Tiled.prototype.build;
+  Tiled.prototype.build=function(parent){
+    for(const [k,items] of [...this.t]){ const keep=items.filter(([m])=>!inHollow(m.elements[12],m.elements[14])); if(keep.length===items.length)continue; if(keep.length)this.t.set(k,keep); else this.t.delete(k); }
+    return tb.call(this,parent); };
+  const face=VX-VIGIL.r0-.3;                                  // the portal's face, against the west bank
+  const stand={x:face+1.9,z:VZ};
+  LM.vigilHollow={x:VX,y:H0,z:VZ,r:VIGIL.r1};
+  LM.vigilDoor={x:stand.x,y:height(stand.x,stand.z),z:stand.z,yaw:-PI/2};
+  // the stair down the east bank: steps along -x from the rim to the floor, each at least the ground under it
+  const ST={x0:VX+VIGIL.r1-1.2,x1:VX+VIGIL.r0-.4,hw:1.3,n:9}; ST.d=(ST.x0-ST.x1)/ST.n; ST.tops=[];
+  for(let k=0;k<ST.n;k++){ const xa=ST.x0-k*ST.d, xb=xa-ST.d; let m=-1e9;
+    for(let i=0;i<=4;i++)for(let j=-2;j<=2;j++)m=Math.max(m,height(lerp(xa,xb,i/4),VZ+j*ST.hw/2));
+    const prev=k?ST.tops[k-1]:1e9; ST.tops.push(Math.min(prev-.12,m+.1)); }
+  G.floorProviders.push((x,z,y)=>{ if(Math.abs(z-VZ)>ST.hw||x>ST.x0||x<ST.x1)return null;
+    const k=Math.min(ST.n-1,Math.floor((ST.x0-x)/ST.d)), h=ST.tops[k]; return h<=y+.9?h:null; });
+  const STONES=[]; { const r=rnd(7171);
+    for(let k=0;k<9;k++){ const a=(28+k*38+(r()-.5)*8)*PI/180, rr=VIGIL.r1+.3+r()*.8, x=VX+Math.cos(a)*rr, z=VZ+Math.sin(a)*rr;
+      STONES.push({x,z,y:height(x,z),h:2.5+r()*1.3,w:.9+r()*.5,d:.55+r()*.25,yaw:-a+(r()-.5)*.4,lean:(.12+r()*.16)*(r()<.7?-1:1),seed:k}); } }
+  function build(){
+    // the trees and rocks in the hollow are gone: so are their colliders
+    const seen=new Set();
+    for(let x=VX-VR-2;x<=VX+VR+2;x+=2)for(let z=VZ-VR-2;z<=VZ+VR+2;z+=2)for(const c of G.collidersNear(x,z).slice()){
+      if(seen.has(c))continue; seen.add(c); if(c.r!=null&&c.r<3&&inHollow(c.x,c.z))G.removeCollider(c); }
+    const parts=[]; const r=rnd(7272); const tc=new THREE.Color();
+    const put=(g,cHex,x,y,z,ry,rx,rz,sx,sy,sz,jit)=>{ g=g.index?g.toNonIndexed():g; g.applyMatrix4(mat4(x,y,z,rx||0,ry||0,rz||0,sx==null?1:sx,sy==null?(sx==null?1:sx):sy,sz==null?(sx==null?1:sx):sz));
+      const P=g.attributes.position, cols=new Float32Array(P.count*3);
+      for(let i=0;i<P.count;i++){ tc.set(cHex).convertSRGBToLinear().multiplyScalar((1+(jit||.16)*(vnoise(P.getX(i)*1.3,P.getY(i)*1.3+P.getZ(i))-.5))*(.85+.15*clamp((P.getY(i)-H0)/3,0,1)));
+        if(P.getY(i)<height(P.getX(i),P.getZ(i))+.5)tc.lerp(col('#45583a'),.35); cols[i*3]=tc.r;cols[i*3+1]=tc.g;cols[i*3+2]=tc.b; }
+      g.setAttribute('color',new THREE.BufferAttribute(cols,3)); g.computeVertexNormals(); parts.push(g); };
+    // standing stones: rough slabs leaning off true
+    for(const s of STONES){ const g=new THREE.BoxGeometry(s.w,s.h,s.d,2,4,1); const P=g.attributes.position;
+      for(let i=0;i<P.count;i++){ const y=P.getY(i)/s.h+.5; P.setX(i,P.getX(i)*(1-.32*y)+(vnoise(i*.7+s.seed,y*3)-.5)*.14); P.setZ(i,P.getZ(i)*(1-.2*y)); }
+      g.translate(0,s.h/2-.35,0); put(g,'#6c675f',s.x,s.y,s.z,s.yaw,0,s.lean,1,1,1,.3);
+      G.addCollider({x:s.x,z:s.z,r:Math.max(s.w,s.d)*.5+.05,y1:s.y+s.h*.9}); }
+    // the stair: worn steps, a low kerb either side
+    for(let k=0;k<ST.n;k++){ const xa=ST.x0-k*ST.d, top=ST.tops[k], lo=Math.min(height(xa,VZ),height(xa-ST.d,VZ))-.6;
+      put(new THREE.BoxGeometry(ST.d+.05,top-lo,ST.hw*2),k%2?'#858078':'#7c776f',xa-ST.d/2,(top+lo)/2,VZ,0,0,0,1,1,1,.12);
+      for(const sd of [-1,1])put(new THREE.BoxGeometry(ST.d+.05,top-lo+.35,.32),'#6f6a64',xa-ST.d/2,(top+lo+.35)/2,VZ+sd*(ST.hw+.14)); }
+    // the portal: a great block of cut stone set into the west bank, jambs, a lintel carved with a moth, two small watchers
+    const fx=face, y0=H0;
+    put(new THREE.BoxGeometry(3.2,6.4,7.2),'#77727a',fx-1.6,y0+2.2,VZ,0,0,0,1,1,1,.1);
+    for(const sd of [-1,1]){ put(new THREE.BoxGeometry(.7,3.8,.7),'#8d8892',fx+.3,y0+1.9,VZ+sd*1.55); put(new THREE.BoxGeometry(.9,.3,.9),'#6e6a74',fx+.3,y0+.15,VZ+sd*1.55); }
+    put(new THREE.BoxGeometry(.8,.7,4.0),'#8d8892',fx+.35,y0+4.05,VZ); put(new THREE.BoxGeometry(1.0,.25,4.4),'#6e6a74',fx+.4,y0+4.5,VZ);
+    for(const sd of [-1,1]){ const g=new THREE.CylinderGeometry(.02,.5,.9,3); g.rotateZ(sd*PI/2); g.rotateY(PI/2); put(g,'#a39cb0',fx+.76,y0+4.05,VZ+sd*.42,0,0,sd*.35); }
+    put(new THREE.SphereGeometry(.13,6,5),'#a39cb0',fx+.78,y0+4.05,VZ,0,0,0,1,2.4,1);
+    for(const sd of [-1,1]){ const wx=fx+.6, wz=VZ+sd*2.75;
+      put(new THREE.CylinderGeometry(.22,.36,1.7,8),'#8a8590',wx,y0+.85,wz); put(new THREE.SphereGeometry(.24,8,6),'#8f8a96',wx+.03,y0+1.85,wz,0,0,0,1,1.2,1);
+      for(const e of [-1,1])put(new THREE.SphereGeometry(.05,5,4),'#0b0910',wx+.24,y0+1.9,wz+e*.075);
+      G.addCollider({x:wx,z:wz,r:.45,y1:y0+2.1}); }
+    // the old offering stones on the floor of the hollow, cups worn into them
+    for(let k=0;k<5;k++){ const a=(150+k*15)*PI/180, x=VX+Math.cos(a)*3.1, z=VZ+Math.sin(a)*3.4; put(new THREE.CylinderGeometry(.32,.4,.32,7),'#7d7870',x,height(x,z)+.1,z,r()*3); }
+    G.addBoxCollider({x:fx-1.6,z:VZ,hw:1.6,hd:3.6,yaw:0,y0:y0-2,y1:y0+8});
+    for(const sd of [-1,1])G.addCollider({x:fx+.3,z:VZ+sd*1.55,r:.42,y1:y0+3.8});
+    let n=0; for(const g of parts)n+=g.attributes.position.count;
+    const pos=new Float32Array(n*3), nor=new Float32Array(n*3), cl=new Float32Array(n*3); let o=0;
+    for(const g of parts){ pos.set(g.attributes.position.array,o*3); nor.set(g.attributes.normal.array,o*3); cl.set(g.attributes.color.array,o*3); o+=g.attributes.position.count; }
+    const geo=new THREE.BufferGeometry(); geo.setAttribute('position',new THREE.BufferAttribute(pos,3)); geo.setAttribute('normal',new THREE.BufferAttribute(nor,3)); geo.setAttribute('color',new THREE.BufferAttribute(cl,3)); geo.computeBoundingSphere();
+    const m=new THREE.Mesh(geo,G.toon('#ffffff',{vertexColors:true})); m.name='vigilHollow'; m.castShadow=m.receiveShadow=true; root.add(m);
+    if(G.outline)G.outline(m,{thickness:.025});
+  }
+  G.system('vigilHollow',{order:1,modes:'always',init(){ try{ build(); }catch(e){ console.error('vigil hollow',e); } }});
+  return {stairs:ST,stones:STONES,face};
+})();
+W.vigil=VIGIL_SEC;
 /* merge-by-material kit for buildings (box-mapped world UVs) */
 class Kit{
   constructor(){this.p={};this.frame=new THREE.Matrix4();}

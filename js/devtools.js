@@ -133,6 +133,9 @@ const STARTS=[
   {id:'undercroft',name:'The Undercroft',sub:'Well cured, trapdoor open · at the foot of the stair, nothing lit, 40 moths',group:'The Undercroft'},
   {id:'undercroft-chapel',name:'The Crypt Chapel',sub:'Stair and cellars lit · the bell-ropes and the sexton’s niche ahead',group:'The Undercroft'},
   {id:'undercroft-boss',name:'Before the Tithe-Keeper',sub:'Glass owned, sluice set, portcullis up · at the store door',group:'The Undercroft'},
+  {id:'temple',name:'The Vigil',sub:'Wren saved, the door’s roots eaten · at the foot of the Stair of Watchers, nothing lit, 40 moths',group:'The Vigil'},
+  {id:'temple-well',name:'The Moth Well',sub:'Lens owned, mirrors set, sun-disc door open · at the rim of the well, 40 moths',group:'The Vigil'},
+  {id:'temple-boss',name:'Before the Answer',sub:'Lens and Glass, the well’s seals eaten · at the sanctum door',group:'The Vigil'},
   {id:'companions',name:'Companions',sub:'Loop running · Ember and Corvin with you · on the moor by the hollow log',group:'Companions',main:false},
   {id:'testsave',name:'Continue test save',sub:'',group:'Saves',test:true}
 ];
@@ -158,6 +161,30 @@ function undercroftEnter(id){
   if(G.undercroft&&G.undercroft.enter){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.enter(room,{instant:true}); }
   giveSwarm(40); setTimeout(()=>{ giveSwarm(40); render(); },60);
 }
+/* the Vigil (temple.js / lens.js / temple_puzzles.js). Other Vigil modules can add their own state to these saves:
+   G.devtools.templeHooks.push((save,id)=>{ save.mods.myKey={...}; })  — id is 'temple' | 'temple-well' | 'temple-boss' */
+DT.templeHooks=[];
+const TP_ROOM={temple:'vestibule','temple-well':'well','temple-boss':'sanctum'};
+function templeSave(id){
+  const room=TP_ROOM[id]||'vestibule', deep=room!=='vestibule', boss=room==='sanctum';
+  const s=loopSave({lantern:true});
+  s.mods.moths.cured=['well'];
+  s.mods.undercroft={v:1,open:true,lit:['stair','cellars','chapel','mill','store'],reached:['cellars','chapel','mill','store'],gates:{portcullis:true,strongroom:true,exit:true},trap:false,freeUsed:true,mill:true,prevCp:null};
+  s.mods.glass={v:1,owned:true,seen:['tithe','supper','bargain','register'],niche:true};
+  s.mods.temple={v:1,unlocked:true,open:true,lit:deep?['vestibule','nave','reliquary']:[],reached:deep?['nave','reliquary','cloister','well'].concat(boss?['wellDeep']:[]):[],
+    gates:{cloisterDoor:deep,sunDoor:deep,wellUpper:boss,wellLower:boss,wellSide:false,exit:false,sanctum:true,eyes:false},freeUsed:deep,pages:[],said:['doorSeen'],prevCp:null,
+    puz:{puzzles:deep?{v:1,lens:true,seals:['recess','cloisterDoor'],mirrors:{M1:2,M2:1},winch:true,disc:true,eyes:false,box:true,galleryBox:false,well:boss?['wellUpper','wellLower']:[],wellProg:{},vigilBox:false,said:['nave','clo','well'],shortcuts:[]}:null}};
+  s.mods.lens={v:1,owned:deep,range:14,said:deep?['first']:[]};
+  const d=LM().vigilDoor||{x:-195,y:7.5,z:2}; s.pos=[d.x+2,d.y,d.z]; s.yaw=-PI/2;
+  for(const fn of DT.templeHooks){ try{ fn(s,id); }catch(e){ console.error('temple start hook',e); } }
+  return s;
+}
+function templeEnter(id){
+  const room=TP_ROOM[id]||'vestibule';
+  if(G.temple&&G.temple.enter){ const S=G.temple._debug&&G.temple._debug.S; if(S)S.trans=null; G.temple.enter(room==='sanctum'?'well':room,{instant:true});
+    if(room==='sanctum'){ const a=G.temple.rooms.well.anchors.door; G.player.teleport(a.x,a.y,a.z+1.2,PI); } }
+  giveSwarm(40); setTimeout(()=>{ giveSwarm(40); render(); },60);
+}
 function caveSwarmAndEnter(room){
   setTide('low');
   giveSwarm(60);
@@ -170,12 +197,13 @@ function caveSwarmAndEnter(room){
    and the west tip. 'late' keeps progression.js's lateGame() (everything). */
 const ROUTE_ACT1=['needle','outcrop','attic','hounds'], ROUTE_LOOP=ROUTE_ACT1.concat(['stones','spire','roots','west']);
 function progressFor(id){
-  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id))?ROUTE_LOOP:null;
+  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id)||/^temple/.test(id))?ROUTE_LOOP:null;
   if(!shards)return null;
   const o={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};
   for(const k of shards)o.shards[k]=1;
   if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
   if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
+  if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
   return o;
 }
 function runStart(id){
@@ -232,6 +260,7 @@ function runStart0(id){
   }
   if(/^cave:/.test(id)){ const room=id.slice(5); F.begin(caveSave(room)); caveSwarmAndEnter(room); return; }
   if(/^undercroft/.test(id)){ F.begin(undercroftSave(id)); undercroftEnter(id); return; }
+  if(/^temple/.test(id)){ F.begin(templeSave(id)); templeEnter(id); return; }
   if(id==='companions'){ // companions.js: both earned (a fox and the raven freed), standing by the hollow log on the moor
     const s=loopSave({lantern:true}); const N=(G.creatures&&G.creatures.negatives)||[];
     s.freed=N.map((n,i)=>(n.kind==='raven'||(n.kind==='fox'&&i===N.findIndex(m=>m.kind==='fox')))?i:-1).filter(i=>i>=0);
@@ -260,7 +289,8 @@ const SPOTS=[
   {id:'hamlet',name:'Hamlet',at:()=>{ const h=LM().hamlet; return h&&[h.x+12,null,h.z,-PI/2]; }},
   {id:'resisting',name:'Resisting Tree',at:()=>{ const t=LM().resistingTree; return t&&[t.x+8,null,t.z+6,-PI/2]; }},
   {id:'mouthOut',name:'Cave mouth',at:()=>{ const m=LM().caveMouth; return m&&[m.x,m.y,m.z+2.2,PI]; }},
-  {id:'trapdoor',name:'Undercroft trapdoor',at:()=>{ const d=LM().undercroftDoor; return d&&[d.x+1.7,null,d.z,PI/2]; }}
+  {id:'trapdoor',name:'Undercroft trapdoor',at:()=>{ const d=LM().undercroftDoor; return d&&[d.x+1.7,null,d.z,PI/2]; }},
+  {id:'vigil',name:'The Vigil’s door',at:()=>{ const d=LM().vigilDoor; return d&&[d.x+2,null,d.z,-PI/2]; }}
 ];
 DT.teleports=SPOTS;
 function teleport(id){
@@ -268,6 +298,7 @@ function teleport(id){
   { const s=SPOTS.find(x=>x.id===id); if(s&&s.go){ const r=s.go(); if(!r)return 'That place isn’t built.';
       if(Array.isArray(r)){ if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
         if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
+        if(G.temple&&G.temple.inside){ const S=G.temple._debug&&G.temple._debug.S; if(S)S.trans=null; G.temple.exit({instant:true}); }
         teleportWithSwarm(r[0],r[1],r[2],r[3]); closePanel(); return 'Teleported to '+s.name; }
       if(!(G.loop&&G.loop.active))return 'That one opens with the core loop — use a start point.';
       if(r.cave&&G.cave){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.enter(r.cave,{instant:true}); }
@@ -285,6 +316,7 @@ function teleport(id){
   if(!a)return 'That place isn’t built.';
   if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
   if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
+  if(G.temple&&G.temple.inside){ const S=G.temple._debug&&G.temple._debug.S; if(S)S.trans=null; G.temple.exit({instant:true}); }
   if(id==='mouthOut')setTide('low');
   teleportWithSwarm(a[0],a[1],a[2],a[3]); closePanel(); return 'Teleported to '+s.name;
 }

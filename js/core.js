@@ -467,10 +467,23 @@ function pollPad(dt){
   }catch(e){ if(!pad._err){pad._err=1;console.error('gamepad',e);} }
 }
 
+/* LENS HOOK (lens.js, the Vigil): once the Vigil Lens is yours and the lantern is open (G.lens.armed()), the shutter action
+   (F, controller RB, the lantern button) waits for its release: let go within .3 s and it is the shutter tap it always was
+   (sent on release); held .3 s it becomes the 'lens' action (G.input.down('lens'): the focused beam) and the shutter stays
+   open. Otherwise the shutter acts the moment it is pressed, as it always has. */
+const shHold={t:-1,on:false};
+function shutterHold(dt){
+  const hit=pressed.has('shutter')||vpressed.has('shutter');
+  if(shHold.t<0){ if(!hit||!(G.lens&&G.lens.armed&&G.lens.armed()))return; shHold.t=0; }
+  pressed.delete('shutter'); vpressed.delete('shutter');
+  if(G.input.down('shutter')){ shHold.t+=dt; if(shHold.t>=.3&&!shHold.on){ shHold.on=true; pressed.add('lens'); } return; }
+  if(shHold.on)released.add('lens'); else pressed.add('shutter');
+  shHold.t=-1; shHold.on=false;
+}
 G.input={
   BIND,
-  /** held this frame */
-  down:a=>vheld.has(a)||pad.acts.has(a)||BIND[a].some(c=>held.has(c)),
+  /** held this frame ('lens': the shutter held past .3 s with the Vigil Lens, see LENS HOOK) */
+  down:a=>a==='lens'?shHold.on:(vheld.has(a)||pad.acts.has(a)||BIND[a].some(c=>held.has(c))),
   /** went down since last frame */
   pressed:a=>pressed.has(a)||vpressed.has(a),
   released:a=>released.has(a),
@@ -496,7 +509,7 @@ G.input={
     return true;
   },
   /** called by the frame loop / G.step before systems update */
-  poll(dt){ pollPad(dt||0); },
+  poll(dt){ pollPad(dt||0); shutterHold(dt||0); },
   /** mouse / touch / right-stick look in pixels since last frame (+y = look down unless inverted).
       Invert is applied here, once, so every source respects G.settings.invertY. */
   look(){ return {x:lookX,y:G.settings.invertY?-lookY:lookY}; },
