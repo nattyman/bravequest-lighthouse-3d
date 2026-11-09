@@ -51,8 +51,8 @@ const lamp=G.lamp={
 };
 const fog=G.fog={
   radius:radiusFor(START_ETHER), targetRadius:radiusFor(START_ETHER), centre,
-  inside(p){ if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside))return true; /* cave + undercroft hook: no fog underground */ return Math.hypot(p.x-centre.x,p.z-centre.z)<=fog.radius; },
-  depth(p){ if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside))return 0; /* cave + undercroft hook */ return Math.max(0,Math.hypot(p.x-centre.x,p.z-centre.z)-fog.radius); },
+  inside(p){ if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside))return true; /* cave + undercroft + temple hook: no fog underground */ return Math.hypot(p.x-centre.x,p.z-centre.z)<=fog.radius; },
+  depth(p){ if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside))return 0; /* cave + undercroft hook */ return Math.max(0,Math.hypot(p.x-centre.x,p.z-centre.z)-fog.radius); },
   /** inside the light, or within a lit lantern's bubble (the lantern itself no deeper than 60 m) */
   safeNear(p){
     if(fog.inside(p))return true;
@@ -341,7 +341,7 @@ G.system('fog',{order:12,modes:'always',
       G.emit('fog:milestone',{name:m.name,radius:m.radius}); G.ui.toast(m.title,m.small); } }
 
     /* cave hook (cave.js): inside the sea cave the wall is hidden, no chill, no deep-fog spawns (the lamp still drains) */
-    if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)){ wall.visible=false; if(edgeEm)edgeEm.intensity=0; if(deepEm)deepEm.intensity=0; chillEl.style.display='none'; fog.chill=0; chillAcc=0; chillVis=0; gaugeUpdate(); return; }
+    if((G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside)){ wall.visible=false; if(edgeEm)edgeEm.intensity=0; if(deepEm)deepEm.intensity=0; chillEl.style.display='none'; fog.chill=0; chillAcc=0; chillVis=0; gaugeUpdate(); return; }
     /* player relation to the edge */
     const pp=P&&P.pos?P.pos:G.focus;
     const dist=Math.hypot(pp.x-centre.x,pp.z-centre.z), depth=Math.max(0,dist-fog.radius);
