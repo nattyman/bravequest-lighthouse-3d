@@ -543,6 +543,10 @@ function attachFx(m){
     m.fx.body=add(I.emitter(c.hem,{rate:9,radius:.2,height:.25,size:[.6,1.6],life:[.9,1.7],rise:.4,drift:.18,trail:.9,alpha:.7,color:'#0d0a12'}));
     m.fx.claws=add(I.emitter(c.clawTips,{rate:2,radius:.04,size:[.12,.4],life:[.6,1.1],rise:.2,drift:.1,trail:.5,alpha:.45,drip:2}));
     m.fx.pool=add(I.pool(m.pos,{radius:.9,alpha:.65}));
+  }else if(m.kind==='vigilant'){
+    m.fx.body=add(I.emitter(c.hem,{rate:10,radius:.25,height:.3,size:[.7,1.9],life:[1.1,2],rise:.35,drift:.2,trail:.9,alpha:.5,color:'#4a4656'}));
+    m.fx.skin=add(I.emitter(c.skinPts,{rate:5,radius:.2,size:[.3,.9],life:[.7,1.3],rise:.5,drift:.12,trail:.7,alpha:.7,color:'#0b0712'}));
+    m.fx.pool=add(I.pool(m.pos,{radius:.9,alpha:.5}));
   }else if(m.kind==='brineling'){
     m.fx.body=add(I.emitter(c.rim,{rate:7,radius:.08,size:[.25,.7],life:[.6,1.2],rise:.25,drift:.12,trail:1,alpha:.7,color:'#0b0712'}));
     m.fx.claws=add(I.emitter(c.clawTips,{rate:0,radius:.03,drip:1.6,alpha:.6}));
@@ -823,9 +827,10 @@ function setState(m,s){ if(m.state==='windup'||m.state==='attack'||m.state==='re
 function spawn(kind,pos,opts={}){
   if(!P[kind])kind='hollow';
   const p=P[kind];
-  const S=sharedUniforms(kind==='stag'?'#b58cff':'#a37cff',kind==='stag'?1.8:1.7,kind==='stag'?'#2a1446':'#24103a',kind==='stag'?.5:.65);
+  const S=kind==='vigilant'?sharedUniforms('#e2dcff',1.1,'#cfc8e0',1.7):sharedUniforms(kind==='stag'?'#b58cff':'#a37cff',kind==='stag'?1.8:1.7,kind==='stag'?'#2a1446':'#24103a',kind==='stag'?.5:.65);
+  const SV=kind==='vigilant'?sharedUniforms('#a37cff',2.0,'#12081e',.5):null;   // the Vigilant's ink skin fades on its own
   const mat={uniforms:S}; // one set of uniforms drives every ink part of this monster (fade, flash, rim)
-  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):kind==='brineling'?buildBrineling(S):kind==='nameless'?buildNameless(S):buildStag(S);
+  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):kind==='brineling'?buildBrineling(S):kind==='nameless'?buildNameless(S):kind==='vigilant'?buildVigilant(S,SV):buildStag(S);
   const y=G.floorAt(pos.x,pos.z,(pos.y!=null?pos.y:H(pos.x,pos.z))+1);
   const m={kind,boss:kind==='stag',parts,mat,rimBase:mat.uniforms.uRim.value.clone(),pos:V(pos.x,y,pos.z),home:V(pos.x,y,pos.z),
     zone:opts.zone||{x:pos.x,z:pos.z,r:20,name:'adhoc'},heading:opts.heading!=null?opts.heading:rnd()*TAU,hp:p.hp,maxHp:p.hp,
@@ -848,6 +853,7 @@ function spawn(kind,pos,opts={}){
   if(kind==='brineling'){ m.eatsMoths=true; m.mothRate=P.brineling.eatRate; }  // moths.js: monsters with eatsMoths do their own eating (don't add the generic kill on top)
   if(opts.cave)m.cave=opts.cave;
   if(opts.undercroft)m.undercroft=opts.undercroft;
+  if(kind==='vigilant'){ m.skinS=SV; initVigilant(m,opts); }
   if(kind==='nameless'&&opts.eatsMoths){ m.mothHunter=true; m.eatsMoths=true; m.mothRate=P.nameless.eatRate; }
   list.push(m);
   if(opts.board||opts.raid){ const R=raftInfo(); if(R)startGrip(m,R,opts.raid&&opts.raid.side,opts.raid&&opts.raid.along); }
@@ -855,6 +861,7 @@ function spawn(kind,pos,opts={}){
 }
 function onHit(m,info){
   if(!m.alive||m.dying)return;
+  if(m.kind==='vigilant'&&vigilantGlance(m,info))return;   // the ink skin turns the blow (TEMPLE.md)
   let d=info.damage||1;
   if(m.boss&&m.state==='staggered')d*=2;
   if(m.state==='return'&&!m.boss&&info.kind!=='swarm'){ m.flash=.5; splash(V(m.pos.x,m.pos.y+1,m.pos.z),info.dir||V(0,0,1),.4); setState(m,'chase'); m.aggro=true; return; } // re-engage instead of being farmed while leashing
@@ -884,6 +891,7 @@ function die(m,info){
   }
 }
 function remove(m){
+  if(m.kind==='vigilant')vigilantGone(m);
   m.alive=false; G.combat.remove(m.hb); G.scene.remove(m.parts.root); dropToken(m); removeFx(m);
   m.parts.root.traverse(o=>{if(o.isMesh){o.geometry.dispose(); if(o.material.dispose)o.material.dispose();}});
   const i=list.indexOf(m); if(i>=0)list.splice(i,1);
@@ -1507,7 +1515,7 @@ function updateMonster(m,dt){
       if(m.knock){ m.parts.root.rotation.set(m.knock.rx,m.heading,m.knock.rz); }
       if(!m.boss){ m.parts.body.scale.set(1+loose*.35,1-loose*.25,1+loose*.35); } }
     if(m.boss){ G.ui.bossBar('The Hollow Stag',0); animStag(m,dt); }
-    else if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else animHound(m,dt);
+    else if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else if(m.kind==='vigilant')animVigilant(m,dt); else animHound(m,dt);
     if(m.parts.eyes)eyesFlare(m.parts,m.boss?.3:.1,loose,m.fade);
     if(m.parts.extra)m.parts.extra.forEach(x=>{x.transparent=true;x.opacity=m.fade;});
     if(m.st>dur){ const I=INK(); if(I){ m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.45,m.pos.z);
@@ -1522,6 +1530,7 @@ function updateMonster(m,dt){
   else if(m.kind==='hollow')updateHollow(m,dt);
   else if(m.kind==='hound')updateHound(m,dt);
   else if(m.kind==='nameless')updateNameless(m,dt);
+  else if(m.kind==='vigilant')updateVigilant(m,dt);
   else if(m.kind==='brineling'){ updateBrineling(m,dt); if(!m.alive)return; }
   else updateStag(m,dt);
   if(m.state!=='return'&&!m.boss&&m.st>0&&m.zone)leashHeal(m,dt);
@@ -1537,7 +1546,7 @@ function render(m,dt){
   const c=m.parts;
   c.root.position.copy(m.pos); c.root.rotation.y=m.heading;
   c.root.updateMatrixWorld(true);
-  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else if(!m.dying)animStag(m,dt);
+  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else if(m.kind==='vigilant')animVigilant(m,dt); else if(!m.dying)animStag(m,dt);
 }
 
 /* ---------------------------------------------------------------- spawning */
@@ -1574,6 +1583,227 @@ function startStag(){
     if(!okGround(hx,hz)){hx=A.x-12+(k-1)*3;hz=A.z+(k-1)*7;}
     spawn('hollow',{x:hx,z:hz},{zone:A,aggro:true,intro:true,finale:true});}
   return boss;
+}
+
+/* =====================================================================
+   VIGILANTS (Boss agent; spec TEMPLE.md) — the Vigil's acolytes: tall, hollow-eyed, in grey robes of fog, under a skin of ink.
+   · They hunt by light: an open lantern within `aggro` m, or a focused Lens beam within `hear` m (they turn to it), brings
+     them; with the shutter shut they lose you after `lose` s (they walk to where they last saw the light, look, and go
+     back to their vigil). Right up close (`touch` m) they find you even in the dark.
+   · The ink skin: staff blows, bolts and the swarm glance off it until the Lens beam burns it away (~`burn` s of beam;
+     each skin is a G.lens burnable). Then they're ordinary (hp 5). Without lens.js loaded at all they spawn without a skin.
+   · One attack: both sleeves rise and spread (a long, readable wind-up, the rim flares), then a two-handed downward sweep
+     a short step forward (2 half-hearts).
+   Placed by temple_boss.js: G.monsters.spawn('vigilant', pos, {zone, temple:room, skin}). Events: vigilant:notice {monster},
+   vigilant:lost {monster}, vigilant:glance {monster, kind}, vigilant:burn {monster}.
+   ===================================================================== */
+P.vigilant={hp:5,radius:.45,height:2.4,aggro:16,hear:25,touch:2.4,lose:3.2,speed:2.7,wander:.55,strikeRange:2.3,strikeWind:.85,
+  strikeDmg:2,strikeDist:1.4,recover:.95,hurt:.4,burn:1.2,searchT:2.6};
+function lensOn(){ const L=G.lens; return !!(L&&L.focused); }
+function lanternOpenCarried(){ const L=G.items&&G.items.lantern; return !!(L&&L.found&&L.carried&&L.lit&&L.lit()); }
+function vigilantSenses(m,pp,dP){
+  const p=P.vigilant;
+  if(!pp||!playerAlive())return 0;
+  if(Math.abs(pp.y-m.pos.y)>6)return 0;
+  if(lensOn()&&dP<p.hear)return 2;                         // it hears the beam
+  if(lanternOpenCarried()&&dP<p.aggro)return 1;           // it sees your light
+  if(dP<p.touch)return 1;                                  // or bumps into you in the dark
+  const L=G.items&&G.items.lantern;                        // a lantern left open on the floor draws it, not you
+  if(L&&L.found&&!L.carried&&!L.inCradle&&L.lit&&L.lit()&&U.dist2(m.pos,L.pos)<p.aggro*.7)return 3;
+  return 0;
+}
+function buildVigilant(S,skinS){
+  const robeMat=inkMat(S,{amp:.035,wisp:.55,flow:.22,scale:1.7,mist:.7,rimK:.75,side:THREE.DoubleSide});
+  const bodyMat=inkMat(S,{amp:.02,wisp:.5,flow:.25,scale:2.2,rimK:.6});
+  const skinMat=inkMat(skinS,{amp:.05,wisp:.35,flow:.5,scale:2.4,rimK:1.1,side:THREE.DoubleSide});
+  const handMat=inkMat(S,{amp:.006,wisp:.25,flow:.3,scale:3,rimK:1});
+  const hollow=new THREE.MeshBasicMaterial({color:0x050308,transparent:true});
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
+  // the robe: tall, narrow, pooling at the floor into fog
+  const robePts=[[.16,1.62],[.22,1.45],[.28,1.1],[.34,.7],[.42,.3],[.5,.04],[.46,0]];
+  addMesh(body,new THREE.LatheGeometry(robePts.map(([r,y])=>new THREE.Vector2(r,y)),18),robeMat).frustumCulled=false;
+  const upper=new THREE.Group(); upper.position.y=1.45; body.add(upper);
+  addMesh(upper,sweep([[0,-.1,0,.2,.15],[0,.18,.01,.22,.16],[0,.38,.02,.19,.14],[0,.5,.03,.1,.09]],10,3),bodyMat);
+  // the hood: a deep cowl, its opening a dark oval with two hollow eyes in it
+  const head=new THREE.Group(); head.position.set(0,.66,.04); upper.add(head);
+  const hood=addMesh(head,new THREE.SphereGeometry(.2,16,12,0,TAU,0,PI*.72),robeMat); hood.scale.set(1,1.25,1.15); hood.rotation.x=-.25;
+  const tip=addMesh(head,new THREE.ConeGeometry(.1,.26,10),robeMat,0,.2,-.13); tip.rotation.x=-.9;
+  const face=addMesh(head,new THREE.CircleGeometry(.13,18),hollow,0,-.02,.185); face.scale.set(.85,1.15,1);
+  const eyes=[];
+  for(const s of [-1,1]){ const e=eyeSprite('#e8e2ff',.07,1.6,.18); e.position.set(s*.05,.0,.2); head.add(e); eyes.push(e); }
+  // arms: long sleeves; pale ink hands that hold nothing (they used to hold candles)
+  const arms=[], tips=[];
+  for(const s of [-1,1]){
+    const sh=new THREE.Group(); sh.position.set(s*.22,.36,.03); upper.add(sh);
+    addMesh(sh,sweep([[0,0,0,.08],[s*.02,-.3,.02,.1],[s*.03,-.55,.04,.13]],8,3),robeMat);
+    const el=new THREE.Group(); el.position.set(s*.03,-.55,.04); sh.add(el);
+    addMesh(el,sweep([[0,0,0,.12],[0,-.25,.03,.14],[0,-.42,.05,.16]],8,3),robeMat);
+    const hand=new THREE.Group(); hand.position.set(0,-.44,.06); el.add(hand);
+    const fg=[sweep([[0,.03,0,.045,.03],[0,-.05,.01,.05,.03]],8,2)];
+    for(let k=0;k<4;k++){ const x=(k-1.5)*.024; fg.push(sweep([[x,-.04,0,.014],[x*1.4,-.17,.03,.01],[x*1.6,-.27,.06,.004]],5,3)); tips.push(anchor(hand,x*1.6,-.27,.06)); }
+    addMesh(hand,mergeGeos(fg),handMat);
+    arms.push({sh,el,hand,s});
+  }
+  // the ink skin: a ragged black shell over robe and hood (burned off by the Lens beam)
+  const skin=new THREE.Group(); body.add(skin);
+  const sk=addMesh(skin,new THREE.LatheGeometry(robePts.map(([r,y])=>new THREE.Vector2(r*1.09+.012,y)),18),skinMat); sk.frustumCulled=false;
+  const sk2=addMesh(skin,new THREE.SphereGeometry(.23,14,10,0,TAU,0,PI*.62),skinMat,0,1.45+.66,.02); sk2.scale.set(1.05,1.3,1.15); sk2.rotation.x=-.25;
+  const sk3=addMesh(skin,new THREE.CylinderGeometry(.24,.3,.55,14,1,true),skinMat,0,1.62,0);
+  void sk3;
+  const hem=[]; for(let k=0;k<7;k++){ const a=k/7*TAU; hem.push(anchor(body,Math.sin(a)*.45,.12,Math.cos(a)*.45)); }
+  hem.push(anchor(upper,0,.4,.05));
+  const skinPts=[anchor(body,0,1.2,.25),anchor(body,.2,.7,.2),anchor(body,-.2,.9,.15),anchor(upper,0,.7,.15)];
+  return {root,body,upper,head,arms,eyes,hem,clawTips:tips,skin,skinPts,skinMat,mats:[robeMat,bodyMat,skinMat,handMat],extra:[hollow],tendrils:[]};
+}
+function initVigilant(m,opts){
+  const p=P.vigilant;
+  m.hb.name='Vigilant'; m.hb.lockOffset=1.6;
+  m.skin=opts.skin===false||!G.lens?0:1; m.skinK=m.skin; m.burnT=0; m.burnH=null; m.lostT=0; m.lastSeen=null; m.sense=0; m.hunting=false;
+  m.temple=opts.temple||null; m.skinPos=V(m.pos.x,m.pos.y+1.3,m.pos.z);
+  m.parts.skin.visible=!!m.skin; m.skinS.uFade.value=m.skin?1:0;
+  m.vigil=m.heading; void p;
+}
+function lensBurnAdd(m){
+  const L=G.lens; if(!L||!m.skin||m.burnH)return;
+  const o={id:'vigilant-'+m.id,kind:'vigilant',monster:m,pos:m.skinPos,radius:.95,needs:P.vigilant.burn,
+    alive:()=>m.alive&&!m.dying&&m.skin>0,onBurn:()=>burnSkin(m)};
+  let h=null;
+  try{ const b=L.burnable; if(b&&typeof b.add==='function')h=b.add(o)||o; else if(typeof b==='function')h=b(o)||o; }catch(e){ console.error('lens burnable',e); }
+  m.burnH=h||'self';   // 'self': lens.js offers no burnable API; burnByBeam() below watches the beam
+}
+function lensBurnRemove(m){
+  const h=m.burnH; m.burnH=null; if(!h||h==='self')return;
+  try{ const b=G.lens&&G.lens.burnable; if(b&&typeof b.remove==='function')b.remove(h); else if(h.remove)h.remove(); }catch(e){}
+}
+const _bs=V(), _bp=V();
+function beamTouches(pos,r){
+  const L=G.lens; if(!L||!L.focused||!L.beam||!L.beam.origin||!L.beam.dir)return false;
+  const o=L.beam.origin, d=L.beam.dir, len=L.beam.hit&&L.beam.hit.pos?Math.min(L.beam.length||14,o.distanceTo(L.beam.hit.pos)+r):(L.beam.length||14);
+  _bs.subVectors(pos,o); const t=U.clamp(_bs.dot(d),0,len); _bp.copy(o).addScaledVector(d,t);
+  return _bp.distanceTo(pos)<r;
+}
+function burnByBeam(m,dt){
+  if(m.burnH!=='self'||!m.skin)return;
+  if(beamTouches(m.skinPos,.95)){ m.burnT+=dt; if(m.burnT>=P.vigilant.burn)burnSkin(m); }
+  else m.burnT=Math.max(0,m.burnT-dt*.5);
+}
+function burnSkin(m){
+  if(!m.skin||!m.alive||m.dying)return;
+  m.skin=0; lensBurnRemove(m); m.flash=1;
+  const I=INK(); if(I){ m.center.set(m.pos.x,m.pos.y+1.4,m.pos.z); I.burst(m.center,{n:30,speed:2.4,size:[.4,1.2],life:[.6,1.3],up:1.8,embers:24,drops:6}); }
+  for(let k=0;k<14;k++)ember(m.pos.x+(rnd()-.5)*.6,m.pos.y+.4+rnd()*1.8,m.pos.z+(rnd()-.5)*.6,(rnd()-.5)*1.5,1.5+rnd()*2,(rnd()-.5)*1.5,.8+rnd()*.6,.2);
+  if(m.state==='idle'||m.state==='search'||m.state==='return'){ m.aggro=true; setState(m,'chase'); }
+  G.emit('vigilant:burn',{monster:m,pos:m.pos.clone()});
+}
+/* staff, bolt and swarm all glance off the ink skin (no damage); true = the hit was turned */
+function vigilantGlance(m,info){
+  if(!m.skin)return false;
+  m.flash=.35; m.lastGlance=G.time;
+  const dir=info.dir||V(0,0,1); m.center.set(m.pos.x,m.pos.y+1.3,m.pos.z);
+  if(info.kind!=='swarm'){ sparks(m.center,8,.6); m.kv.x+=dir.x*.8; m.kv.z+=dir.z*.8; }
+  if(m.state==='idle'||m.state==='search'||m.state==='return'){ m.aggro=true; setState(m,'chase'); }
+  G.emit('vigilant:glance',{monster:m,kind:info.kind});
+  return true;
+}
+function updateVigilant(m,dt){
+  const p=P.vigilant, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9;
+  m.flare=U.damp(m.flare,0,4,dt);
+  if(m.skin&&!m.burnH&&G.lens)lensBurnAdd(m);
+  burnByBeam(m,dt);
+  m.skinPos.set(m.pos.x,m.pos.y+1.3,m.pos.z);
+  const s=vigilantSenses(m,pp,dP); m.sense=s;
+  const sees=s===1||s===2;
+  if(sees){ m.lastSeen=(m.lastSeen||V()).copy(pp); m.lostT=0; }
+  const wasHunting=m.hunting; m.hunting=['chase','windup','attack','recover','hurt'].includes(m.state);
+  if(m.hunting&&!wasHunting)G.emit('vigilant:notice',{monster:m,beam:s===2});
+  switch(m.state){
+    case 'idle':{
+      // keeping vigil: still, head bowed, turning back to the way it watches; now and then a slow pace
+      m.speedNow=0; m.heading+=U.angDiff(m.vigil,m.heading)*Math.min(1,dt*1.5);
+      if(s===3){ const L=G.items.lantern; m.lastSeen=(m.lastSeen||V()).copy(L.pos); setState(m,'search'); break; }
+      if(sees&&!playerFar(m))setState(m,'chase');
+      break;}
+    case 'chase':{
+      if(playerFar(m)||U.dist2(m.pos,m.home)>m.zone.r+LEASH+5){ setState(m,'return'); break; }
+      if(!sees){ m.lostT+=dt; if(m.lostT>p.lose){ G.emit('vigilant:lost',{monster:m}); dropToken(m); setState(m,'search'); break; } }
+      const tgt=sees?pp:(m.lastSeen||pp);
+      m.cool-=dt; faceTo(m,tgt.x,tgt.z,3.5,dt);
+      const toT=Math.atan2(tgt.x-m.pos.x,tgt.z-m.pos.z), dT=Math.hypot(tgt.x-m.pos.x,tgt.z-m.pos.z);
+      if(sees&&m.cool<=0&&dP<p.strikeRange&&Math.abs(pp.y-m.pos.y)<1.6&&takeToken(m)){ m.atk='sweep'; setState(m,'windup'); G.emit('vigilant:windup',{pos:m.pos.clone(),lead:p.strikeWind,monster:m}); break; }
+      if(dT>1.3){ const sp=p.speed*(sees?1:.6); moveDir(m,toT,sp,dt); m.speedNow=sp; } else m.speedNow=0;
+      break;}
+    case 'search':{
+      // walks to where the light was, stands and listens, then goes back to its vigil
+      if(sees&&!playerFar(m)){ setState(m,'chase'); break; }
+      const t=m.lastSeen;
+      if(t&&Math.hypot(t.x-m.pos.x,t.z-m.pos.z)>1.2&&m.st<6){ faceTo(m,t.x,t.z,3,dt); moveDir(m,m.heading,p.speed*.5,dt); m.speedNow=p.speed*.5; }
+      else { m.speedNow=0; m.heading+=Math.sin(m.st*1.3+m.id)*dt*1.2; if(m.st>6+p.searchT||(t&&m.st>p.searchT&&Math.hypot(t.x-m.pos.x,t.z-m.pos.z)<=1.2&&m.st>3))setState(m,'return'); }
+      break;}
+    case 'windup':
+      if(pp)faceTo(m,pp.x,pp.z,m.st<p.strikeWind*.6?5:1.2,dt);
+      m.flare=Math.min(1,m.st/p.strikeWind*1.2); m.speedNow=0;
+      if(m.st>=p.strikeWind){ m.hitSet.clear(); m.travel=0; setState(m,'attack'); }
+      break;
+    case 'attack':{
+      m.flare=1; const fx=Math.sin(m.heading), fz=Math.cos(m.heading), v=p.strikeDist/.25;
+      if(m.travel<p.strikeDist){ moveDir(m,m.heading,v,dt); m.travel+=v*dt; }
+      if(m.st>.08&&m.st<.3)strikeAt(m,m.pos.x+fx*1.15,m.pos.y+1.1,m.pos.z+fz*1.15,1.1,p.strikeDmg,6,'melee');
+      if(m.st>.42)setState(m,'recover');
+      break;}
+    case 'recover':
+      m.speedNow=0;
+      if(m.st>p.recover){ dropToken(m); m.cool=1.3+rnd()*1.3; setState(m,'chase'); }
+      break;
+    case 'hurt':
+      m.speedNow=0;
+      if(m.st>p.hurt){ m.cool=Math.max(m.cool,.5); setState(m,'chase'); }
+      break;
+    case 'return':
+      goHome(m,dt,p.speed*.7);
+      if(m.state==='idle')m.heading=m.vigil;
+      if(sees&&!playerFar(m))setState(m,'chase');
+      break;
+  }
+  if(m.state!=='attack')separation(m,dt);
+  // the skin shell follows the main dissolve; burned, it chars away in about a second
+  m.skinK=U.damp(m.skinK,m.skin?1:0,m.skin?8:3.5,dt);
+  m.skinS.uFade.value=Math.min(m.mat.uniforms.uFade.value,m.skinK); m.skinS.uFlash.value=m.mat.uniforms.uFlash.value;
+  m.parts.skin.visible=m.skinK>.02;
+}
+function vigilantGone(m){ lensBurnRemove(m); }
+function animVigilant(m,dt){
+  const c=m.parts, t=G.time, sp=m.speedNow||0;
+  if(m.dying&&m.skinS){ m.skinS.uFade.value=Math.min(m.fade,m.skinK); c.skin.visible=m.skinK>.02&&m.fade>.02; }
+  m.phase+=dt*(1+sp);
+  const W=m.state==='windup', A=m.state==='attack', R=m.state==='recover', Hh=m.state==='hurt', idle=m.state==='idle'||m.state==='return';
+  // it glides; the robe sways; at its vigil the head is bowed and the hands meet at the chest
+  c.body.position.y=U.damp(c.body.position.y,.04+Math.sin(t*1.1+m.id)*.03,6,dt);
+  c.body.rotation.x=U.damp(c.body.rotation.x,sp>1?.1:0,5,dt);
+  const lean=W?-.3*m.flare:A?.5:Hh?-.2:idle?.18:.06;
+  c.upper.rotation.x=U.damp(c.upper.rotation.x,lean,A?18:6,dt);
+  c.head.rotation.x=U.damp(c.head.rotation.x,idle?.45:m.state==='search'?.05+Math.sin(t*.9)*.12:-.05,3,dt);
+  c.head.rotation.y=U.damp(c.head.rotation.y,m.state==='search'?Math.sin(t*.8+m.id)*.7:0,3,dt);
+  for(const a of c.arms){
+    let sx=-.95, sz=-a.s*.32, ex=-1.15;                                  // hands together at the chest
+    if(!idle){ sx=-.35+Math.sin(m.phase*2+(a.s>0?0:PI))*.08; sz=a.s*.06; ex=-.45; }
+    if(W){ sx=-2.7*m.flare; sz=a.s*.75*m.flare; ex=-.25*m.flare; }      // sleeves rise and spread: the sweep is coming
+    else if(A){ sx=-.45; sz=a.s*.1; ex=-.05; }
+    else if(R){ sx=-.25; ex=-.3; }
+    a.sh.rotation.x=U.damp(a.sh.rotation.x,sx,A?28:7,dt); a.sh.rotation.z=U.damp(a.sh.rotation.z,sz,A?28:7,dt);
+    a.el.rotation.x=U.damp(a.el.rotation.x,ex,9,dt);
+  }
+  stepTendrils(m,dt,1,0);
+  const hunt=m.hunting||m.state==='search';
+  eyesFlare(c,hunt?.08:.04,m.flare,m.fade*(hunt?1:.5));
+  const k=m.fxK;
+  if(m.fx&&m.fx.body)m.fx.body.intensity=k*(.8+m.flare*1.2+(A?.8:0));
+  if(m.fx&&m.fx.skin)m.fx.skin.intensity=k*m.skinK;
+  if(m.fx&&m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade*.8);
+  if(k>0&&W&&rnd()<dt*10*m.flare)gather(m.pos.x,m.pos.y+1.9,m.pos.z,1.2,1);
+  // under the beam the ink skin smokes and spits violet
+  if(m.skin&&k>0&&(m.burnT>0||beamTouches(m.skinPos,.95))&&rnd()<dt*30){ const a=rnd()*TAU;
+    ember(m.pos.x+Math.cos(a)*.4,m.pos.y+.6+rnd()*1.6,m.pos.z+Math.sin(a)*.4,Math.cos(a)*.6,1+rnd()*1.5,Math.sin(a)*.6,.5+rnd()*.4,.18);
+    puff(m.pos.x+Math.cos(a)*.35,m.pos.y+.8+rnd()*1.4,m.pos.z+Math.sin(a)*.35,0,.9,0,.8,.25,.8,.6,cInk,0,1); }
 }
 
 /* ---------------------------------------------------------------- system */
