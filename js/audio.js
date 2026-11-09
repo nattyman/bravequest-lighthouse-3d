@@ -57,6 +57,7 @@ function build(){
   buildAmbience();
   buildCave();
   buildUndercroft();
+  buildTemple();
   buildRecording();
   applyVolume();
 }
@@ -278,7 +279,7 @@ function updateAmbience(dt,ref,mode){
   const inside=mode!=='title'&&lh&&lh.inside?lh.inside(P.pos):false;
   const inBody=mode!=='title'&&lh&&lh.inBody?lh.inBody(P.pos):false;
   const forest=G.world.inForest?G.world.inForest(ref.x):ref.x<-70;
-  const cured=G.atmo.cured||0, ck=Math.max(cv.k,uc.k), out=1-ck;   // ck: 0 on the island, 1 deep in the cave (or the Undercroft)
+  const cured=G.atmo.cured||0, ck=Math.max(cv.k,uc.k,tp.k), out=1-ck;   // ck: 0 on the island, 1 deep in the cave (or the Undercroft)
   surfT-=dt; if(surfT<=0){surfT=.5; surfLevel=sampleSurf(ref);}
   const alt=U.smooth(14,44,ref.y), T=ctx.currentTime;
   windEnv(T);
@@ -507,6 +508,8 @@ function musicState(mode){
   const P=G.player, lh=G.world.lighthouse;
   // the Undercroft: the dungeon recording like the cave (dark / lit / combat); the Tithe-Keeper fight sets the 'boss' override
   if(uc.inside&&!cv.inside){ const base=uc.lit?'caveLit':'caveDark'; return {s:threatNear(P)?'caveCombat':base,base}; }
+  // the Vigil: the same dungeon recording (dark / lit / combat); the Answer sets the 'boss' override
+  if(tp.inside&&!cv.inside&&!uc.inside){ const base=tp.lit?'caveLit':'caveDark'; return {s:threatNear(P)?'caveCombat':base,base}; }
   // the cave: near-silence in the dark, a music box where it's lit, the full theme only for the Undertow
   if(cv.inside){ const T=ctx.currentTime;
     if(cv.boss)return {s:'caveBoss'};
@@ -885,6 +888,7 @@ function updateMonsterSounds(){
   for(const m of L){
     if(m.kind==='brineling'||m.kind==='undertow'){ caveMonster(m); continue; }
     if(m.kind==='nameless'){ namelessSnd(m); continue; }
+    if(m.kind==='vigilant'){ vigilantSnd(m); continue; }
     // player hits arrive via the 'strike' event (which records lastHit); any other hit is the moth swarm (creatures.js calls hb.hit directly)
     if(m.kind==='hollow'&&m.lastHit!=null&&lastHurtSeen.get(m)!==m.lastHit){ lastHurtSeen.set(m,m.lastHit); if(!m.dying)hollowHurt(m,true); }
     const prev=mStates.get(m); const s=m.state; if(prev===s)continue; mStates.set(m,s); if(prev===undefined&&!(m.boss&&s==='intro'))continue;   // a boss is born in 'intro': its entrance must still sound
@@ -1440,6 +1444,128 @@ const ucAPI={ get active(){return uc.inside;}, get mix(){return +uc.k.toFixed(3)
   play(name,pos){ return !!ufx(name,pos?new THREE.Vector3(pos.x,pos.y+1.5,pos.z):null,{ref:8}); },
   crane(action,pos){ return ucAPI.play('crane_'+action,pos); } };
 
+/* =====================================================================
+   THE VIGIL (temple_boss.js, Boss agent) — ambience (a tall cut-stone hall: a wordless low vigil that never quite stops,
+   a slow far bell, the seam's violet hum growing as you go down), the Vigilants, the Answer, the Lens beam.
+   Inert until the player is inside (G.temple.inside, or by position at O = (−800, 60, 0) before temple.js lands).
+   Recorded files: each sound first tries a recorded SFX under its reserved name (add the stem to SFX_LIST once
+   sfx/<name>.mp3 exists — reserved Suno names: answer_rise, answer_hands, answer_glare, vigilant_hiss, vigilant_burn,
+   seam_close, lens_beam) and falls back to the synth version below.
+   ===================================================================== */
+const TP_SFX=['answer_rise','answer_hands','answer_glare','vigilant_hiss','vigilant_burn','seam_close','lens_beam',
+  'tp_enter','tp_drip','tp_bell','tp_hit','tp_resolve','vigilant_windup','vigilant_glance','vigilant_hurt','vigilant_death'];
+const tp={k:0,inside:false,evtInside:false,room:null,lit:false,boss:false,dripT:2,bellT:14,log:[],beam:null};
+const tbed={};
+const TP_O=new THREE.Vector3(-800,60,0);
+function tpW(x,y,z){ const t=G.temple; if(t&&t.toWorld){ try{ const v=t.toWorld(x,y,z); if(v)return new THREE.Vector3(v.x,v.y,v.z); }catch(_){} } const o=(t&&t.origin)||TP_O; return new THREE.Vector3(o.x+x,o.y+y,o.z+z); }
+function buildTemple(){
+  tbed.bus=ctx.createGain(); tbed.bus.gain.value=0; tbed.bus.connect(ambBus);
+  // the vigil: low wordless voices on D–A–D with a slow swell, as if a congregation were still kneeling somewhere below
+  tbed.vigilG=ctx.createGain(); tbed.vigilG.gain.value=0; tbed.vigilG.connect(tbed.bus);
+  const vf=filt('bandpass',420,3,tbed.vigilG), vf2=filt('bandpass',700,5,tbed.vigilG);
+  [[38,0],[45,.4],[50,.8],[57,.21]].forEach(([m,ph])=>{ const s=ctx.createOscillator(); s.type='sawtooth'; s.frequency.value=midi(m)*(1+(Math.random()-.5)*.003);
+    const v=ctx.createGain(); v.gain.value=midi(m)*.005; const l=ctx.createOscillator(); l.frequency.value=.11+ph*.15; l.connect(v); v.connect(s.frequency); l.start();
+    const g=ctx.createGain(); g.gain.value=m<40?.6:.9; s.connect(g); g.connect(vf); g.connect(vf2); s.start(); });
+  tbed.vigilLfo=ctx.createGain(); tbed.vigilLfo.gain.value=.01; const vl=ctx.createOscillator(); vl.frequency.value=.045; vl.connect(tbed.vigilLfo); tbed.vigilLfo.connect(tbed.vigilG.gain); vl.start();
+  // the seam: a violet hum, two close sines beating, louder as you near the sanctum
+  tbed.seamG=ctx.createGain(); tbed.seamG.gain.value=0; tbed.seamG.connect(tbed.bus);
+  for(const f of [61.7,62.6,123.5]){ const o=ctx.createOscillator(); o.type='sine'; o.frequency.value=f; const g=ctx.createGain(); g.gain.value=f>100?.3:1; o.connect(g); g.connect(tbed.seamG); o.start(); }
+  // cold stone room tone
+  tbed.roomG=ctx.createGain(); tbed.roomG.gain.value=0; tbed.roomG.connect(tbed.bus); loopNoise(filt('lowpass',120,.7,tbed.roomG),true);
+}
+/* -- synth placeholders: (t, out, o) -- */
+const TS={
+  drip(t,out){ const f=rnd(900,1700), g=rnd(.025,.05); const s=osc('sine',f,t,t+.2,envGain(out,t,.001,g,0,.15)); s.frequency.exponentialRampToValueAtTime(f*1.3,t+.03);
+    osc('sine',f*1.02,t+.24,t+.4,envGain(out,t+.24,.001,g*.3,0,.12)); },                       // a drop in a tall stone room: a long tail
+  bell(t,out){ S.bell(t,38,{dest:out,g:.06,decay:7}); S.bell(t+.02,50,{dest:out,g:.025,decay:5}); },
+  enter(t,out,o={}){ S.rumble(t,{dest:out,g:.22,dur:1.8,f0:70,f1:40,lp:260}); if(!o.exit){ I.choir(out,t+.4,[38,45,50],3,.03); TS.bell(t+1.2,out); } },
+  hiss(t,out){ S.hiss(t,{dest:out,dur:.9,f0:2400,f1:600,g:.12,Q:1.4}); S.moan(t+.1,{dest:out,f:130,dur:1,g:.06}); },          // a Vigilant turns toward your light
+  vWind(t,out){ S.hiss(t,{dest:out,dur:.8,f0:500,f1:3000,g:.09,Q:2}); noise(t,.8,filt('bandpass',900,1.2,envGain(out,t,.6,.05,.1,.2))); },   // sleeves rising
+  glance(t,out){ S.clank(t,{dest:out,f:880,g:.06}); noise(t,.05,filt('highpass',3000,.7,envGain(out,t,.001,.08,0,.05))); },
+  burn(t,out){ S.hiss(t,{dest:out,dur:1.1,f0:4000,f1:900,g:.16,Q:.9}); for(let i=0;i<8;i++){ const tt=t+Math.random()*.8; noise(tt,.03,filt('bandpass',rnd(2000,5000),3,envGain(out,tt,.001,.1,0,.03))); } },
+  vHurt(t,out){ S.moan(t,{dest:out,f:180,dur:.5,g:.08}); noise(t,.06,filt('bandpass',1600,1.5,envGain(out,t,.002,.1,0,.06))); },
+  vDeath(t,out){ S.dissolve(t,{dest:out,dur:1.6,g:.15}); I.choir(out,t,[50,45],1.8,.02); },
+  rise(t,out){ S.rumble(t,{dest:out,g:.5,dur:3,f0:55,f1:30,lp:300}); I.choir(out,t+.3,[38,45,51,56],4,.06); S.hiss(t,{dest:out,dur:2.5,f0:300,f1:2600,g:.08,Q:.8}); },
+  hands(t,out){ S.rumble(t,{dest:out,g:.18,dur:.9,f0:80,f1:45}); noise(t,.9,filt('bandpass',500,1,envGain(out,t,.4,.07,.1,.4))); },
+  glare(t,out){ S.chime(t,[86,91,93,98],{dest:out,g:.035,step:.05,decay:1.4}); S.hiss(t,{dest:out,dur:1.2,f0:1500,f1:7000,g:.07,Q:3}); },
+  hit(t,out){ noise(t,.07,filt('bandpass',1500,1.1,envGain(out,t,.002,.13,0,.08))); S.thud(t,{dest:out,g:.2,f0:120,f1:50,dur:.2,click:.2}); },
+  close(t,out){ S.rumble(t,{dest:out,g:.6,dur:3.5,f0:60,f1:25,lp:280}); S.dissolve(t+.4,{dest:out,dur:3,g:.18}); S.thud(t+3.2,{dest:out,g:.7,f0:90,f1:30,dur:.6}); S.bell(t+3.4,50,{dest:out,g:.12,decay:6}); },
+  resolve(t,out){ S.chime(t,[62,66,69,74,78,81],{dest:out,g:.05,step:.14,decay:3}); I.choir(out,t+.4,[50,54,57,62],6,.04); },
+  beam(t,out,o={}){ if(o.on===false)return; S.chime(t,[93],{dest:out,g:.02,decay:.4}); }
+};
+const TP_SYN={answer_rise:'rise',answer_hands:'hands',answer_glare:'glare',vigilant_hiss:'hiss',vigilant_burn:'burn',seam_close:'close',lens_beam:'beam',
+  tp_enter:'enter',tp_drip:'drip',tp_bell:'bell',tp_hit:'hit',tp_resolve:'resolve',vigilant_windup:'vWind',vigilant_glance:'glance',vigilant_hurt:'vHurt',vigilant_death:'vDeath'};
+/** play a Vigil sound: the recorded file `name` if loaded, else the synth fallback */
+function tfx(name,pos,o={}){
+  if(!ctx)return null; tp.log.push(name); if(tp.log.length>60)tp.log.shift();
+  if(hasSfx(name)){ const h=playSfx(name,Object.assign({pos,ref:o.ref||5},o.sfx||{})); if(h)return h; }
+  const fn=TS[TP_SYN[name]]; if(!fn)return null;
+  fn(ctx.currentTime+(o.delay||0),o.dest||(pos?at(pos,o.ref||5):sfxBus),o.arg||{}); return true;
+}
+function tpRead(){
+  const t=G.temple, P=G.player;
+  if(t&&'inside' in t)tp.inside=!!t.inside;
+  else { const p=P&&P.pos; tp.inside=tp.evtInside||!!(p&&p.y>25&&p.y<75&&Math.hypot(p.x-TP_O.x,p.z-(TP_O.z-55))<75); }
+  if(!tp.inside)return;
+  try{ tp.room=t&&t.room?t.room(P.pos):null; }catch(_){ tp.room=null; }
+  try{ tp.lit=!!(tp.room&&t&&t.isLit&&t.isLit(tp.room)); }catch(_){ tp.lit=false; }
+}
+let tpLastT=0;
+function updateTemple(_dt,mode){
+  tpRead();
+  const dt=U.clamp(ctx.currentTime-(tpLastT||ctx.currentTime),0,1); tpLastT=ctx.currentTime;
+  const k0=tp.k; tp.k=U.damp(tp.k,tp.inside?1:0,tp.inside?1.4:2.2,dt); if(tp.k<.001&&!tp.inside)tp.k=0;
+  const k=tp.k; if(k===0&&k0===0)return;
+  // acoustics: a tall stone nave — the cave's convolver with a longer send than the Undercroft's brick
+  if(cv.k<.01&&uc.k<.01){ tgt(revSend.gain,revBase*(1-k)+.08*k,.3); tgt(mSend.gain,.55*(1-k*.7),.3); tgt(aSend.gain,.15*(1-k),.3);
+    tgt(caveSend.gain,.5*k,.3); tgt(caveAmbSend.gain,.42*k,.3); tgt(caveMusSend.gain,.6*k,.3); tgt(caveCoreSend.gain,k*(rec.state==='boss'?.18:.55),.6); }
+  tgt(tbed.bus.gain,k*(mode==='paused'?.6:1),.3);
+  const P=G.player.pos, seam=tpW(0,-16,-100), ds=Math.hypot(P.x-seam.x,P.z-seam.z);
+  const tb=G.templeBoss, closed=!!(tb&&tb.defeated);
+  tgt(tbed.vigilG.gain,closed?.008:(tp.lit?.02:.03)+(tp.boss?.012:0),1.5);
+  tgt(tbed.seamG.gain,closed?0:(.012+.07*U.clamp(1-(ds-6)/60,0,1))*(tp.boss?1.6:1),1);
+  tgt(tbed.roomG.gain,.05,1);
+  if(mode!=='play'||!tp.inside)return;
+  if((tp.dripT-=dt)<=0){ tp.dripT=rnd(1.2,3.5); const a=Math.random()*6.283, r=rnd(3,12);
+    tfx('tp_drip',new THREE.Vector3(P.x+Math.cos(a)*r,P.y+rnd(3,8),P.z+Math.sin(a)*r),{ref:4}); }
+  if((tp.bellT-=dt)<=0){ tp.bellT=rnd(24,40); if(!tp.boss&&!closed)tfx('tp_bell',null,{dest:at(new THREE.Vector3(seam.x,seam.y-10,seam.z),30)}); }
+}
+/* the Vigilants: a hiss as one turns to your light, cloth rising on the wind-up (the telegraph), a dry crack off the skin */
+const vmon=new WeakMap();
+function vigilantSnd(m){
+  if(!ctx)return; const P=G.player; let M=vmon.get(m); if(!M){ M={s:m.state,hit:m.lastHit,dead:false,glance:m.lastGlance,hunt:m.hunting}; vmon.set(m,M); return; }
+  const d=Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z); if(d>40){ M.s=m.state; M.hit=m.lastHit; M.hunt=m.hunting; return; }
+  const pos=new THREE.Vector3(m.pos.x,m.pos.y+1.8,m.pos.z);
+  if(m.dying){ if(!M.dead){ M.dead=true; tfx('vigilant_death',pos); } return; }
+  if(m.lastHit!=null&&m.lastHit!==M.hit){ M.hit=m.lastHit; tfx('vigilant_hurt',pos); }
+  if(m.lastGlance!=null&&m.lastGlance!==M.glance){ M.glance=m.lastGlance; tfx('vigilant_glance',pos); }
+  if(m.hunting&&!M.hunt)tfx('vigilant_hiss',pos,{ref:7}); M.hunt=m.hunting;
+  if(m.state!==M.s){ if(m.state==='windup')tfx('vigilant_windup',pos,{ref:6}); else if(m.state==='attack')S.whoosh(ctx.currentTime,{dest:at(pos,4),f0:250,f1:1200,dur:.35,g:.2}); M.s=m.state; }
+}
+function wireTemple(){
+  G.on('temple:enter',()=>{ tp.evtInside=true; requestCave(); if(ctx)tfx('tp_enter',null); });
+  G.on('temple:exit',()=>{ tp.evtInside=false; if(ctx)tfx('tp_enter',null,{arg:{exit:true}}); });
+  G.on('temple:bossStart',()=>{ tp.boss=true; });
+  G.on('temple:bossReset',()=>{ tp.boss=false; });
+  G.on('temple:bossTelegraph',e=>{ if(!ctx||!e)return; const p=e.pos?new THREE.Vector3(e.pos.x,e.pos.y+1,e.pos.z):null;
+    if(e.kind==='sweep')S.hiss(ctx.currentTime,{dest:p?at(p,8):sfxBus,dur:e.lead||1,f0:400,f1:2200,g:.08,Q:2});
+    else if(e.kind==='grasp'||e.kind==='rise'||e.kind==='slam')noise(ctx.currentTime,e.lead||1,filt('lowpass',300,1,envGain(p?at(p,6):sfxBus,ctx.currentTime,(e.lead||1)*.8,.12,0,.2)),true);
+    else if(e.kind==='pulse')S.rumble(ctx.currentTime,{dest:p?at(p,6):sfxBus,g:.2,dur:e.lead||.8,f0:40,f1:80}); });
+  G.on('temple:bossHit',e=>{ if(ctx&&e&&!e.glare)tfx('tp_hit',null); });
+  G.on('temple:bossDead',e=>{ tp.boss=false; if(!ctx||(e&&e.restored))return; tfx('tp_resolve',null,{delay:3.6}); });
+  // the Lens: a thin bright hum while the beam is focused (lens.js emits lens:focus {on})
+  G.on('lens:focus',e=>{ if(!ctx)return; const on=!!(e&&e.on); const t=ctx.currentTime;
+    if(on&&!tp.beam){ if(hasSfx('lens_beam')){ tp.beam={h:playSfx('lens_beam',{dest:sfxBus,gain:.5})}; }
+      else { const g=ctx.createGain(); g.gain.value=0; g.connect(sfxBus); g.gain.setTargetAtTime(.025,t,.08); const o1=osc('sine',1244,t,t+600,g), o2=osc('triangle',1250.5,t,t+600,g); tp.beam={g,o:[o1,o2]}; }
+      tfx('lens_beam',null,{arg:{on:true}}); }
+    else if(!on&&tp.beam){ const b=tp.beam; tp.beam=null; if(b.h)fadeSfx(b.h,t,.08); else { b.g.gain.setTargetAtTime(0,t,.06); for(const o of b.o)try{o.stop(t+.5);}catch(_){} } } });
+}
+const tpAPI={ get active(){return tp.inside;}, get mix(){return +tp.k.toFixed(3);}, get boss(){return tp.boss;}, get log(){return tp.log.slice();}, get beam(){return !!tp.beam;},
+  sfxNames:TP_SFX, synth:TS,
+  levels(){ if(!ctx||!tbed.bus)return null; const v=g=>+g.gain.value.toFixed(4); return {bus:v(tbed.bus),vigil:v(tbed.vigilG),seam:v(tbed.seamG),room:v(tbed.roomG),wind:v(amb.windG),surf:v(amb.surfG)}; },
+  /** play any Vigil sound by its reserved name (recorded if present, synth otherwise) */
+  play(name,pos){ return !!tfx(name,pos?new THREE.Vector3(pos.x,pos.y+1.5,pos.z):null,{ref:8}); } };
+
 /* ---------- pause-menu controls ---------- */
 let volEl=null, musEl=null, muteEl=null;
 function syncUI(){ if(volEl){volEl.value=Math.round(settings.volume*100);musEl.value=Math.round(settings.music*100);muteEl.checked=settings.muted;} }
@@ -1480,8 +1606,9 @@ G.audio={settings,get ready(){return !!ctx;},get context(){return ctx;},get outp
     meta:{key:'D minor',meter:'6/8',pulseBpm:+(60/PULSE).toFixed(2),beatBpm:+(60/BEAT).toFixed(2),bar:BAR,loopStart:REC.loopStart,loopEnd:REC.loopEnd,chart:CHART,caveChart:CAVE_CHART,motif:'D E F E C'} }};
 G.audio.cave=caveAPI;
 G.audio.undercroft=ucAPI;
+G.audio.temple=tpAPI;
 G.system('audio',{order:92,modes:'always',
-  init(){ wire(); wireCave(); wireUndercroft(); buildUI(); },
+  init(){ wire(); wireCave(); wireUndercroft(); wireTemple(); buildUI(); },
   update(dt){
     if(!ctx||ctx.state!=='running')return;
     const mode=G.state.mode;
@@ -1489,6 +1616,7 @@ G.system('audio',{order:92,modes:'always',
     const ref=mode==='title'?G.camera.position:(G.player&&G.player.pos)||G.camera.position;
     updateCave(dt,mode);
     updateUndercroft(dt,mode);
+    updateTemple(dt,mode);
     updateAmbience(dt,ref,mode);
     updateMusic(dt,mode);
     if(mode==='play'){ updatePlayerSounds(dt); updateMonsterSounds(); }
