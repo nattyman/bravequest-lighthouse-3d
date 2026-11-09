@@ -1238,7 +1238,7 @@ function updateBrineling(m,dt){
       if((angry||m.crowd>1.2)&&canPinch()){setState(m,'windup');break;}
       const dx=prey.p.x-m.pos.x, dz=prey.p.z-m.pos.z, d=Math.hypot(dx,dz);
       if(d<p.eatR*.85&&prey.p.y-m.pos.y<2.6){m.eatAcc=0;setState(m,'eat');break;}
-      if(R&&R.raw.lantern&&!m.onRaft&&Math.hypot(prey.p.x-R.pos.x,prey.p.z-R.pos.z)<R.r+.9&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<R.r+4.5){startBoard(m,R);break;}
+      if(R&&R.raw.lantern&&!m.onRaft&&(R.raw.state==='loaded'||R.raw.state==='drifting')&&Math.hypot(prey.p.x-R.pos.x,prey.p.z-R.pos.z)<R.r+.9&&Math.hypot(m.pos.x-R.pos.x,m.pos.z-R.pos.z)<R.r+4.5){startBoard(m,R);break;}   // only while it's on its way: docked at the sluice, with the swarm feeding, no crab climbs aboard
       const mv=Math.atan2(dx,dz);
       if(m.onRaft){ const o=m.onRaft, s=p.speed*.5*dt; o.x+=Math.sin(mv)*s; o.z+=Math.cos(mv)*s; const l=Math.hypot(o.x,o.z), mx=R.r*.75; if(l>mx){o.x*=mx/l;o.z*=mx/l;} crabFace(m,mv,dt,9); m.speedNow=p.speed*.5; }
       else crabMove(m,mv,d>4?p.scuttle:p.speed,dt);

@@ -473,6 +473,8 @@ function updateRaft(dt){
   placeRaft(dt);
   if(r.lantern&&L&&!L.carried){ L.pos.set(r.pos.x,r.pos.y+.12,r.pos.z); }
   if((r.state==='loaded'||r.state==='drifting')&&r.lantern&&r.t>=.985){ r.state='arrived'; raftDrifting=false; raftPushV=0; G.emit('cave:raft',{state:'arrived',runT:+r.runT.toFixed(2)});
+    // docked: the raid is over. A crab still gripping the edge or aboard slips off into the sluice, as if knocked
+    for(const m of raiders()) if(G.monsters&&G.monsters.kill)G.monsters.kill(m,{kind:'melee',dir:V(0,0,1)});
     if(!raftSaid.arr){ raftSaid.arr=1; G.ui.say('The raft bumps up against the black at the sluice gate. The moths lift off the lantern and go to it.',{key:'raft'}); } }
   S.raftT=r.t;
   let n=0; for(const m of mothList()) if(SWARM(m)&&Math.abs(m.p.x-r.pos.x)<3&&Math.abs(m.p.z-r.pos.z)<3&&Math.abs(m.p.y-r.pos.y)<3)n++;

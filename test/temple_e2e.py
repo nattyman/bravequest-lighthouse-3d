@@ -153,6 +153,7 @@ async def _place_continue(pg):
     await pg.evaluate("(()=>{ G.debugEnterTemple('reliquary'); G.step(1/30,50); G.flow.writeSave(); return 1; })()")
     await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000); await pg.evaluate(HELP); await pg.evaluate(PLACE_HELP)
     await pg.evaluate("document.getElementById('continue').click()"); await pg.wait_for_timeout(1500)
+    await pg.evaluate('G.headless&&(G.headless.hold=true); 0')
     r=await pg.evaluate("(()=>{ G.step(1/30,20); return {inside:G.temple.inside,room:G.temple.room(G.player.pos),lens:G.lens.owned,lit:G.temple.litRooms,dark:G.atmo.darkTarget,disc:G.templePuzzles.state.disc,gate:G.temple.gate('sunDoor')}; })()")
     ok=r['inside'] and r['room']=='reliquary' and r['lens'] and 'nave' in r['lit'] and r['disc'] and r['gate']
     return r,ok
@@ -378,6 +379,7 @@ async def main():
                 await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await pg.evaluate(HELP)
             first=False
             await pg.evaluate(helpjs)
+            await pg.evaluate('G.headless&&(G.headless.hold=true); 0')   # only G.step() moves the game: Vigilants and fog can't drift between steps
             skipping=bool(FROM)
             for name,js,check in steps:
                 if skipping and name!=FROM: continue
@@ -385,15 +387,15 @@ async def main():
                 if js=='RELOAD':   # (Boss) save written by the step before: reload the page and Continue
                     try:
                         await pg.reload(); await pg.wait_for_timeout(5000); await pg.evaluate(HELP); await pg.evaluate(helpjs)
-                        await pg.click('#continue'); await pg.wait_for_timeout(2500); await pg.evaluate("T.play(); G.step(1/30,10); 0")
+                        await pg.click('#continue'); await pg.wait_for_timeout(2500); await pg.evaluate("T.play(); G.step(1/30,10); 0"); await pg.evaluate('G.headless&&(G.headless.hold=true); 0')
                         print('ok  ',name,flush=True)
                     except Exception as e: print('FAIL',name,str(e)[:200]); fails.append(name)
                     continue
                 if js=='WAIT_RISE':
-                    await pg.wait_for_timeout(2600)
+                    await pg.evaluate('G.headless&&(G.headless.hold=false); 0'); await pg.wait_for_timeout(2600)
                     try: await pg.click('#rise',timeout=20000)
                     except Exception as e: print('FAIL',name,str(e)[:200]); fails.append(name)
-                    await pg.wait_for_timeout(300); continue
+                    await pg.wait_for_timeout(300); await pg.evaluate('G.headless&&(G.headless.hold=true); 0'); continue
                 if js in SPECIAL:
                     try: r,ok=await SPECIAL[js](pg)
                     except Exception as e: r,ok='EXC '+str(e)[:300],False
