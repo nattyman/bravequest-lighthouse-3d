@@ -50,10 +50,10 @@ FRESH=[
  ("unlockCottage", r"""(()=>{ const c=G.world.landmarks.cottageDoor; T.tp(c.x-1.6,c.z-2.4); G.step(1/30,12);
    const w=G.map.waypoints.find(w=>w.id==='cottage'), msg=G.ui.messages().map(m=>m.text).filter(t=>/waystone/.test(t));
    return {ok:w.unlocked&&w.isNew&&msg.length===1&&/Keeper’s Cottage/.test(msg[0])&&/map/.test(msg[0]),w,msg}; })()"""),
- ("unlockMore", r"""(()=>{ T.tp(94,11); T.tp(32,-40); T.clear(); T.tp(6,16,null,Math.PI); T.clear(); const msgs=G.ui.messages().map(m=>m.text).filter(t=>/waystone/.test(t));
+ ("unlockMore", r"""(()=>{ T.tp(94,11); T.tp(32,-40); T.clear(); T.tp(6,16); T.clear(); const msgs=G.ui.messages().map(m=>m.text).filter(t=>/waystone/.test(t));
    return {ok:['cliffpath','stones','hamlet'].every(id=>T.wp().includes(id))&&!T.wp().includes('tree')&&msgs.length===4,wp:T.wp(),n:msgs.length,last:msgs[msgs.length-1]}; })()"""),
  # collectibles: a shard you've never been near stays off the chart even where the island is charted; near it -> a pin; taken -> faded
- ("notSeenYet", r"""(()=>{ G.map.reveal(-29,42,30); G.map.reveal(96,20,20); G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'), c=T.st('cache:ramp');
+ ("notSeenYet", r"""(()=>{ delete G.map.debug.seen['shard:attic']; /* the precondition: not yet spotted (the camera can catch it from the hamlet road; where it has pointed depends on timing) */ G.map.reveal(-29,42,30); G.map.reveal(96,20,20); G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'), c=T.st('cache:ramp');
    const seen=Object.keys(G.map.debug.seen); T.closeMap(); return {ok:!!a&&!a.shown&&!!c&&!c.shown&&!seen.includes('shard:attic'),attic:a&&a.shown,ramp:c&&c.shown,seen}; })()"""),
  ("spotShard", r"""(()=>{ const s=G.progress.spots.find(q=>q.id==='attic'); T.tp(s.pos.x+6,s.pos.z+5); T.clear(); G.step(1/30,10);
    G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'); const lbl=G.map.markers.find(m=>m.id==='shard:attic').el.textContent; T.closeMap();
