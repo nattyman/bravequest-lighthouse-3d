@@ -1,5 +1,5 @@
 """Act 1 end to end (v12 order): cottage door -> Halloran -> storm lantern (oil shed) -> enter -> staff -> lamp-room failure
-(logbook, ink pulse) -> Halloran at the tower foot -> forest: the Hollow Stag over Maren's lantern -> lantern -> back ->
+(logbook, ink pulse) -> Halloran at the tower foot -> forest: the Hollow Stag over Hesper's lantern -> lantern -> back ->
 cure -> finale:start -> the Gloaming (finale_boss.js; if it isn't on this branch, boss:dead {who:'gloaming'} is emitted) -> ending.
 usage: python3 test/e2e.py [url]   (default http://localhost:8800/dev.html?debug&headless)   shots: /tmp/claude-0/act1/"""
 import asyncio, sys, os, json
@@ -34,13 +34,13 @@ STEPS=[
  ("exit","const d=G.world.lighthouse.doorIn; G.player.teleport(d.x,d.y,d.z,-Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,50); G.input.setVirtual('forward',false); G.step(1/30,10); const h=G.creatures.halloran.pos; [G.world.lighthouse.inside(G.player.pos), "+OBJ+", +Math.hypot(h.x-180,h.z).toFixed(1)]",
    lambda r:not r[0] and r[1]=='Talk to Halloran' and r[2]<14),
  ("halloran2","const h=G.creatures.halloran.pos; G.player.teleport(h.x-1.6,null,h.z,Math.PI/2); G.step(1/30,10); const ls=[]; for(let i=0;i<3;i++){ls.push(("+USE+")()); G.step(1/30,5);} ["+OBJ+", ls]",
-   lambda r:r[0]=='Find Maren’s lantern'),
+   lambda r:r[0]=='Find Hesper’s lantern'),
  ("stag","const e=G.flow.stagEdge(); G.player.teleport(e.x-8,null,e.z,-Math.PI/2); G.step(1/30,30); const b=G.monsters.boss; G.step(1/30,90); const L=G.items.lantern.pos; [!!b&&b.kind, "+OBJ+", G.state.checkpointName, b&&b.state, +Math.hypot(b.pos.x-L.x,b.pos.z-L.z).toFixed(1)]",
-   lambda r:r[0]=='stag' and r[1]=='Take back Maren’s lantern' and r[2]=='the edge of the old wood'),
+   lambda r:r[0]=='stag' and r[1]=='Take back Hesper’s lantern' and r[2]=='the edge of the old wood'),
  ("blocked","const L=G.items.lantern.pos; G.devtools&&G.devtools.toggle&&G.devtools.toggle('god'); G.player.teleport(L.x+1,null,L.z,0); G.step(1/30,4); const c=G.interact.pick(G.player.pos); const l=c&&G.interact.label(c); [l, G.monsters.boss&&G.monsters.boss.state]",
    lambda r:r[0]=='The Hollow Stag stands over it'),
  ("stagdown","const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; } G.step(1/30,150); G.devtools&&G.devtools.toggle&&G.devtools.toggle('god'); [n, _ev.includes('boss:dead:stag'), G.flow.stagDead, "+OBJ+", G.state.mode, !document.getElementById('ending').hidden]",
-   lambda r:r[1] and r[2] and r[3]=='Take Maren’s lantern' and r[4]=='play' and not r[5]),
+   lambda r:r[1] and r[2] and r[3]=='Take Hesper’s lantern' and r[4]=='play' and not r[5]),
  ("lantern","const L=G.items.lantern.pos; G.player.teleport(L.x+1,null,L.z,0); G.step(1/30,10); const l=("+USE+")(); G.step(1/30,40); [l, G.items.lantern.carried, "+OBJ+", G.items.storm.spent, G.creatures.lanternCount]",
    lambda r:r[1] and r[2]=='Carry the lantern to the lighthouse' and r[3] and r[4]>=40),
  ("enter2","G.player.teleport(172,42,0,Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,70); G.input.setVirtual('forward',false); [G.world.lighthouse.inside(G.player.pos), "+OBJ+"]",

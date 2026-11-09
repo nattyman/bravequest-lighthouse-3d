@@ -1,6 +1,6 @@
 """One session, the whole game, to catch breakage at the seams between systems (quest state, saves, music overrides,
 checkpoints, captions, monsters left over):
-  new game -> Act 1 (door, Halloran, storm lantern, staff, the lamp fails, logbook, Halloran below, the Hollow Stag, Maren's
+  new game -> Act 1 (door, Halloran, storm lantern, staff, the lamp fails, logbook, Halloran below, the Hollow Stag, Hesper's
   lantern, the cure) -> SAVE/RELOAD/CONTINUE #1 -> the Gloaming (rise intro + skip, sped up) -> ending -> Keep exploring ->
   SAVE/RELOAD/CONTINUE #2 -> the core loop (brew, bait, recruit) -> the sandbar at low tide -> into the sea cave (mouth vein,
   gallery roost/fight/vein/page/seal) -> SAVE/RELOAD/CONTINUE #3 inside the cave -> on to the Undertow's door -> the Undertow
@@ -62,18 +62,18 @@ ACT1=[
    const d=G.world.lighthouse.doorIn; G.player.teleport(d.x,d.y,d.z,-Math.PI/2); G.input.setVirtual('forward',true); G.step(1/30,50); G.input.setVirtual('forward',false); G.step(1/30,10);
    const scene=T.talk();   // his scene at the foot of the tower (a card when it's calm)
    const h=G.creatures.halloran.pos; const o=T.OBJ(); G.player.teleport(h.x-1.6,null,h.z,Math.PI/2); G.step(1/30,10); T.useL(); const said=T.talk();
-   return {ok:o==='Talk to Halloran'&&T.OBJ()==='Find Maren’s lantern'&&Math.hypot(h.x-180,h.z)<14,o,obj:T.OBJ(),scene:scene.slice(0,50),said:said.slice(0,60)}; })()"""),
+   return {ok:o==='Talk to Halloran'&&T.OBJ()==='Find Hesper’s lantern'&&Math.hypot(h.x-180,h.z)<14,o,obj:T.OBJ(),scene:scene.slice(0,50),said:said.slice(0,60)}; })()"""),
  ("stag", r"""(()=>{ let walkT=0; while((G.ui.captions().queue.length||G.ui.captions().cur)&&walkT<1200){ G.step(1/30,1); walkT++; }   // the walk west (minutes, in play) lets the lamp room's lines finish; the teleport would otherwise stack them in front of the Stag's
    const e=G.flow.stagEdge(); G.player.teleport(e.x-8,null,e.z,-Math.PI/2); G.step(1/30,30); const b=G.monsters.boss; G.step(1/30,20);
    // the Stag's entrance line is high priority: on screen at once, or after at most one other high line's minimum (teleports here
    // compress minutes of walking into frames, so the previous beat's lines are still up)
    let wait=0; while(!/stag made of absence/.test(T.cap())&&wait<150){ G.step(1/30,1); wait++; } const cap=T.cap();
    G.step(1/30,70); const L=G.items.lantern.pos;
-   return {ok:!!b&&b.kind==='stag'&&T.OBJ()==='Take back Maren’s lantern'&&G.state.checkpointName==='the edge of the old wood'&&/stag made of absence/.test(cap)&&wait<=120&&MUS.last!=='boss',capWait:+(wait/30).toFixed(1),
+   return {ok:!!b&&b.kind==='stag'&&T.OBJ()==='Take back Hesper’s lantern'&&G.state.checkpointName==='the edge of the old wood'&&/stag made of absence/.test(cap)&&wait<=120&&MUS.last!=='boss',capWait:+(wait/30).toFixed(1),
      kind:b&&b.kind,obj:T.OBJ(),cp:G.state.checkpointName,cap:cap.slice(0,50),stagState:b&&b.state,walk:+(walkT/30).toFixed(1)}; })()"""),
  ("stagDown", r"""(()=>{ T.god(true); const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; }
    G.step(1/30,150); T.god(false); const lo=T.leftovers();
-   return {ok:EV.includes('boss:dead:stag')&&G.flow.stagDead&&T.OBJ()==='Take Maren’s lantern'&&G.state.mode==='play'&&document.getElementById('ending').hidden&&!lo.bosses.includes('stag')&&!lo.bossBar,
+   return {ok:EV.includes('boss:dead:stag')&&G.flow.stagDead&&T.OBJ()==='Take Hesper’s lantern'&&G.state.mode==='play'&&document.getElementById('ending').hidden&&!lo.bosses.includes('stag')&&!lo.bossBar,
      strikes:n,obj:T.OBJ(),left:lo}; })()"""),
  ("lantern", r"""(()=>{ const L=G.items.lantern.pos; G.player.teleport(L.x+1,null,L.z,0); G.step(1/30,10); const l=T.useL(); G.step(1/30,40);
    return {ok:G.items.lantern.carried&&T.OBJ()==='Carry the lantern to the lighthouse'&&G.items.storm.spent&&G.creatures.lanternCount>=40,l,obj:T.OBJ(),swarm:G.creatures.lanternCount}; })()"""),

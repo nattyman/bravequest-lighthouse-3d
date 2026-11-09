@@ -51,18 +51,18 @@ async def main():
         check('halloran: E opens the card, play pauses, his portrait is painted', r['open'] and r['mode']=='paused' and r['s']['name']=='Halloran' and r['face'] and r['face']['painted'], r)
         check('halloran: the objective starts at "Find a light"', r['o0']=='Find a light', r['o0'])
         r=await ev("(()=>{ const s=T.toChoices(); return s; })()")
-        check('halloran: 2–3 replies after his opening', r and 2<=len(r['choices'])<=3 and 'What happened to the lamp?' in r['choices'], r)
+        check('halloran: 2–3 replies after his opening', r and 2<=len(r['choices'])<=3 and 'Where’s Hesper?' in r['choices'], r)
         await shot(pg,'halloran-card')
-        r=await ev("""(()=>{ const s=G.talk.state(); G.talk.choose(s.choices.indexOf('What happened to the lamp?')); const lines=[]; let n=0;
+        r=await ev("""(()=>{ const s=G.talk.state(); G.talk.choose(s.choices.indexOf('Where’s Hesper?')); const lines=[]; let n=0;
           while(G.talk.isOpen&&!G.talk.state().choices.length&&n<20){ lines.push(G.talk.state().line); G.talk.advance(); n++; }
           const s2=G.talk.state(); return {lines,obj:T.OBJ(),choices:s2&&s2.choices,mode:G.state.mode}; })()""")
-        check('halloran: asking about the lamp tells of the storm lantern; the objective moves on', r['obj']=='Take Halloran’s storm lantern' and any('storm lantern' in (l or '') for l in r['lines']) and 'I’ll go.' in (r['choices'] or []), r)
+        check('halloran: asking after Hesper tells of the storm lantern; the objective moves on', r['obj']=='Take Halloran’s storm lantern' and any('storm lantern' in (l or '') for l in r['lines']) and 'I’ll go.' in (r['choices'] or []), r)
         r=await ev("""(()=>{ const s=G.talk.state(); G.talk.choose(s.choices.indexOf('I’ll go.')); let n=0; while(G.talk.isOpen&&n<10){ G.talk.advance(); n++; } G.step(1/30,4);
           const M=G.ui.messages(); return {open:G.talk.isOpen,mode:G.state.mode,hal:M.filter(m=>m.who==='Halloran').length,you:M.filter(m=>m.who==='You').length,last:M.slice(-1)[0]}; })()""")
         check('halloran: "I’ll go." ends it, play resumes; his lines and your replies are in the message log', not r['open'] and r['mode']=='play' and r['hal']>=3 and r['you']>=2, r)
         r=await ev("""(()=>{ const ev=[]; const off=G.on('talk',e=>ev.push(e)); const h=G.creatures.halloran; T.near(h.pos); T.use(/Talk/); const s=G.talk.state(); G.talk.close(); G.step(1/30,2);
           return {again:s&&s.line, ev:ev.map(e=>e.who+':'+e.phase+':'+e.index)}; })()""")
-        check('halloran: talking again opens on the storm lantern, and still emits talk {who:"Halloran"}', r['again'] and 'storm lantern' in r['again'] and any(e.startswith('Halloran:start:2') for e in r['ev']), r)
+        check('halloran: talking again opens on the storm lantern, and still emits talk {who:"Halloran"}', r['again'] and 'storm lantern' in r['again'] and any(e.startswith('Halloran:start:4') for e in r['ev']), r)
 
         # ---- a reading: the cottage logbook opens a card with the book
         r=await ev("""(()=>{ const lb=G.interact.list.find(o=>G.interact.label(o)==='Read the logbook'); const p=lb.pos; G.player.teleport(p.x,p.y,p.z+.4,0); G.step(1/30,6);
@@ -89,7 +89,7 @@ async def main():
         r=await ev("""(()=>{ G.ui.clearCaptions(); G.ui.say('Too few moths on her — 6. The ink is creeping back.',{key:'wrenStall'}); G.step(1/30,30); const a=T.cap(); a.mode=G.state.mode;
           a.inLog=G.ui.messages().some(m=>/Too few moths/.test(m.text)); return a; })()""")
         check('a narration caption (no speaker): no cameo, no pause, in the log', r['mode']=='play' and not r['faceShown'] and r['inLog'], r)
-        r=await ev("""(()=>{ G.ui.clearCaptions(); G.ui.say('One line.','Halloran'); G.ui.say('Two line.','Aldous Crane'); G.ui.say('Three line.','Maren’s logbook'); G.ui.say('Four line.'); G.step(1/30,10);
+        r=await ev("""(()=>{ G.ui.clearCaptions(); G.ui.say('One line.','Halloran'); G.ui.say('Two line.','Aldous Crane'); G.ui.say('Three line.','Hesper’s logbook'); G.ui.say('Four line.'); G.step(1/30,10);
           const st=G.ui.captionStack(); return {st,mode:G.state.mode,face:G.ui.captions().cur.face}; })()""")
         check('the stack and +N still show behind a cameo caption', r['st']['depth']==2 and r['st']['count']=='+3' and r['mode']=='play', r)
         await shot(pg,'caption-stack')
@@ -101,7 +101,7 @@ async def main():
         check('the foot of the tower: Halloran’s scene is a card, then "Talk to Halloran"', r['open'] and r['s']['name']=='Halloran' and 'foot of the tower' in r['s']['line'] and r['obj']=='Talk to Halloran' and r['after']=='play', r)
         r=await ev("""(()=>{ const h=G.creatures.halloran; T.near(h.pos); T.use(/Talk/); const s=T.toChoices(); const i=s.choices.indexOf('I’ll go.'); G.talk.choose(i); let n=0; while(G.talk.isOpen&&n<10){ G.talk.advance(); n++; } G.step(1/30,2);
           return {choices:s.choices,obj:T.OBJ(),mode:G.state.mode}; })()""")
-        check('after the failure: even "I’ll go." first tells of Maren’s lantern; the objective moves to the forest', r['obj']=='Find Maren’s lantern' and r['mode']=='play' and 'Where did Maren go?' in r['choices'], r)
+        check('after the failure: even "I’ll go." first tells of Hesper’s lantern; the objective moves to the forest', r['obj']=='Find Hesper’s lantern' and r['mode']=='play' and 'Where did Hesper go?' in r['choices'], r)
         await ctx.close()
 
         # ---- a small phone: the caption with a cameo up under the hearts, and a card
