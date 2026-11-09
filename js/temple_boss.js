@@ -4,17 +4,17 @@
    Persist 'templeBoss'.
 
    The fight (target 4–5 min, tuned for 5–7 hearts and the staff moves; every blow costs one heart):
-   · Phase 1 — The Hands (hp 80 → 48). Hesper kneels with both hands on the seam. Hands of ink push up out of the floor
+   · Phase 1 — The Hands (hp 120 → 72). Hesper kneels with both hands on the seam. Hands of ink push up out of the floor
      around her (a violet crack telegraphs each, 1.1 s), then crawl toward her. Each wears an ink skin: the Lens beam burns it
-     (1 s), then the staff can break it (6 hp; 8 off the Answer's bar). A hand you stand next to rears and slams (0.9 s
+     (1 s), then the staff can break it (6 hp; 12 off the Answer's bar: four of them end the phase). A hand you stand next to rears and slams (0.9 s
      wind-up, a ring on the floor). A hand that reaches Hesper grips her: she loses ground, and the ring of ink around the
-     seam grows (standing in it hurts). If she loses all of it, the Answer drinks what it took (+10 hp) and she claws back.
+     seam grows (standing in it hurts). If she loses all of it, the Answer drinks what it took (+15 hp) and she claws back.
    · Phase 2 — The Answer (≤ 60 %). She lets go. It rises out of the seam: a tall shape of violet light with a hollow where a
      heart would be. The inverse of the Gloaming: solid only while your light is shut; with the lantern open it is only glare
      (blows pass through). It sweeps (a cone, 1.05 s), calls hands up under you (three circles, 1.1 s), and — only while your
      lantern is open — flares (1.3 s): shut the shutter before it does. Stand under it too long and it pulses you off.
    · Phase 3 — The Sealing (≤ 25 %). It pulls the room's moths into itself and eats them; Hesper catches the ones that pass
-     near her. Hold the Lens beam on the seam (8 s in all, slow decay off it) while she seals it, under sweeps and hands.
+     near her. Hold the Lens beam on the seam (12 s in all, slow decay off it) while she seals it, under sweeps and hands.
      The bar falls with the seal.
    · Death of the player: the fight resets cleanly (Hesper back at the seam); you rise at the sanctum door. Leaving the
      arena resets it too.
@@ -192,11 +192,11 @@ G.on('temple:exit',()=>{ const L=lantern(); if(L&&L.shut&&!G.lens){ L.shut=false
 /* =====================================================================
    2. THE ANSWER
    ===================================================================== */
-const T={hp:80,p2:48,p3:20,arenaR:18,startR:12.5,leaveR:21,
+const T={hp:120,p2:72,p3:30,arenaR:18,startR:12.5,leaveR:21,
   // phase 1: the hands
-  handMax:3,handEvery:[5.2,6.8],handFirst:2.6,riseWind:1.1,handHp:6,handKill:8,handSpeed:.5,handR:[5,8.5],gripR:1.6,
+  handMax:3,handEvery:[5.2,6.8],handFirst:2.6,riseWind:1.1,handHp:6,handKill:12,handSpeed:.5,handR:[5,8.5],gripR:1.6,
   skinNeeds:1.0,slamR:2.6,slamWind:.9,slamHit:1.8,slamDmg:2,slamCool:2.6,
-  holdMax:4,inkR0:1.6,inkPer:1.15,inkDmg:1,inkTick:1.3,drinkHp:10,
+  holdMax:4,inkR0:1.6,inkPer:1.15,inkDmg:1,inkTick:1.3,drinkHp:15,
   // phase 2: the Answer
   bodyR:1.35,bodyH:5.6,sweepWind:1.05,sweepR:7.2,sweepArc:1.7,sweepDmg:2,
   graspWind:1.1,graspR:1.5,graspN:3,graspDmg:2,
@@ -204,7 +204,7 @@ const T={hp:80,p2:48,p3:20,arenaR:18,startR:12.5,leaveR:21,
   pulseWind:.8,pulseR:3.4,pulseDmg:1,underT:1.6,
   cool:[1.6,2.6],coolP3:[2.4,3.4],
   // phase 3: the sealing
-  sealNeed:8,sealDecay:.03,eatRate:2,shieldR:4.2,shieldRate:1.4,seamR:1.7};
+  sealNeed:12,sealDecay:.03,eatRate:2,shieldR:4.2,shieldRate:1.4,seamR:1.7};
 const B={built:false,state:'dormant',st:0,phase:1,hp:T.hp,cool:2,atk:null,flash:0,rise:0,solid:0,outT:0,underT:0,
   handT:T.handFirst,hold:T.holdMax,inkR:T.inkR0,inkTickT:0,seal:0,sealOn:false,glareT:T.glareEvery,heading:0,lastHitT:-9,deadT:0,
   hesper:{pose:'hold',at:V(),hold:1}};

@@ -105,7 +105,7 @@ BOSS=[
    lambda r: r['hp']==r['hp0']==6 and r['skin']),
  ("boss:handBurn", "(()=>{ const B=G.templeBoss, h=B.hands.find(h=>h.state==='reach'); T.hold(); let t=0; for(let i=0;i<60&&h.skinOn;i++){ T.b.aim({x:h.pos.x,y:h.pos.y+1.05,z:h.pos.z}); G.step(1/30,1); t+=1/30; } T.b.unaim();"
    " const hp0=B.hp; let n=0; while(h.state!=='sink'&&h.state!=='off'&&n<6){ T.b.strike(h.pos,2); n++; G.step(1/30,4); } return {t:+t.toFixed(2),skin:h.skinOn,n,dmg:hp0-B.hp}; })()",
-   lambda r: r['skin'] is False and r['t']<=1.4 and r['n']==3 and r['dmg']==8),
+   lambda r: r['skin'] is False and r['t']<=1.4 and r['n']==3 and r['dmg']==12),
  ("boss:slam", "(()=>{ const B=G.templeBoss; B.debug.hold(false); B.debug.spawnHand(); B.debug.hold(true); G.step(1/30,52); const h=B.hands.find(h=>h.state==='reach'); T.hold(); const P=G.player; const hp0=P.hp; h.slamCool=0;"
    " B.debug.hold(false); B.debug.B.handT=99; P.teleport(h.pos.x+1.5,h.pos.y+.2,h.pos.z,0); let wind=null,hit=null,t=0; for(let i=0;i<60;i++){ G.step(1/30,1); t+=1/30; if(h.state==='slamWind'&&wind==null)wind=t; if(P.hp<hp0&&hit==null){hit=t;break;} } B.debug.hold(true);"
    " return {lead:hit&&wind?+(hit-wind).toFixed(2):null,dmg:hp0-P.hp}; })()",
@@ -117,7 +117,7 @@ BOSS=[
    lambda r: r>=1),
  ("boss:phase2", "(()=>{ const B=G.templeBoss; B.debug.hold(false); let k=0; while(B.phase===1&&k<300){ T.hold(); const h=B.hands.find(h=>h.state==='reach'); if(h){ B.debug.burnHand(h); B.debug.breakHand(h); } G.step(1/30,10); k++; } G.step(1/30,90);"
    " return {phase:B.phase,hp:B.hp,pose:B.hesper.pose,solid:+B.solid.toFixed(2),mins:+(k*10/30/60).toFixed(2)}; })()",
-   lambda r: r['phase']==2 and r['hp']<=48 and r['pose']=='stand' and r['solid']<.2),
+   lambda r: r['phase']==2 and r['hp']<=72 and r['pose']=='stand' and r['solid']<.2),
  # the inverse of the Gloaming: only glare in the light, solid in the dark
  ("boss:glare", "(()=>{ const B=G.templeBoss; B.debug.hold(true); T.b.shut(false); G.step(1/30,20); const c=B.debug.seam(); const P=G.player; T.hold(); P.teleport(c.x,c.y+.2,c.z+3.5,Math.PI); G.step(1/30,2);"
    " const hp0=B.hp; T.b.strike(c,3); G.step(1/30,4); const lit=hp0-B.hp; T.b.shut(true); G.step(1/30,25); const sol=+B.solid.toFixed(2); const hp1=B.hp; T.b.strike(c,3); G.step(1/30,4); return {lit,solid:sol,dark:hp1-B.hp}; })()",
@@ -134,10 +134,10 @@ BOSS=[
  # phase 3: it eats the moths (Hesper catches the ones that come near her); the beam on the seam seals it
  ("boss:phase3", "(()=>{ const B=G.templeBoss, c=B.debug.seam(), P=G.player; T.b.shut(true); G.step(1/30,20); let k=0; while(B.phase===2&&k<40){ T.hold(); T.b.strike(c,3); G.step(1/30,6); k++; } T.hold();"
    " T.b.shut(false); T.b.moths(40); G.step(1/30,150); return {phase:B.phase,hp:B.hp,pose:B.hesper.pose,eaten:B.eaten}; })()",
-   lambda r: r['phase']==3 and r['hp']<=20 and r['pose']=='seal' and r['eaten']>=1),
+   lambda r: r['phase']==3 and r['hp']<=30 and r['pose']=='seal' and r['eaten']>=1),
  ("boss:seal", "(()=>{ const B=G.templeBoss, c=B.debug.seam(), P=G.player; B.debug.hold(true); T.hold(); P.teleport(c.x,c.y+.2,c.z+7,Math.PI); G.step(1/30,2); for(let i=0;i<60;i++){ T.b.aim({x:c.x,y:c.y+.5,z:c.z}); G.step(1/30,1); } const k1=B.seal; T.b.unaim(); G.step(1/30,60); const k2=B.seal;"
    " return {k1:+k1.toFixed(3),k2:+k2.toFixed(3),hp:+B.hp.toFixed(1)}; })()",
-   lambda r: 0.2<=r['k1']<=0.3 and r['k2']<r['k1'] and r['k2']>r['k1']-0.1),
+   lambda r: 0.13<=r['k1']<=0.2 and r['k2']<r['k1'] and r['k2']>r['k1']-0.1),
  ("boss:shot3", "(()=>{ const B=G.templeBoss, c=B.debug.seam(); B.debug.hold(false); for(let i=0;i<20;i++){ T.hold(); T.b.aim({x:c.x,y:c.y+.5,z:c.z}); G.step(1/30,1); } return B.seal>0; })()", lambda r: r),
  ("boss:defeat", "(()=>{ const B=G.templeBoss, c=B.debug.seam(), P=G.player; let dead=0; const f=()=>dead++; G.on('temple:bossDead',f); for(let i=0;i<400&&B.state!=='dying'&&B.state!=='dead';i++){ T.hold(); T.b.aim({x:c.x,y:c.y+.5,z:c.z}); G.step(1/30,1); } T.b.unaim(); G.step(1/30,130);"
    " return {state:B.state,defeated:B.defeated,dead,flag:G.flag('answerDead')}; })()",
@@ -183,12 +183,12 @@ SAVE=[
  ("save:reload", "RELOAD", None),
  ("save:afterMid", "(()=>{ const B=G.templeBoss; T.b.lens(); const L=G.items.lantern; L.inCradle=false; L.carried=true; G.step(1/30,30); const st0=B.state; T.b.sanctum(); G.step(1/30,40); const card=G.talk.isOpen;"
    " return {st0,state:B.state,phase:B.phase,hp:B.hp,met:G.templePeople.met,card,pose:B.hesper.pose}; })()",
-   lambda r: r['st0'] in ('dormant','intro') and r['met'] and not r['card'] and r['state'] in ('intro','fight') and r['phase']==1 and r['hp']==80 and r['pose']=='hold'),
+   lambda r: r['st0'] in ('dormant','intro') and r['met'] and not r['card'] and r['state'] in ('intro','fight') and r['phase']==1 and r['hp']==120 and r['pose']=='hold'),
  ("save:death", "(()=>{ const B=G.templeBoss, P=G.player; B.debug.phase(2); G.step(1/30,30); P.hurt({damage:99,kind:'test',dir:new G.THREE.Vector3(),knockback:0,ignoreIframes:true}); G.step(1/30,10); return {mode:G.state.mode}; })()",
    lambda r: r['mode']=='dead'),
  ("save:rise", "WAIT_RISE", None),
  ("save:afterDeath", "(()=>{ const B=G.templeBoss, P=G.player; G.step(1/30,10); const d=B.debug.door(); return {state:B.state,phase:B.phase,hp:B.hp,atDoor:+Math.hypot(P.pos.x-d.x,P.pos.z-d.z).toFixed(1),pose:B.hesper.pose}; })()",
-   lambda r: r['phase']==1 and r['hp']==80 and r['atDoor']<3 and r['pose']=='hold'),
+   lambda r: r['phase']==1 and r['hp']==120 and r['atDoor']<3 and r['pose']=='hold'),
  ("save:win", "(()=>{ const B=G.templeBoss; T.hold(); T.b.sanctum(); G.step(1/30,40); B.debug.kill(); G.step(1/30,150); T.settle(30); G.templePeople.debug.goHome(); G.step(1/30,5); G.flow.writeSave(); return {defeated:B.defeated,home:G.templePeople.home}; })()",
    lambda r: r['defeated'] and r['home']),
  ("save:reload2", "RELOAD", None),
