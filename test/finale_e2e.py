@@ -42,7 +42,7 @@ STEPS=[
    return {ok:B.state==='fight'&&B.rise===1&&T.lastBar==='The Gloaming',rise0:+r0.toFixed(2),state:B.state,hp:B.hp}; })()"""),
  ("untouchable", r"""(()=>{ T.god(true); const B=T.B(); T.until(()=>!T.FB().solid&&B.tt>2.2,300); T.near(); const hp=B.hp; const hit=T.strikeBoss(3);
    return {ok:hit&&B.hp===hp&&!T.FB().solid,hit,hp,after:B.hp,tt:+B.tt.toFixed(2)}; })()"""),
- ("warnBeforeSolid", r"""(()=>{ const B=T.B(); let maxWarn=0; T.until(()=>{ maxWarn=Math.max(maxWarn,B.warn); return T.FB().solid; },400);
+ ("warnBeforeSolid", r"""(()=>{ const B=T.B(); T.until(()=>!T.FB().solid&&B.warn<.1,400); /* start from a fresh cycle: real-time frames between steps can land us mid-warning */ let maxWarn=0; T.until(()=>{ maxWarn=Math.max(maxWarn,B.warn); return T.FB().solid; },400);
    return {ok:T.FB().solid&&maxWarn>.4,maxWarn:+maxWarn.toFixed(2),solidT:+B.solidT.toFixed(2),omega:+B.omega.toFixed(3)}; })()"""),
  ("inBeam", r"""(()=>{ const B=T.B(); T.near(); const hp=B.hp; T.strikeBoss(2); G.step(1/30,6); T.strikeBoss(2); return {ok:B.hp===hp-4,hp,after:B.hp}; })()"""),
  ("shot:solid", "SHOT solid 'T.view(9,.5,2.5,5)'"),
