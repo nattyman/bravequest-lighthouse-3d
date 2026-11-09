@@ -98,7 +98,10 @@ function updateWake(dt){
   const P=G.player, far=P&&P.pos&&Math.hypot(P.pos.x-wake.from.x,P.pos.z-wake.from.z)>70;
   if(far||!['cottage','door'].includes(G.quest.step)){ wake=null; return; }
   const c=G.ui.captions?G.ui.captions():null; if(c&&(c.cur||c.queue.length))return;
-  G.ui.say(wake.lines.shift(),null,{key:'wake'}); wake.t=1.2; if(!wake.lines.length)wake=null;
+  // anything else said since (the game moved on, or a test took over the captions): the rest of the opening is dropped
+  const last=()=>{ const M=G.ui.messages?G.ui.messages():[], e=M[M.length-1]; return e?e.text+'|'+e.n+'|'+M.length:''; };
+  if(wake.n!=null&&last()!==wake.n){ wake=null; return; }
+  G.ui.say(wake.lines.shift(),null,{key:'wake'}); wake.n=last(); wake.t=1.2; if(!wake.lines.length)wake=null;
 }
 let finaleArmed=false, finaleT=-1, bossDead=false, endingT=-1, sawDoor=false, stagDead=false, cradleObj=false, halAway=false, halScene=null;
 const storm=()=>G.items.storm||{};
