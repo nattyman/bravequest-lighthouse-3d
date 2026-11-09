@@ -386,9 +386,9 @@ function ashlarCanvas(g,s){
         g.fillStyle=`hsl(${hue},${sat}%,${l}%)`; g.fillRect(x0,y0,ww,hh);
         const gr=g.createLinearGradient(0,y0,0,y0+hh); gr.addColorStop(0,'rgba(255,250,240,.10)'); gr.addColorStop(.15,'rgba(255,250,240,0)'); gr.addColorStop(1,'rgba(0,0,0,.18)'); g.fillStyle=gr; g.fillRect(x0,y0,ww,hh);
         g.fillStyle='rgba(255,255,255,.05)'; g.fillRect(x0,y0,ww,2); g.fillStyle='rgba(0,0,0,.18)'; g.fillRect(x0,y0+hh-2,ww,2);
-        for(let k=0;k<26;k++){ g.fillStyle=r()<.5?'rgba(0,0,0,.08)':'rgba(255,250,240,.05)'; g.fillRect(x0+r()*ww,y0+r()*hh,1+r()*3,6+r()*10); } } // chisel marks
+        for(let k=0;k<40;k++){ g.fillStyle=r()<.5?'rgba(0,0,0,.09)':'rgba(255,250,240,.05)'; const cx=x0+r()*ww, cy=y0+r()*hh; g.save(); g.translate(cx,cy); g.rotate(.6+r()*.3); g.fillRect(0,0,1.2,3+r()*3); g.restore(); } } // chisel marks
       x+=w; } }
-  for(let i=0;i<34;i++){ const x=r()*s, w=3+r()*16; const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(10,8,14,0)'); gr.addColorStop(r(),'rgba(10,8,14,.16)'); gr.addColorStop(1,'rgba(10,8,14,0)'); g.fillStyle=gr; g.fillRect(x,0,w,s); }
+  for(let i=0;i<12;i++){ const x=r()*s, w=10+r()*30; const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(10,8,14,0)'); gr.addColorStop(r(),'rgba(10,8,14,.12)'); gr.addColorStop(1,'rgba(10,8,14,0)'); g.fillStyle=gr; g.fillRect(x,0,w,s); }
   for(let i=0;i<26;i++){ g.fillStyle=`rgba(${120+r()*30},${140+r()*20},${110+r()*20},${.05+r()*.07})`; g.beginPath(); g.arc(r()*s,r()*s,3+r()*10,0,TAU); g.fill(); }
 }
 function flagsCanvas(g,s){
@@ -412,15 +412,18 @@ function triMaterial(kind,scale,o){
     sh.vertexShader='varying vec3 vWP;varying vec3 vWN;'+(glow?'attribute float aGlow;varying float vGl;':'')+'\n'+sh.vertexShader.replace('#include <begin_vertex>','#include <begin_vertex>\n vWP=(modelMatrix*vec4(transformed,1.)).xyz; vWN=normalize(mat3(modelMatrix)*objectNormal);'+(glow?' vGl=aGlow;':''));
     sh.fragmentShader='uniform sampler2D uAsh,uFlag;uniform float uTime;varying vec3 vWP;varying vec3 vWN;'+(glow?'varying float vGl;':'')+'\n'+sh.fragmentShader.replace('#include <map_fragment>',`
       vec4 tc; { vec3 n=abs(normalize(vWN));
-        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:kind==='stone'?`vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.)); tc=texture2D(uFlag,vWP.zy*${sc})*bw.x+texture2D(uFlag,vWP.xz*${sc})*bw.y+texture2D(uFlag,vWP.xy*${sc})*bw.z;`:
+        ${kind==='floor'?`tc=texture2D(uFlag,vWP.xz*${sc});`:kind==='stone'?`vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.)); tc=texture2D(uAsh,vWP.zy*${sc})*bw.x+texture2D(uFlag,vWP.xz*${sc}*.5)*bw.y+texture2D(uAsh,vWP.xy*${sc})*bw.z;`:
           `vec3 bw=pow(n,vec3(4.)); bw/=dot(bw,vec3(1.));
            vec4 tx=texture2D(uAsh,vec2(vWP.z,vWP.y*1.15)*${sc}), tz=texture2D(uAsh,vec2(vWP.x,vWP.y*1.15)*${sc}), ty=texture2D(uFlag,vWP.xz*${sc});
            tc=tx*bw.x+ty*bw.y+tz*bw.z;`}
         diffuseColor.rgb*=pow(tc.rgb,vec3(2.2))*${kind==='stone'?'2.3':'2.1'}; }`)
       .replace('#include <emissivemap_fragment>','#include <emissivemap_fragment>\n'+(glow?`
       { float lum=dot(tc.rgb,vec3(.33)); float joint=1.-smoothstep(.12,.2,lum);
+        vec2 q=vWP.xz*.13+vec2(vWP.y*.07); vec2 i=floor(q), f=fract(q); f=f*f*(3.-2.*f);
+        float h00=fract(sin(dot(i,vec2(127.1,311.7)))*43758.5), h10=fract(sin(dot(i+vec2(1,0),vec2(127.1,311.7)))*43758.5), h01=fract(sin(dot(i+vec2(0,1),vec2(127.1,311.7)))*43758.5), h11=fract(sin(dot(i+vec2(1,1),vec2(127.1,311.7)))*43758.5);
+        float vn=mix(mix(h00,h10,f.x),mix(h01,h11,f.x),f.y); float crack=smoothstep(.4,.7,vn);
         float pulse=.75+.25*sin(uTime*.9+vWP.x*.31+vWP.z*.23);
-        totalEmissiveRadiance+=vec3(.42,.14,.9)*vGl*(joint*1.6+.05)*pulse; }`:''));
+        totalEmissiveRadiance+=vec3(.42,.14,.9)*vGl*(joint*crack*2.2+.04)*pulse; }`:''));
   };
   m.customProgramCacheKey=()=>'tpTri'+kind+sc;
   return m;
@@ -449,7 +452,7 @@ class Builder{ constructor(){this.list=[];}
 function tube(points,r,seg,rseg){ return new THREE.TubeGeometry(new THREE.CatmullRomCurve3(points),seg||Math.max(4,points.length*4),r,rseg||5,false); }
 const jit=(c,r,k)=>{ const o=C(c); const f=1+(r()-.5)*(k||.18); return o.multiplyScalar(f); };
 /** violet underglow by depth: nothing at the vestibule, strongest in the sanctum */
-const depthGlow=y=>smooth(-1,-16,y)*.85+.06;
+const depthGlow=y=>smooth(-2,-16,y)*.9+.02;
 
 /* ---------- the shell: floor + vaulted ceiling heightfields, ashlar walls from the field's zero contour ---------- */
 const TAGCOL={vestibule:['#7a7680','#6a6670'],nave:['#6e6b78','#5e5b6a'],reliquary:['#77706e','#655e60'],cloister:['#68706c','#575e5c'],well:['#5f5a6a','#4f4a5c'],sanctum:['#5a5068','#463e56']};
@@ -558,6 +561,7 @@ function buildProps(){
   // --- the nave: pier capitals, gallery ledges, the sun-disc door, the watchers' alcove (the eyes)
   for(const s of [-1,1]) for(const z of PIER_Z){ St.box(1.25,.5,1.25,stoneC(),s*4,1.5,z).box(1.45,.25,1.45,darkStone(),s*4,1.85,z).box(1.3,.3,1.3,darkStone(),s*4,-2.85,z);
     for(let k=0;k<4;k++)St.box(1.18,.04,.04,darkStone(),s*4,-1.6+k*.8,z+.575).box(1.18,.04,.04,darkStone(),s*4,-1.6+k*.8,z-.575); }
+  for(const [x,z] of [[-2.65,-22],[2.65,-40]]){ const sd=Math.sign(x); St.box(1.4,.36,1.0,stoneC(),x+sd*.35,.62,z).box(1.0,.5,.8,darkStone(),x+sd*.55,.2,z).box(.6,.6,.6,darkStone(),x+sd*.75,-.3,z); }  // the corbels the mirrors stand on
   for(const s of [-1,1]){ St.box(.9,.3,40,darkStone(),s*6.6,3.2,-30.4); for(let k=0;k<16;k++)St.box(.25,.5,.25,stoneC(),s*6.25,3.55,-11.6-k*2.5); }
   St.box(4.2,.6,.8,darkStone(),0,3.6,-50.0).box(.7,6.6,.7,darkStone(),-2.05,0,-50.1).box(.7,6.6,.7,darkStone(),2.05,0,-50.1);
   // two great watchers either side of the north stair, facing down the hall; the left one's eyes take the mirrors' light

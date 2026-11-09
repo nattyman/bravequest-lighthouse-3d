@@ -137,10 +137,9 @@ function buildMirrors(){
     for(let k=0;k<8;k++){ const a=k/8*TAU; const knob=new THREE.Mesh(new THREE.SphereGeometry(.05,6,4),bronze); knob.position.set(Math.cos(a)*.68,Math.sin(a)*.68,.05); disc.add(knob); }
     const back=new THREE.Mesh(new THREE.CylinderGeometry(.6,.62,.06,18),verd); back.rotation.x=PI/2; back.position.z=-.07; disc.add(back);
     const fork=new THREE.Mesh(new THREE.TorusGeometry(.78,.04,5,16,PI),bronze); fork.rotation.z=PI; yoke.add(fork);
-    const post=new THREE.Mesh(new THREE.CylinderGeometry(.06,.1,.6,6),bronze); post.position.y=-1.05; yoke.add(post);
-    // the bracket that holds it out from the pier
-    const side=pos.x-O.x<0?-1:1; const arm=new THREE.Mesh(new THREE.BoxGeometry(1.0,.16,.22),bronze); arm.position.set(side*.55,-1.35,0); g.add(arm);
-    const strut=new THREE.Mesh(new THREE.BoxGeometry(.12,.9,.12),bronze); strut.position.set(side*.85,-1.75,0); strut.rotation.z=side*.6; g.add(strut);
+    const post=new THREE.Mesh(new THREE.CylinderGeometry(.06,.1,.36,6),bronze); post.position.y=-.92; yoke.add(post);
+    // it stands on a stone corbel out from the pier (temple.js builds the corbel); a bronze foot on the stone
+    const foot=new THREE.Mesh(new THREE.CylinderGeometry(.22,.3,.16,10),bronze); foot.position.y=-1.1; g.add(foot);
     const sheen=glowSprite('#fff2c8',1.6,0); disc.add(sheen); sheen.position.z=.1;
     if(G.outline){ G.outline(rim,{thickness:.02}); }
     // the wheel at the pier's foot that turns it

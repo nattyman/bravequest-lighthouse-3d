@@ -112,9 +112,10 @@ PLACE=[
    " G.step(1/30,30); const n1=T.place.count(); return {n0,fed:fed&&fed.n,open:G.temple.gate('wellUpper'),secs:+(t/30).toFixed(1),n1,needs:s.needs,spent:op&&op.spent}; })()",
    lambda r: r['fed']==r['needs'] and r['open'] and r['spent']==r['needs'] and r['n1']>=r['n0']-r['needs']-4),
  # the roost on the shaft wall refills (cave-born moths) so the well can't run dry
- ("place:roost", "(()=>{ let n0=0; for(const m of G.creatures.moths)if(m.tgt==='roost')n0++; const W=G.temple.rooms.well.anchors; G.player.teleport(W.rim.x,W.rim.y,W.rim.z,Math.PI); G.step(1/30,30*12); let n1=0; for(const m of G.creatures.moths)if(m.tgt==='roost')n1++;"
-   " return {n0,n1,pts:G.creatures.roost.pts.length,inWell:G.temple.room(G.player.pos)}; })()",
-   lambda r: r['pts']>=30 and r['n1']>=min(r['n0']+1,40)),
+ ("place:roost", "(()=>{ const W=G.temple.rooms.well.anchors; G.player.teleport(W.rim.x,W.rim.y,W.rim.z,Math.PI); G.step(1/30,4); const cave=G.creatures.moths.filter(m=>m.cave); let k=0;"
+   " for(const m of cave){ if(k<4&&m.tgt!=='gone'){ G.moths.kill(m,false); k++; } } const g0=cave.filter(m=>m.tgt==='gone').length; G.step(1/30,30*16); const g1=cave.filter(m=>m.tgt==='gone').length;"
+   " return {g0,g1,pts:G.creatures.roost.pts.length,inWell:G.temple.room(G.player.pos)}; })()",
+   lambda r: r['pts']>=30 and r['inWell']=='well' and r['g1']<=r['g0']-2),
  # checkpoints: the deepest place stood in with an open way back; the stranded fallback when there's none
  ("place:checkpoint", "(()=>{ G.temple.setGate('wellLower',true); T.place.at(0,-14,-76.2,Math.PI); G.step(1/30,40); const cp=G.state.checkpointName, reached=G.temple.reached();"
    " G.temple.setGate('wellUpper',false); G.step(1/30,10); const str=G.temple.stranded(), cp2=G.state.checkpointName; const lab=T.place.use(/draught/); T.place.trans();"

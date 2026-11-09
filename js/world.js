@@ -323,7 +323,7 @@ const VIGIL_SEC=(()=>{
     // standing stones: rough slabs leaning off true
     for(const s of STONES){ const g=new THREE.BoxGeometry(s.w,s.h,s.d,2,4,1); const P=g.attributes.position;
       for(let i=0;i<P.count;i++){ const y=P.getY(i)/s.h+.5; P.setX(i,P.getX(i)*(1-.32*y)+(vnoise(i*.7+s.seed,y*3)-.5)*.14); P.setZ(i,P.getZ(i)*(1-.2*y)); }
-      g.translate(0,s.h/2-.35,0); put(g,'#8a8478',s.x,s.y,s.z,s.yaw,0,s.lean,1,1,1,.22);
+      g.translate(0,s.h/2-.35,0); put(g,'#6c675f',s.x,s.y,s.z,s.yaw,0,s.lean,1,1,1,.3);
       G.addCollider({x:s.x,z:s.z,r:Math.max(s.w,s.d)*.5+.05,y1:s.y+s.h*.9}); }
     // the stair: worn steps, a low kerb either side
     for(let k=0;k<ST.n;k++){ const xa=ST.x0-k*ST.d, top=ST.tops[k], lo=Math.min(height(xa,VZ),height(xa-ST.d,VZ))-.6;
