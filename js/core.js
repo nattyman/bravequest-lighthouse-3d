@@ -742,7 +742,9 @@ G.models={};
 /* ?headless (tests): the game still updates in real time, but frames are only drawn when something may want to see them —
    the first frame after a G.step() (so a screenshot right after a scripted step is current), and ~2 a second otherwise.
    Software-rendered Chrome spends most of its CPU drawing frames nobody watches; this is the tests' big speed-up.
-   G.headless.draw(n) forces the next n frames to draw (e.g. before a screenshot of an animation). */
+   G.headless.draw(n) forces the next n frames to draw (e.g. before a screenshot of an animation).
+   G.headless.hold=true stops the real-time updates: the game then moves only by G.step(), so how fast the machine is (and how
+   long a test waits between steps) can't move the tide, the bait timer or a crab on its own. Frames still draw. */
 G.headless=/[?&]headless/.test(location.search)?{dirty:true,force:0,lastDraw:0,draw(n=2){this.force=Math.max(this.force,n);}}:null;
 G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; if(G.headless)G.headless.dirty=true; for(let k=0;k<n;k++){ G.input.poll(dt); G.time+=dt; G.dt=dt; G.hints.length=0;
   for(const s of systems){ if(!s.update)continue; if(s.modes!=='always'&&!s.modes.includes(mode))continue; try{s.update(dt);}catch(e){console.error('step '+s.name,e);} }
@@ -759,7 +761,9 @@ G.start=()=>{
   let last=performance.now();
   function frame(now){
     if(G.quality.cap&&now-last<1000/G.quality.cap-2){requestAnimationFrame(frame);return;}
-    const dt=Math.min(.05,(now-last)/1000); last=now; G.dt=dt;
+    const dt=Math.min(.05,(now-last)/1000); last=now;
+    const held=!!(G.headless&&G.headless.hold);   // a test holding the clock: only G.step() moves the game (draws still happen)
+    if(!held){ G.dt=dt;
     G.input.poll(dt);
     const steps=G.state.mode==='play'?Math.max(1,Math.min(8,G.timeScale|0)):1; // devtools time speed: n whole substeps
     for(let k=0;k<steps;k++){
@@ -774,12 +778,13 @@ G.start=()=>{
     }
     G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt);
     }
+    }
     const H=G.headless;
     if(!H||H.dirty||H.force>0||now-H.lastDraw>500){
       if(composer)composer.render(); else renderer.render(scene,camera);
       if(H){ H.dirty=false; if(H.force>0)H.force--; H.lastDraw=now; }
     }
-    G.input.endFrame();
+    if(!held)G.input.endFrame();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
