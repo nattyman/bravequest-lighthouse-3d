@@ -43,6 +43,8 @@ function armed(){
   const L=lantern(), P=G.player;
   return S.owned&&!!L&&L.carried&&!L.inCradle&&!L.shut&&!!P&&P.alive!==false&&G.state.mode==='play'&&!(G.glass&&G.glass.raised);
 }
+/* the item (TEMPLE.md: G.items.lens), alongside the lantern and the staff */
+G.items.lens={get owned(){ return S.owned; }, get range(){ return S.range; }};
 const API=G.lens={
   get owned(){ return S.owned; }, get focused(){ return S.focused; }, get range(){ return S.range; },
   beam, burnable, unburnable, mirrors, addMirror, armed,
