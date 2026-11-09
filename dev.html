@@ -43,47 +43,58 @@ body{background:#141019;color:var(--bone);font-family:var(--body);overflow:hidde
 .quest strong.fresh{color:var(--ether-hi)}
 .quest .sub{font-size:13px;color:var(--fog);font-variant-numeric:tabular-nums;text-shadow:0 1px 3px #000}
 .hud-bottom{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
-/* the caption is the front card of a stack (hud.js): lines waiting behind it peek out above and to the right as card edges */
+/* the caption is the front card of a stack (hud.js): lines waiting behind it peek out above and to the right as card edges.
+   It's a small parchment card in the conversation card's look (talk.js): the same paper, ink and type, a portrait cameo
+   when the speaker has one (portraits.js), and it reads the same over a bright beam or a black cave. It never pauses. */
 .capstack{position:relative;max-width:min(540px,100%);min-width:0;pointer-events:none;--peek:13px;--side:8px}
-.caption{max-width:100%;min-width:0;padding:12px 18px 14px;
-  background:linear-gradient(180deg,rgba(20,15,26,.8),rgba(20,15,26,.62));
-  border-left:2px solid var(--ether);opacity:0;transform:translateY(6px);transition:opacity .45s,transform .45s}
+.caption{max-width:100%;min-width:0;padding:10px 16px 12px;display:grid;grid-template-columns:minmax(0,1fr);column-gap:12px;align-items:start;
+  color:#3a262c;background:linear-gradient(180deg,#efe4cc,#e2d3b3);border-radius:3px;
+  box-shadow:0 10px 28px rgba(0,0,0,.5),0 1px 3px rgba(0,0,0,.35),inset 0 0 0 1px rgba(60,40,30,.25),inset 0 0 0 4px #efe4cc,inset 0 0 0 5px rgba(60,40,30,.32);
+  opacity:0;transform:translateY(6px);transition:opacity .45s,transform .45s}
 .caption.show{opacity:1;transform:none}
-.caption .who{display:block;font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);margin-bottom:4px}
-.caption p{margin:0;font-family:var(--serif);font-style:italic;font-size:19px;line-height:1.45;color:var(--bone)}
+.caption.face{grid-template-columns:auto minmax(0,1fr)}
+.capface{grid-row:1 / span 2;width:44px;height:55px;margin-top:2px;border-radius:50% / 46%;overflow:hidden;background:#3a2c3c;
+  box-shadow:0 0 0 2px #e9dcc0,0 0 0 3px rgba(60,40,30,.5),0 3px 8px rgba(0,0,0,.25)}
+.capface canvas{width:100%;height:100%;display:block}
+.caption.reading .capface{border-radius:3px}
+.caption.face .who,.caption.face p{grid-column:2}
+.caption .who{display:flex;align-items:baseline;gap:4px 9px;flex-wrap:wrap;margin-bottom:2px;font:400 17.5px/1.15 var(--display);letter-spacing:.01em;color:#21161f}
+.caption .who[hidden]{display:none}
+.caption .who small{font:600 10.5px var(--body);letter-spacing:.22em;text-transform:uppercase;color:#6c3f5f}
+.caption p{margin:0;min-width:0;font-family:var(--serif);font-style:italic;font-size:19px;line-height:1.42;color:#3a262c}
 /* the caption is clickable/tappable (next line); hud.js adds the hint chip (.capnext) and the time-left bar (.captime) */
 .caption{position:relative;pointer-events:auto;cursor:pointer;-webkit-tap-highlight-color:transparent}
 .caption:not(.show){pointer-events:none!important}
 .caption:not(.show) .capnext{pointer-events:none!important}
-.capnext{display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:5px -6px -6px 0;font:600 11.5px var(--body);letter-spacing:.06em;color:var(--fog);opacity:.8;transition:opacity .3s}
+.capnext{grid-column:1 / -1;display:flex;justify-content:flex-end;align-items:center;gap:6px;margin:3px -6px -6px 0;font:600 11.5px var(--body);letter-spacing:.06em;color:#6b5560;opacity:.85;transition:opacity .3s}
 .capnext:empty{display:none}
-.capnext kbd{height:18px;min-width:0;font-size:10.5px;padding:0 5px}
+.capnext kbd{height:18px;min-width:0;font-size:10.5px;padding:0 5px;border:0;color:#2b1c22;background:#f6eedd;box-shadow:inset 0 -1px 0 rgba(60,40,30,.35),0 0 0 1px rgba(60,40,30,.3)}
 .capnext .tap{text-transform:uppercase;letter-spacing:.14em;font-size:10.5px}
-.capnext .more{color:var(--amber);letter-spacing:.04em}
-.capnext b{color:var(--ether-hi);font-size:13px;line-height:1}
+.capnext .more{color:#8a4f1c;letter-spacing:.04em}
+.capnext b{color:#6c3f5f;font-size:13px;line-height:1}
 .caption.held .capnext,.caption.waiting .capnext{opacity:1}
 .caption.held .capnext b{animation:capNudge 1.4s ease-in-out infinite}
 @keyframes capNudge{50%{transform:translateX(3px)}}
-.captime{position:absolute;left:0;right:0;bottom:0;height:2px;background:var(--ether);opacity:.4;transform-origin:left center;transform:scaleX(0)}
+.captime{position:absolute;left:6px;right:6px;bottom:6px;height:2px;border-radius:1px;background:#6c3f5f;opacity:.4;transform-origin:left center;transform:scaleX(0)}
 @media (prefers-reduced-motion:reduce){.caption.held .capnext b{animation:none}}
-.capback{position:absolute;inset:0;pointer-events:none;opacity:0;visibility:hidden;
-  background:linear-gradient(180deg,rgba(48,36,62,.94),rgba(26,20,34,.86));border-left:2px solid rgba(165,108,255,.7);
-  border-top:1px solid rgba(214,188,255,.34);border-right:1px solid rgba(214,188,255,.16);box-shadow:0 -2px 10px rgba(0,0,0,.3);
+.capback{position:absolute;inset:0;pointer-events:none;opacity:0;visibility:hidden;border-radius:3px;
+  background:linear-gradient(180deg,#d8c7a3,#c8b58e);box-shadow:inset 0 0 0 1px rgba(60,40,30,.38),inset 0 1px 0 rgba(255,250,235,.55),0 -2px 10px rgba(0,0,0,.3);
   transition:opacity .3s,visibility 0s .3s,top .3s,bottom .3s,left .3s,right .3s}
-.capback span{position:absolute;left:18px;top:1px;font:700 9px/11px var(--body);letter-spacing:.2em;text-transform:uppercase;color:rgba(227,161,58,.8);white-space:nowrap;overflow:hidden;max-width:calc(100% - 64px)}
-/* the front card is translucent: each back card is clipped to the strip that peeks out (top edge + right edge), so nothing shows through */
+.capback span{position:absolute;left:16px;top:1px;font:700 9px/11px var(--body);letter-spacing:.2em;text-transform:uppercase;color:rgba(108,63,95,.9);white-space:nowrap;overflow:hidden;max-width:calc(100% - 64px)}
+/* each back card is clipped to the strip that peeks out (top edge + right edge) */
 .capback{clip-path:polygon(0 0,100% 0,100% 100%,calc(100% - var(--side)) 100%,calc(100% - var(--side)) var(--peek),0 var(--peek))}
 .capback.on{opacity:1;visibility:visible;transition:opacity .3s,visibility 0s,top .3s,bottom .3s,left .3s,right .3s}
 .capback.b1{top:calc(var(--peek)*-1);bottom:var(--peek);left:9px;right:calc(var(--side)*-1)}
-.capback.b2{top:calc(var(--peek)*-2);bottom:calc(var(--peek)*2);left:18px;right:calc(var(--side)*-2);
-  background:linear-gradient(180deg,rgba(40,30,52,.9),rgba(22,17,29,.8));border-left-color:rgba(165,108,255,.45);border-top-color:rgba(214,188,255,.24)}
-.capback.b2.on{opacity:.82}
-.capback.b2 span{color:rgba(227,161,58,.62)}
+.capback.b2{top:calc(var(--peek)*-2);bottom:calc(var(--peek)*2);left:18px;right:calc(var(--side)*-2);background:linear-gradient(180deg,#c9b690,#b9a47c)}
+.capback.b2.on{opacity:.88}
+.capback.b2 span{color:rgba(108,63,95,.7)}
 .capcount{position:absolute;right:calc(var(--side)*-2 + 6px);top:calc(var(--peek)*-2 - 9px);z-index:1;min-width:24px;height:18px;padding:0 7px;border-radius:9px;
-  display:grid;place-items:center;font:700 11.5px var(--body);font-variant-numeric:tabular-nums;color:var(--bone);
-  background:#4b3863;border:1px solid rgba(214,188,255,.55);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}
+  display:grid;place-items:center;font:700 11.5px var(--body);font-variant-numeric:tabular-nums;color:#f6eedd;
+  background:#4b3863;border:1px solid rgba(255,250,235,.6);box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none}
 .caption.leaving{position:fixed;margin:0;z-index:4;pointer-events:none!important;opacity:1;transform:none;transition:none}
 @media (prefers-reduced-motion:reduce){.capback,.capback.on{transition:none}}
+/* small screens: a smaller cameo and name */
+@media (max-width:560px),(max-height:440px){ .capface{width:36px;height:45px} .caption{padding:9px 13px 11px;column-gap:10px} .caption .who{font-size:16px} }
 body.talk-open #capStack{visibility:hidden} /* talk.js hides the caption while a conversation card is open; its stack goes too */
 .keys{display:flex;gap:6px 12px;flex-wrap:wrap;justify-content:flex-end;font-size:12px;color:var(--fog);text-shadow:0 1px 3px #000;max-width:420px;transition:opacity 1.2s}
 .keys span{display:flex;align-items:center;gap:5px}
@@ -308,7 +319,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
     <div class="capstack" id="capStack" data-depth="0">
       <div class="capback b2" aria-hidden="true"><span></span></div>
       <div class="capback b1" aria-hidden="true"><span></span></div>
-      <div class="caption" id="cap"><span class="who" id="capWho" hidden></span><p id="capText"></p></div>
+      <div class="caption" id="cap"><span class="capface" id="capFace" aria-hidden="true" hidden></span><span class="who" id="capWho" hidden></span><p id="capText"></p></div>
       <span class="capcount" id="capCount" aria-hidden="true" hidden></span>
     </div>
     <div class="keys" id="keys">
@@ -477,6 +488,7 @@ span.pad-stick{border:2px solid rgba(241,233,216,.6);font-size:9.5px}
 <script src="js/monsters.js"></script>
 <script src="js/finale_boss.js"></script>
 <script src="js/flow.js"></script>
+<script src="js/portraits.js"></script>
 <script src="js/hud.js"></script>
 <script src="js/audio.js"></script>
 <script src="js/fog.js"></script>

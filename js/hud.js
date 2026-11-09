@@ -10,6 +10,26 @@ const reduceMotion=matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- captions ---------- */
 const capEl=$('cap'), capText=$('capText'), capWho=$('capWho');
+/* the cameo: a small copy of the speaker's portrait (portraits.js), the same one the conversation card shows */
+let capFace=$('capFace');
+if(!capFace&&capEl){ capFace=document.createElement('span'); capFace.className='capface'; capFace.id='capFace'; capFace.hidden=true; capFace.setAttribute('aria-hidden','true'); capEl.insertBefore(capFace,capEl.firstChild); }
+const capFaceCv=document.createElement('canvas'); capFaceCv.width=148; capFaceCv.height=184; if(capFace)capFace.appendChild(capFaceCv);
+let capFaceId=null;
+function portraitOf(it){ // an explicit {portrait} (id or draw fn; null for none), else whoever the speaker is
+  if(it.portrait===null)return null;
+  if(it.portrait!==undefined)return it.portrait;
+  return G.portraits&&it.who?G.portraits.forWho(it.who):null;
+}
+function drawFace(p){
+  if(!capFace)return;
+  if(!p){ capFace.hidden=true; capFaceId=null; capEl.classList.remove('face','reading'); return; }
+  if(p!==capFaceId){
+    const g=capFaceCv.getContext('2d'); g.clearRect(0,0,148,184);
+    try{ if(typeof p==='function')p(g,148,184,false); else { const c=G.portraits&&G.portraits.cameo(p); if(c)g.drawImage(c,0,0); else { p=null; } } }catch(e){ console.error('caption portrait',e); p=null; }
+    capFaceId=p;
+  }
+  capFace.hidden=!p; capEl.classList.toggle('face',!!p); capEl.classList.toggle('reading',p==='page');
+}
 /* the stack: lines waiting behind the one on screen show as the edges of cards behind it (index.html .capstack / .capback);
    decoration only, the queue itself is unchanged. When the front card goes and the next one is waiting, it slides away. */
 const capStack=$('capStack'), capCount=$('capCount'), capBacks=capStack?[...capStack.querySelectorAll('.capback')].reverse():[]; // [b1, b2]
@@ -29,6 +49,7 @@ function capSlide(){
   const r=capEl.getBoundingClientRect(); if(!r.width||!r.height)return;
   const old=capEl.cloneNode(true); old.removeAttribute('id'); old.querySelectorAll('[id]').forEach(e=>e.removeAttribute('id'));
   old.classList.add('leaving'); old.classList.remove('waiting','held'); old.setAttribute('aria-hidden','true');
+  { const cv=old.querySelector('.capface canvas'); if(cv&&!capFace.hidden)try{ cv.getContext('2d').drawImage(capFaceCv,0,0); }catch(_){} } // a cloned canvas comes blank
   old.style.left=r.left+'px'; old.style.top=r.top+'px'; old.style.width=r.width+'px'; old.style.height=r.height+'px';
   document.body.appendChild(old);
   const a=old.animate([{transform:'none',opacity:1},{transform:'translate(-26px,16px) rotate(-1.2deg)',opacity:0}],{duration:340,easing:'cubic-bezier(.4,0,.7,.2)',fill:'forwards'});
@@ -67,7 +88,7 @@ function setCapSpeed(id,quiet){
 const PRI={low:0,normal:1,high:2};
 const capRead=t=>U.clamp(t.length*CAP.PER,CAP.MIN,CAP.MAX);
 function capTimes(t){ const typeT=reduceMotion?0:t.length/CAP.TYPE; return {typeT, read:Math.max(capRead(t),typeT+1.2), min:Math.max(CAP.MIN,Math.min(typeT+.6,CAP.MAX))}; }
-function capItem(text,who,o){ const p=PRI[o.priority]; return {t:text,who:who||'',pri:p==null?1:p,key:o.key||null,age:0}; }
+function capItem(text,who,o){ const p=PRI[o.priority]; const it={t:text,who:who||'',pri:p==null?1:p,key:o.key||null,age:0}; if('portrait' in o)it.portrait=o.portrait; if(o.title)it.title=o.title; return it; }
 const held=c=>CAP.hold&&c&&c.pri>=1; // waits for the player
 function capMissed(it){ if(it&&it.log&&!it.log.seen)it.log.m=1; logDirty=true; }
 function capEnqueue(it){
@@ -86,8 +107,13 @@ function capShow(it){
   if(!it.inPlace)capSlide(); // a card on screen gives way to the next: slide it away (a same-key update just rewrites it)
   if(cur&&cur!==it)capEnd(false);
   const T=capTimes(it.t);
-  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log};
-  capWho.textContent=it.who; capWho.hidden=!it.who; capEl.classList.add('show'); capEl.classList.toggle('hi',it.pri>=2);
+  const face=portraitOf(it);
+  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log,portrait:it.portrait,title:it.title,face};
+  // the name in the card's display face; a small eyebrow (the speaker's title) beside it when there's a portrait
+  const title=it.title||(face&&typeof face==='string'&&G.portraits?G.portraits.title(face):'');
+  capWho.innerHTML=esc(it.who)+(title?' <small>'+esc(title)+'</small>':''); capWho.hidden=!it.who;
+  drawFace(face);
+  capEl.classList.add('show'); capEl.classList.toggle('hi',it.pri>=2);
   capChip=null;
 }
 /* ---------- the message log (pause menu > Messages; persisted in the save as 'captions') ---------- */
@@ -154,7 +180,7 @@ G.ui={
     }
     if(it.pri>=2&&cur&&!(cur.pri>=2&&cur.el<cur.min)){
       // interrupt now; a line cut off early (under half read) comes back once afterwards
-      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)){ capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true,log:cur.log}); cur.requeuing=true; }
+      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)){ capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true,log:cur.log,portrait:cur.portrait,title:cur.title}); cur.requeuing=true; }
       capShow(it); return;
     }
     if(it.pri===0&&(cur||queue.length)&&queue.some(q=>q.pri>0)){ capMissed(it); return; } // flavour never waits behind real lines
@@ -229,7 +255,7 @@ capEl.addEventListener('pointerdown',e=>{
 capEl.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); });
 capEl.addEventListener('contextmenu',e=>e.preventDefault());
 /* for tests and devtools: what is on screen and waiting */
-G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
+G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,face:typeof cur.face==='function'?'custom':cur.face||null,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
   queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)})), speed:CAP.speed});
 G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); drawStack(); };
 /** for tests: the stack as drawn — {depth (back cards showing, 0-2), count ('+N' badge text or ''), who:[names on the back cards]} */

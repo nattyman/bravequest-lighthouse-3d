@@ -35,6 +35,7 @@ const CSS=`
   box-shadow:0 0 0 2px #e9dcc0,0 0 0 3px rgba(60,40,30,.5),0 4px 10px rgba(0,0,0,.25);background:#3a2c3c}
 #talk .tk-face canvas{width:100%;height:100%;display:block}
 #talk .tk-face[hidden]{display:none}
+#talk .tk-card.reading .tk-face{border-radius:4px} /* a reading: the book in a plain frame, not a face in a cameo */
 #talk .tk-head{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;min-width:0}
 #talk .eyebrow{font:600 11px var(--body);letter-spacing:.22em;text-transform:uppercase;color:#6c3f5f}
 #talk h3{margin:0;font:400 clamp(21px,3.2vw,26px)/1.1 var(--display);color:#21161f}
@@ -152,7 +153,8 @@ function open(o){
 }
 function face(o){
   faceEl.innerHTML='';
-  const p=o.portrait;
+  let p=o.portrait;
+  if(typeof p==='string')p=G.portraits&&G.portraits.get(p);   // a G.portraits id ('halloran', 'page', …)
   if(!p){ faceEl.hidden=true; return; }
   faceEl.hidden=false;
   if(typeof p==='function'){ const c=document.createElement('canvas'); c.width=148; c.height=184; try{ p(c.getContext('2d'),148,184,glassUp()); }catch(e){console.error('talk portrait',e);} faceEl.appendChild(c); }
@@ -162,6 +164,7 @@ function showNode(n){
   T.node=n; T.li=-1; T.choices=[]; T.sel=0;
   const o=T.open;
   nameEl.textContent=n.name||o.name||o.who||''; eyeEl.textContent=n.title||o.title||'';
+  card.classList.toggle('reading',(n.portrait||o.portrait)==='page');
   face(Object.assign({},o,n.portrait?{portrait:n.portrait}:{}));
   tagEl.querySelector('span').textContent=n.lieTag||o.lieTag||'Ink in his words';
   nextLine();
@@ -251,6 +254,41 @@ function close(how){
   G.emit('talk:close',{who:o.who,how:how||'close'});
   return true;
 }
+/* ---------------------------------------------------------------- story moments: a card when it's calm, captions when it isn't
+   moment({who, name, title, portrait, lines, choices, onClose, glass, priority, key}) -> 'card' | 'caption'
+   Calm: playing, nothing hunting you, no boss, no raft run / gust / defence, no camera shot, the map shut, no card up.
+   Not calm: each line goes to the caption queue instead (G.ui.say: never pauses), with the speaker and portrait. */
+function threatened(){ const P=G.player; const L=G.monsters&&G.monsters.list; if(!L||!P||!P.pos)return false;
+  for(const m of L){ if(!m||m.alive===false||m.dead||m.dying)continue; if(!m.pos||['idle','return','dying','dead',undefined].includes(m.state))continue;
+    if(Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z)<24)return true; } return false; }
+function calm(){
+  try{
+    if(G.state.mode!=='play'||T.open)return false;
+    if(G.map&&G.map.isOpen)return false;
+    if(G.cine&&G.cine.on)return false;
+    const P=G.player; if(!P||P.alive===false)return false;
+    const boss=document.getElementById('boss'); if(boss&&!boss.hidden)return false;
+    if(G.undercroftBoss&&G.undercroftBoss.fighting)return false;
+    const fb=G.finaleBoss; if(fb&&['intro','fight','dying'].includes(fb.state))return false;
+    const cp=G.cavePuzzles; if(cp&&G.cave&&G.cave.inside){ const r=cp.raft; if(r&&r.lantern&&!['arrived','done','idle'].includes(r.state))return false;
+      if(cp.gust&&cp.gust.phase&&cp.gust.phase!=='idle'&&G.cave.room&&G.cave.room(P.pos)==='drafts')return false; }
+    const up=G.undercroftPeople; if(up&&up.state&&up.state.wren&&up.state.wren.stage==='feeding')return false;
+    if(threatened())return false;
+    return true;
+  }catch(e){ console.error('talk calm',e); return false; }
+}
+function moment(o){
+  if(!o||!o.lines||!o.lines.length)return '';
+  if(calm()&&open(o)){
+    if(T.open!==o)return 'card';   // already read through (a test reading it at once)
+    if(o.glass&&glassOwned()&&G.glass.raise&&!glassUp()){ try{ G.glass.raise(true); T.glass=glassUp(); syncGlass(); }catch(_){} }   // an echo: the Glass stays up behind the card, so the scene plays on
+    else if(o.glass&&glassUp()){ try{ G.glass.raise(true); T.glass=true; }catch(_){} }
+    return 'card';
+  }
+  const who=o.name||o.who||'';
+  o.lines.forEach((l,i)=>{ const L=lineObj(l); try{ G.ui.say(L.text,L.who!=null?L.who:who,{priority:i?'normal':(o.priority||'high'),key:o.key?o.key+':'+i:undefined,portrait:L.who===''?null:o.portrait,title:o.title}); }catch(_){} });
+  return 'caption';
+}
 function toggleGlass(){
   if(!T.open||!glassOwned()||!G.glass.raise)return;
   const on=!glassUp();
@@ -293,7 +331,7 @@ addEventListener('keydown',e=>{
   if(c==='KeyG'){ toggleGlass(); return; }
   if(c==='Escape'||c==='KeyP'||c==='Backspace'){ close('leave'); return; }
 },true);
-addEventListener('keyup',e=>{ if(T.open){ e.stopPropagation(); } keyHeld.delete(e.code); },true);
+addEventListener('keyup',e=>{ keyHeld.delete(e.code); },true);   // key-ups go through: a key let go while the card was up (W, G) is let go in the game too
 
 /* ---------------------------------------------------------------- controller (read directly; core gives a paused game's pad to menus,
    and the talk card is not one of core's cards) */
@@ -337,7 +375,7 @@ G.system('talk',{order:57,modes:'always',
 G.on('input:device',()=>{ if(T.open)updateHint(); });
 
 G.talk={
-  open, close:()=>close('api'), advance, choose:i=>choose(i), select:i=>select(i,true), toggleGlass,
+  open, moment, calm, close:()=>close('api'), advance, choose:i=>choose(i), select:i=>select(i,true), toggleGlass,
   get isOpen(){ return !!T.open; },
   get who(){ return T.open?T.open.who:null; },
   /** for tests: what the card shows */
