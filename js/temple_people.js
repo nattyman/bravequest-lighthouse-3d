@@ -9,7 +9,7 @@
    - Halloran's one-time reunion lines (G.creatures.halloranHooks) · Hesper's five temple pages (author "Hesper")
    - Wren at the hamlet well: a talk about Hesper that tells Rowan about the temple and marks it (temple:unlock). Wren's own
      card (undercroft_people.js) has no way to add a choice from outside, so this is a separate interaction beside her,
-     "Ask Wren about Hesper", until it's been asked. Saves from before this version, with Wren already saved, get the marker on load.
+     "Ask Wren about Hesper" (once she's greeted you at the well), until it's been asked. Saves from before this version, with Wren already saved, get the marker on load.
    - portraits: 'hesper-ink' (half ink, the seam's violet under her); 'hesper' (calm) only if portraits.js has none
    API: G.templePeople = {state, met, freed, home, hesper, talk(), pages, debug}
    Events (emits): temple:hesper {state:'found'|'freed'|'home'} · temple:unlock {restored?} · temple:page {id} · temple:carving {}
@@ -502,7 +502,8 @@ function wrenSaved(){ const up=G.undercroftPeople; return !!(up&&up.state&&up.st
 function hookWren(){
   if(wrenIA)return;
   wrenIA=G.interact.add({pos:()=>{ const w=hamletWren(); return w?w.pos:V(0,-999,0); },radius:2.4,priority:5,label:'Ask Wren about Hesper',
-    enabled:()=>{ if(!isPlay()||S.wrenAsked||inside())return false; const w=hamletWren(); return !!(w&&w.root&&w.root.visible); },use:talkWren});
+    enabled:()=>{ if(!isPlay()||S.wrenAsked||inside())return false; const w=hamletWren(); if(!(w&&w.root&&w.root.visible))return false;
+      const up=G.undercroftPeople; return !!(up&&up.state&&up.state.wren&&(up.state.wren.hamletTalks|0)>=1); },use:talkWren});   // after her own greeting at the well
 }
 function talkWren(){
   if(!G.talk)return;

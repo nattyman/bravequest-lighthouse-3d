@@ -57,7 +57,6 @@ function build(){
   buildAmbience();
   buildCave();
   buildUndercroft();
-  buildTemple();
   buildRecording();
   applyVolume();
 }
@@ -1516,6 +1515,7 @@ function updateTemple(_dt,mode){
   const dt=U.clamp(ctx.currentTime-(tpLastT||ctx.currentTime),0,1); tpLastT=ctx.currentTime;
   const k0=tp.k; tp.k=U.damp(tp.k,tp.inside?1:0,tp.inside?1.4:2.2,dt); if(tp.k<.001&&!tp.inside)tp.k=0;
   const k=tp.k; if(k===0&&k0===0)return;
+  if(!tbed.bus)buildTemple();   // the bed's voices only start the first time you go down (they cost the audio thread)
   // acoustics: a tall stone nave — the cave's convolver with a longer send than the Undercroft's brick
   if(cv.k<.01&&uc.k<.01){ tgt(revSend.gain,revBase*(1-k)+.08*k,.3); tgt(mSend.gain,.55*(1-k*.7),.3); tgt(aSend.gain,.15*(1-k),.3);
     tgt(caveSend.gain,.5*k,.3); tgt(caveAmbSend.gain,.42*k,.3); tgt(caveMusSend.gain,.6*k,.3); tgt(caveCoreSend.gain,k*(rec.state==='boss'?.18:.55),.6); }
