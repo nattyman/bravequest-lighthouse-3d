@@ -1286,8 +1286,8 @@ function departBlock(){
   if(boss==='crane')return 'Aldous Crane is reciting your name. There’s no slipping away mid-fight.';
   if(['cure','descend','finale'].includes(q)&&!(G.flow&&G.flow.bossDead))return 'Not now. Something is climbing the cliff toward the lighthouse.';
   const R=G.cavePuzzles&&G.cavePuzzles.raft;
-  if(R&&R.lantern&&R.state!=='done')return R.state==='arrived'?'Maren’s lantern is still on the raft. Take it off first.':'Maren’s lantern is riding the raft. See it down the channel first.';
-  if(L.found&&L.carried&&!L.cured&&!(G.lighthouse&&G.lighthouse.cured))return 'The moths are following Maren’s lantern, and they can’t follow you through a map. Carry it there on foot.';
+  if(R&&R.lantern&&R.state!=='done')return R.state==='arrived'?'Hesper’s lantern is still on the raft. Take it off first.':'Hesper’s lantern is riding the raft. See it down the channel first.';
+  if(L.found&&L.carried&&!L.cured&&!(G.lighthouse&&G.lighthouse.cured))return 'The moths are following Hesper’s lantern, and they can’t follow you through a map. Carry it there on foot.';
   if(T.inCradle&&!T.failed)return 'Not now. Watch the little flame.';
   const sw=(G.moths&&G.moths.swarm)|0;
   if(sw>=5){ const jar=!!(G.moths.jar&&G.moths.jar.owned); return 'The swarm is following your light, and moths can’t follow you through a map. '+(jar?'Gather them into the jar, or walk them there.':'Walk them there.'); }

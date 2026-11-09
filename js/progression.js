@@ -51,7 +51,7 @@ const UPGRADES=[
   {id:'bandolier',name:'Wide Bandolier',desc:'A keeper’s leather bandolier with room for more bottles.',effect:'Carry 5 Mender’s Draughts (was 3)',cost:{mark:1,brine:2}},
   {id:'jar',name:'Deep Jar',desc:'The moth jar, re-blown with a deeper belly.',effect:'Moth jar holds 100 (was 60)',cost:{mark:2,pearl:1,brine:2},needs:'jar'},
   {id:'charm',name:'Lantern Charm',desc:'A brass moth on a chain. The bait clings longer and the moths come quicker.',effect:'Bait lasts 50% longer · moths gather 25% faster',cost:{mark:3}},
-  {id:'recipe2',name:'Mender’s Recipe II',desc:'A margin note in Maren’s hand: steep the glowcaps twice.',effect:'Mender’s Draught heals 4 hearts (was 3)',cost:{mark:1,glowcap:2,kelp:1}}
+  {id:'recipe2',name:'Mender’s Recipe II',desc:'A margin note in Hesper’s hand: steep the glowcaps twice.',effect:'Mender’s Draught heals 4 hearts (was 3)',cost:{mark:1,glowcap:2,kelp:1}}
 ];
 const UP=Object.fromEntries(UPGRADES.map(u=>[u.id,u]));
 const owns=id=>!!S.upgrades[id];
@@ -280,7 +280,7 @@ function buildSpots(){
   { const x=150, z=-30, g=H(x,z), top=g+1.85;
     addPerch({x,z,r:.75,top}); pillar(root,x,z,g-.3,top,.75,{flare:1.4});
     SPOTS.push({id:'needle',name:'The headland needle',how:'A stone needle on the headland’s north side. Run at it and double jump onto the top.',pos:V(x,top+.55,z),from:V(x+2.5,g,z)}); }
-  /* 13–14. Companion shards (companions.js, COMPANIONS.md §4): Maren's sea-chest in the cottage (Ember fetches the key) and the
+  /* 13–14. Companion shards (companions.js, COMPANIONS.md §4): Hesper's sea-chest in the cottage (Ember fetches the key) and the
      raven's nest on the north cliff (Corvin brings it back). No glint to walk into: G.progress.grantShard(id) hands them over. */
   for(const e of (G.companions&&G.companions.shardSpots)||[])
     SPOTS.push({id:e.id,name:e.name,how:e.how,pos:e.pos.clone(),from:(e.from||e.pos).clone(),ext:true});

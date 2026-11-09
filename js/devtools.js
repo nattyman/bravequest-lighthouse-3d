@@ -116,10 +116,10 @@ function caveSave(room){
   return s;
 }
 const STARTS=[
-  {id:'story',name:'Story start',sub:'A brand-new game: the cliff top, the cold, the cottage',group:'Act 1'},
+  {id:'story',name:'Story start',sub:'A brand-new game: the wreck on the south beach, the cold, the cottage',group:'Act 1'},
   {id:'loop',name:'Lighthouse lit',sub:'Act 1 done: staff, cloak, lamp cured · the core loop begins',group:'Act 1',main:true},
   {id:'lamp-failed',name:'The lamp failed',sub:'The storm lantern’s flame was drunk · staff in hand, at the foot of the stairs: Halloran waits outside',group:'Act 1'},
-  {id:'stag',name:'Before the Hollow Stag',sub:'Edge of the old wood, staff in hand · the Stag guards Maren’s lantern',group:'Act 1'},
+  {id:'stag',name:'Before the Hollow Stag',sub:'Edge of the old wood, staff in hand · the Stag guards Hesper’s lantern',group:'Act 1'},
   {id:'finale',name:'Before the finale boss',sub:'Lamp cured, staff in hand, at the foot of the stairs: step outside',group:'Act 1'},
   {id:'late',name:'Late game',sub:'Loop running · 7 hearts (the most there are), 4 Moth Wings, every upgrade, all shards and caches · moth jar',group:'Act 1'},
   {id:'sandbar',name:'The sandbar, low tide',sub:'Loop running, lantern baited, 60 moths · the cave mouth ahead',group:'The cave'},
@@ -206,7 +206,7 @@ function runStart0(id){
       lantern:{found:false,carried:false,shut:false,cured:false,inCradle:false,pos:null},
       storm:{found:true,carried:true,inCradle:false,failed:true,spent:false,pos:null}};
     const s=id==='stag'
-      ?base(Object.assign(act,{step:'forest',objective:'Find Maren’s lantern',sub:'At the old tree in the forest, far to the west',target:[sp.x,sp.y,sp.z],targetName:'The old wood',
+      ?base(Object.assign(act,{step:'forest',objective:'Find Hesper’s lantern',sub:'At the old tree in the forest, far to the west',target:[sp.x,sp.y,sp.z],targetName:'The old wood',
         pos:arr(edge),yaw:-PI/2,cp:arr(edge),cpYaw:-PI/2,cpName:'the edge of the old wood'}))
       :base(Object.assign(act,{step:'failed',objective:'Go back down',sub:'The plain flame wasn’t enough',pos:arr(inP),yaw:-PI/2}));
     F.begin(s); return;

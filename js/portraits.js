@@ -3,10 +3,10 @@
    Same gentle cameo style as the cellar people (undercroft_people.js `portrait(id)`): a dusky gradient, soft shapes,
    an inner rim. Each portrait is a function (g, w, h, glass) drawing on a canvas the talk card sizes at 148×184.
    API: G.portraits = {
-          get(id) -> draw fn | null           halloran, maren, ember, corvin, crane, page (readings), echo (the Glass)
+          get(id) -> draw fn | null           halloran, hesper (alias maren), ember, corvin, crane, page (readings), echo (the Glass)
           add(id, fn, {title?, names?})       other modules register theirs (undercroft_people.js: the cellar people)
           title(id) -> eyebrow text | ''
-          forWho(name) -> id | null           who a caption speaker is ('Halloran', 'Maren’s logbook', 'Old Tamsin'…)
+          forWho(name) -> id | null           who a caption speaker is ('Halloran', 'Hesper’s logbook', 'Old Tamsin'…)
           cameo(id) -> a cached canvas         drawn once, copied by the caption cameo }
    ===================================================================== */
 (function(){
@@ -66,8 +66,8 @@ function halloran(g,w,h,glass){
   rim(g,w,h);
 }
 
-/* ---------------------------------------------------------------- Maren: the lost keeper, lit from below by her violet lantern */
-function maren(g,w,h,glass){
+/* ---------------------------------------------------------------- Hesper: keeper of the light, lit from below by her violet lantern */
+function hesper(g,w,h,glass){
   bg(g,w,h,glass?'#4e3f66':'#33304a','#120f1a');
   const cx=w/2, hy=h*.42, hr=w*.21;
   glow(g,cx-w*.2,h*.86,w*.5,'rgba(165,108,255,.55)','rgba(165,108,255,0)');
@@ -238,7 +238,7 @@ function echo(g,w,h,glass){
 
 const REG={
   halloran:{fn:halloran,title:'Keeper, once',names:[/^halloran$/i,/^the figure$/i]},
-  maren:{fn:maren,title:'The last keeper',names:[/^maren$/i]},
+  hesper:{fn:hesper,title:'Keeper of the light',names:[/^hesper$/i,/^hesper halloran$/i,/^maren$/i]},
   ember:{fn:ember,title:'',names:[/^ember$/i]},
   corvin:{fn:corvin,title:'',names:[/^corvin$/i]},
   crane:{fn:crane,title:'The reeve',names:[/^aldous crane$/i,/^crane$/i]},
@@ -247,9 +247,9 @@ const REG={
 };
 const cache={};
 const API=G.portraits={
-  get(id){ const r=id&&REG[id]; return r?r.fn:null; },
+  get(id){ if(id==='maren')id='hesper'; const r=id&&REG[id]; return r?r.fn:null; },
   add(id,fn,o){ REG[id]=Object.assign({fn,title:'',names:[]},o||{}); delete cache[id]; },
-  title(id){ const r=id&&REG[id]; return r?r.title||'':''; },
+  title(id){ if(id==='maren')id='hesper'; const r=id&&REG[id]; return r?r.title||'':''; },
   /** who a caption is from → a portrait id. Readings (a logbook, the register, a page) get the book. */
   forWho(name){
     if(!name)return null; const n=String(name).trim();
@@ -259,7 +259,7 @@ const API=G.portraits={
   },
   /** a canvas with the portrait drawn once at the talk card's size (148×184), for the caption cameo to copy */
   cameo(id){
-    const fn=API.get(id); if(!fn)return null;
+    if(id==='maren')id='hesper'; const fn=API.get(id); if(!fn)return null;
     if(cache[id])return cache[id];
     const c=document.createElement('canvas'); c.width=148; c.height=184;
     try{ fn(c.getContext('2d'),148,184,false); }catch(e){ console.error('portrait '+id,e); return null; }
