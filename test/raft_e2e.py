@@ -83,13 +83,6 @@ S_RAIDER=r"""(()=>{ RT.prep(); RT.load(); const R=RT.R(), P=G.player; RT.toWalkw
     &&out.snatched>=3&&out.swarmDrop>=3&&out.hudTick&&out.snatchTween&&out.snatchEvery>.8&&out.snatchEvery<1.4&&/crab is on the raft/.test(out.objective)
     &&out.bolted&&out.knocked&&out.splash&&out.gone&&out.order==='grip>board>aboard>knocked>splash';
   return out; })()"""
-S_LOCKRAIDER=r"""(()=>{ RT.prep(); RT.load(); const R=RT.R(), P=G.player; RT.toWalkway(); RT.reset(); G.cavePuzzles.raid.wave=9;
-  const a=RT.D().spawnRaider(1), b=RT.D().spawnRaider(-1); G.step(1/30,4);
-  P.camYaw=Math.atan2(P.pos.x-R.pos.x,P.pos.z-R.pos.z); G.step(1/30,4);   // the camera looking away from the raft, at the wall
-  if(P.lockTarget)T.tap('lock',1); T.tap('lock',2); const first=P.lockTarget, firstIsCrab=first===a.hb||first===b.hb;
-  const other=first===a.hb?b:a; first&&first.hit({damage:9,kind:'melee',dir:new THREE.Vector3(0,0,1)}); G.step(1/30,3);
-  const hopped=P.lockTarget===other.hb; other.hb.hit({damage:9,kind:'melee',dir:new THREE.Vector3(0,0,1)}); G.step(1/30,3);
-  return {ok:firstIsCrab&&hopped&&!P.lockTarget,firstIsCrab,hopped,after:!!P.lockTarget}; })()"""
 S_NOEAT=r"""(()=>{ RT.prep(); RT.load(); const R=RT.R(); G.cavePuzzles.raid.wave=9; G.step(1/30,90);
   const ms=[1,-1,1].map(s=>RT.D().spawnRaider(s)); let n=0, vanished=0, killedByMoths=0, hurt=0;
   G.on('monster:killed',()=>killedByMoths++);
@@ -152,7 +145,6 @@ async def main():
         await check('run:peak',S_PEAK)
         await check('run:pushed',S_PUSHED)
         await check('raider',S_RAIDER)
-        await check('lockRaider',S_LOCKRAIDER)
         await check('noEat',S_NOEAT)
         await check('partial',S_PARTIAL)
         await check('reload:save',S_SAVE)

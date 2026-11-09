@@ -933,7 +933,7 @@ function startSpin(){
 function camForward(){return new V3(Math.sin(cam.yaw),0,Math.cos(cam.yaw));}
 function toggleLock(){
   if(P.lockTarget){P.lockTarget=null; return;}
-  const t=G.combat.nearestTarget(P.pos,18,camForward(),'enemy',true);
+  const t=G.combat.nearestTarget(P.pos,18,camForward());
   if(t){P.lockTarget=t; drawStaff();}
   else{cam.recenter=.35;} // Zelda: no target -> recentre the camera behind
 }

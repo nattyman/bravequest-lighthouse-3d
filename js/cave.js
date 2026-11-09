@@ -270,7 +270,6 @@ G.constrainers.push((prev,next,y,rad,who)=>{
   next.x=nx+O.x; next.z=nzz+O.z; return true;
 });
 const _cp=new THREE.Vector3();
-let camSwing=0;   // radians the cave has swung the camera boom round its target (see below)
 G.cameraConstrainers.push((cam,target)=>{
   if(!S.inside)return;
   const tx=target.x-O.x, ty=target.y-O.y, tz=target.z-O.z, cx=cam.x-O.x, cy=cam.y-O.y, cz=cam.z-O.z;
@@ -284,19 +283,8 @@ G.cameraConstrainers.push((cam,target)=>{
     if(P&&Sat(tx,tz)>-.3){ const px=P.x-O.x, pz=P.z-O.z; bx=px; bz=pz; const m=Math.max(1,Math.ceil(Math.hypot(tx-px,tz-pz)/.08));
       for(let i=1;i<=m;i++){ const x=px+(tx-px)*i/m, z=pz+(tz-pz)*i/m; if(Sat(x,z)>-.3)break; bx=x; bz=z; } }
     cam.set(bx+O.x,O.y+Math.min(Math.max(ty,Fat(bx,bz)+.45),Cat(bx,bz)-.2),bz+O.z); return; }
-  // how far the boom gets out from the target, swung by `rot` about it (y unchanged)
-  const reach=rot=>{ const c=Math.cos(rot), sn=Math.sin(rot), dx=(cx-tx)*c+(cz-tz)*sn, dz=-(cx-tx)*sn+(cz-tz)*c; let x0=tx,y0=ty,z0=tz,k=0;
-    for(let i=1;i<=n;i++){ const t=i/n, x=tx+dx*t, y=ty+(cy-ty)*t, z=tz+dz*t; if(bad(x,y,z))break; x0=x;y0=y;z0=z;k=t; } return {x:x0,y:y0,z:z0,k}; };
-  // Locked on (or riding along with the raft) with the wall at your back, the boom folds into the player's head and the target is
-  // lost behind them. Then swing the boom round, out over the water, to wherever it gets furthest (eased, so it doesn't jump).
-  const P=G.player, raftRun=G.cavePuzzles&&G.cavePuzzles.raft&&G.cavePuzzles.raft.state==='drifting'&&room(G.player.pos)==='channel';
-  let best=reach(camSwing);
-  if(P&&(P.lockTarget||raftRun)&&L>2){
-    let want=0, bk=reach(0).k;
-    for(const a of [.35,-.35,.7,-.7,1.05,-1.05,1.4,-1.4]){ const r=reach(a); if(r.k>bk+.15){ bk=r.k; want=a; } }
-    camSwing+=(want-camSwing)*.12; best=reach(camSwing);
-  }else{ camSwing*=.85; best=reach(camSwing); }
-  cam.set(best.x+O.x,best.y+O.y,best.z+O.z);
+  for(let i=1;i<=n;i++){ const t=i/n, x=tx+(cx-tx)*t, y=ty+(cy-ty)*t, z=tz+(cz-tz)*t; if(bad(x,y,z))break; gx=x;gy=y;gz=z; }
+  cam.set(gx+O.x,gy+O.y,gz+O.z);
 });
 
 /* ================================================================ 5. STATE + API */

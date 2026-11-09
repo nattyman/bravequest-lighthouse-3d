@@ -1130,7 +1130,7 @@ function startGrip(m,R,side,along){
   if(side==null){ const {pr}=raftAxes(R); side=((m.pos.x-R.pos.x)*pr.x+(m.pos.z-R.pos.z)*pr.z)>=0?1:-1; }
   if(along==null)along=(rnd()-.5)*1.3;
   m.raid={side:side<0?-1:1,along,from:m.pos.clone(),snatchT:P.brineling.snatch0,snapT:0,took:0};
-  m.onRaft=null; m.board=null; m.prey=null; m.flare=0; m.hb.mothPrey=false; m.hb.lockPriority=true; setState(m,'grip');   // lock-on goes to a raider first (the channel is too tight to aim the camera at it)
+  m.onRaft=null; m.board=null; m.prey=null; m.flare=0; m.hb.mothPrey=false; setState(m,'grip');
   const o=raiderOff(R,m.raid.side,along), wy=waterAt(R);
   G.emit('brineling:grip',{pos:V(R.pos.x+o.x,wy,R.pos.z+o.z),side:m.raid.side,lead:P.brineling.grip,monster:m});
 }
@@ -1185,8 +1185,6 @@ function updateRaider(m,dt,R){
 /* any blow sends a raider over the side: it tumbles off the edge it came up and splashes into the channel */
 function knockOff(m,info){
   const R=raftInfo(), rd=m.raid;
-  m.hb.lockPriority=false;
-  { const pl=G.player; if(pl&&pl.lockTarget===m.hb){ const nx=G.combat.nearestTarget(pl.pos,18,null,'enemy',true); pl.lockTarget=nx&&nx.lockPriority?nx:null; } }   // knocked off: the lock hops to the next raider, or lets go
   let ox=0, oz=1;
   if(R){ const {pr}=raftAxes(R); ox=pr.x*rd.side; oz=pr.z*rd.side; }
   const d=info&&info.dir; if(d&&isFinite(d.x)){ const dot=d.x*ox+d.z*oz; if(dot<-.2){ ox=-ox; oz=-oz; } }   // knocked away from the blow, off the near edge
