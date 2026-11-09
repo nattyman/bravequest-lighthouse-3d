@@ -1042,7 +1042,9 @@ let shutEvT=-1;
 G.on('lantern:shutter',()=>{ shutEvT=G.time; });
 function updateShutter(){
   const L=G.items&&G.items.lantern, P=G.player; if(!L||!L.carried||!L.cured||!P||P.alive===false||G.state.mode!=='play')return;
-  G.hint(G.input.device==='gamepad'?'RB':'F',L.shut?'Open the shutter':'Close the shutter');
+  // one prompt for the shutter action: with the Lens, the tap and the hold share it (lens.js stays quiet in here)
+  const lens=G.lens&&G.lens.owned;
+  if(!(G.lens&&G.lens.focused))G.hint(G.input.device==='gamepad'?'RB':'F',L.shut?'Open the shutter':lens?'Close the shutter · hold: focus the Lens':'Close the shutter');
   if(G.input.pressed('shutter')&&shutEvT!==G.time){ L.shut=!L.shut; G.emit('lantern:shutter',{shut:L.shut,temple:true}); shutEvT=G.time;
     if(L.shut&&!S.said.shut){ S.said.shut=1; G.ui.say('You close the shutter. The dark of the Vigil comes down at once, close and old, and the violet under the floor seems brighter for it.',{priority:'normal'}); } }
 }
@@ -1084,7 +1086,7 @@ G.system('temple',{order:14,modes:'always',
     G.interact.add({pos:()=>ANCH.sanctum.exit,radius:2.2,priority:4,label:'Climb the stair to the Stair of Watchers',
       enabled:()=>S.inside&&!S.trans&&S.gates.exit, use:()=>startTrans('in','vestibule')});
     G.interact.add({pos:()=>G.player.pos,radius:4,priority:0,label:'Follow the draught back to the stair',
-      enabled:()=>S.inside&&!S.trans&&S.stranded&&G.player.alive!==false&&G.state.mode==='play', use:()=>followDraught()});
+      enabled:()=>S.inside&&!S.trans&&S.stranded&&G.player.alive!==false&&G.state.mode==='play'&&!(G.templeBoss&&G.templeBoss.fighting), use:()=>followDraught()});
     for(const c of BRAZ){ G.interact.add({pos:c.stand,radius:1.9,priority:3,
       label:()=>brazierLabel(c)||'', enabled:()=>S.inside&&!S.lit.has(c.room)&&!glassUp(), use:()=>useBrazier(c)}); }
     try{ buildPast(); }catch(e){ console.error('temple past',e); }
@@ -1097,7 +1099,7 @@ G.system('temple',{order:14,modes:'always',
     if(!S.unlocked&&wrenSaved())unlock({quiet:true,restored:true});
     updateTrans(dt);
     if(P&&P.pos&&!S.trans){ const inT=!!room(P.pos)||(inBoxW(P.pos.x,P.pos.z)&&P.pos.y>O.y-40); if(inT!==S.inside)setInside(inT); }
-    if(!S.inside){ updateIslandDoor(dt); return; }
+    if(!S.inside){ const P_=G.player; if(P_&&P_.pos&&(VIS.rootBoil!=null||Math.abs(P_.pos.x-doorPos.x)<40&&Math.abs(P_.pos.z-doorPos.z)<40))updateIslandDoor(dt); return; }
     const r=room(P.pos)||S.room; if(r&&r!==S.room){ S.room=r; G.emit('temple:room',{id:r}); }
     if(!S.trans)updateCheckpoint(dt);
     const lit=S.room&&S.lit.has(S.room);
