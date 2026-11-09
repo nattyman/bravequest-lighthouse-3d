@@ -16,7 +16,7 @@ OUT='/tmp/claude-0/travel'; os.makedirs(OUT,exist_ok=True)
 HELP=r"""(()=>{ window.T={};
   G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{}; try{ document.exitPointerLock&&document.exitPointerLock(); }catch(_){}
   T.play=()=>{ if(G.state.mode==='paused'&&!G.map.isOpen&&!G.map.traveling){ const pc=document.getElementById('pause'); if(pc&&!pc.hidden)document.getElementById('resume').click(); else G.setMode('play'); } };
-  T.tp=(x,z,y)=>{ T.play(); G.player.teleport(x,y==null?G.world.height(x,z)+.1:y,z,0); G.step(1/30,8); };
+  T.tp=(x,z,y,h)=>{ T.play(); G.player.teleport(x,y==null?G.world.height(x,z)+.1:y,z,h||0); G.step(1/30,8); };
   T.clear=()=>{ for(const m of (G.monsters&&G.monsters.list||[]).slice())if(m.alive&&!m.boss)G.monsters.kill(m,{dir:new THREE.Vector3(0,0,1)}); };
   T.wp=()=>G.map.waypoints.filter(w=>w.unlocked).map(w=>w.id);
   T.pos=()=>G.player.pos.toArray().map(v=>+v.toFixed(2));
@@ -53,7 +53,7 @@ FRESH=[
  ("unlockMore", r"""(()=>{ T.tp(94,11); T.tp(32,-40); T.clear(); T.tp(6,16); T.clear(); const msgs=G.ui.messages().map(m=>m.text).filter(t=>/waystone/.test(t));
    return {ok:['cliffpath','stones','hamlet'].every(id=>T.wp().includes(id))&&!T.wp().includes('tree')&&msgs.length===4,wp:T.wp(),n:msgs.length,last:msgs[msgs.length-1]}; })()"""),
  # collectibles: a shard you've never been near stays off the chart even where the island is charted; near it -> a pin; taken -> faded
- ("notSeenYet", r"""(()=>{ G.map.reveal(-29,42,30); G.map.reveal(96,20,20); G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'), c=T.st('cache:ramp');
+ ("notSeenYet", r"""(()=>{ delete G.map.debug.seen['shard:attic']; /* the precondition: not yet spotted (the camera can catch it from the hamlet road; where it has pointed depends on timing) */ G.map.reveal(-29,42,30); G.map.reveal(96,20,20); G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'), c=T.st('cache:ramp');
    const seen=Object.keys(G.map.debug.seen); T.closeMap(); return {ok:!!a&&!a.shown&&!!c&&!c.shown&&!seen.includes('shard:attic'),attic:a&&a.shown,ramp:c&&c.shown,seen}; })()"""),
  ("spotShard", r"""(()=>{ const s=G.progress.spots.find(q=>q.id==='attic'); T.tp(s.pos.x+6,s.pos.z+5); T.clear(); G.step(1/30,10);
    G.map.open(); G.step(1/30,20); const a=T.st('shard:attic'); const lbl=G.map.markers.find(m=>m.id==='shard:attic').el.textContent; T.closeMap();
