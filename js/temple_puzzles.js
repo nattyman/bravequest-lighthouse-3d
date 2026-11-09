@@ -399,10 +399,14 @@ function buildShortcuts(){
     // the ladder: two rails and rungs, leaning on the rock, pinned with iron
     const g=new THREE.Group(); isle.add(g); const dir=b.clone().sub(a), len=dir.length(); dir.normalize();
     const q=new THREE.Quaternion().setFromUnitVectors(V(0,1,0),dir); const side=V(Math.cos(d.face+PI/2)*0,0,1);
-    for(const sd of [-.36,.36]){ const r=new THREE.Mesh(new THREE.BoxGeometry(.09,len,.09),wood); r.quaternion.copy(q); r.position.copy(a).addScaledVector(dir,len/2).addScaledVector(side,sd); g.add(r); }
-    for(let k=1;k<len/.42;k++){ const r=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,.72,5),wood); r.rotation.x=PI/2; r.position.copy(a).addScaledVector(dir,k*.42); g.add(r); }
-    for(const t of [.2,.55,.9]){ const pin=new THREE.Mesh(new THREE.BoxGeometry(.5,.06,.06),iron); pin.position.copy(a).addScaledVector(dir,len*t).add(V(.2,0,0)); g.add(pin); }
-    if(G.outline)g.children.slice(0,2).forEach(m=>G.outline(m,{thickness:.015}));
+    // one mesh for the wood, one for the iron (a ladder is ~30 rungs: keep it to two draw calls)
+    const W_=[], I_=[]; const put=(geo,list,p,qq)=>{ const m=new THREE.Matrix4().compose(p,qq||new THREE.Quaternion(),V(1,1,1)); list.push(geo.applyMatrix4(m)); };
+    for(const sd of [-.36,.36])put(new THREE.BoxGeometry(.09,len,.09),W_,a.clone().addScaledVector(dir,len/2).addScaledVector(side,sd),q);
+    const qr=new THREE.Quaternion().setFromEuler(new THREE.Euler(PI/2,0,0));
+    for(let k=1;k<len/.42;k++)put(new THREE.CylinderGeometry(.03,.03,.72,5),W_,a.clone().addScaledVector(dir,k*.42),qr);
+    for(const t of [.2,.55,.9])put(new THREE.BoxGeometry(.5,.06,.06),I_,a.clone().addScaledVector(dir,len*t).add(V(.2,0,0)));
+    const wm=new THREE.Mesh(mergeGeos(W_),wood), im=new THREE.Mesh(mergeGeos(I_),iron); g.add(wm,im);
+    if(G.outline)G.outline(wm,{thickness:.015});
     // the thicket at its foot
     const at=V(d.from[0]-.9,H(d.from[0]-.9,d.from[1]),d.from[1]);
     const s=lensSeal({id:'isle:'+d.id,at,w:2.2,h:2.6,yaw:d.face,seed:d.id.length*13,parent:isle,r:1.25,depth:.6,

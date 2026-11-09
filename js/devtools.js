@@ -203,7 +203,7 @@ function progressFor(id){
   for(const k of shards)o.shards[k]=1;
   if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
   if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
-  if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }   // the Vigil comes after the cave and the Undercroft: 5 hearts
+  if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
   return o;
 }
 function runStart(id){
