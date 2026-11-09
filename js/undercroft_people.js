@@ -79,8 +79,8 @@ const PAGES={
     text:'Tithe-roll, Michaelmas. All souls of Wickham’s End entered, fair copy, in the clerk’s best hand. The fog has the book. I have my name. It is a fair price, for a reeve must keep something of the village whole.'}
 };
 /* echo captions (what the Glass shows: the Place agent's scenes look their text up here by id; mine are said directly) */
-const ECHOES={ // island echoes (glass.js shows them; their lines come from here when it has them): one points at Maren
-  cottage:{who:'An echo',lines:['A woman in a keeper’s coat at the cottage table, writing by a violet light. She stops, and looks a long while toward the forest.']},
+const ECHOES={ // island echoes (glass.js shows them; their lines come from here when it has them): one points at Hesper
+  cottage:{who:'An echo',lines:['A woman in a keeper’s coat writes by a violet light. Beside her is a letter in a man’s hand. She stops, reads it again, and looks a long while toward the forest.']},
   gallery:{who:'An echo',lines:['Two keepers on the gallery, passing a pipe between them. “If the lamp ever goes,” says one, “the moths will know before we do.”']},
   stones:{who:'An echo',lines:['Children running the ring of stones, counting. One of them stops at the seventh stone, and will not go on.']},
   square:{who:'An echo',lines:['Market day in Wickham’s End. The reeve counts the tithe sacks off the cart: three, two, one. Everyone’s name is still their own.']}
@@ -262,8 +262,8 @@ const SCRIPT={
   tamsin(n){
     if(S.names&&!S.named.tamsin) return {lines:['You’ve been down to the store. I can smell the paper on you.','Have you got it? Have you got my name?'],
       choices:[nameChoice('tamsin'),leave('Not yet.')]};
-    if(n===0) return {lines:['Stop there. Let me look at you.','…No ink on you. Not a drop. Good.','I’m Tamsin. I was the midwife here, when there was a here. I brought half this village into the world.','Now I sit in its cellars and watch it go out again.'],
-      choices:[{id:'what',text:'What happened to you?',next:{lines:['The fog came up the lane one autumn and stopped at the well, like it was waiting to be asked in.','Aldous Crane asked it. Our reeve. He wrote every one of our names in his tithe book, and gave the book away.','A name is what holds you together. Without it the ink grows over you. Slowly. From the outside in.'],
+    if(n===0) return {lines:['Stop there. Let me look at you.','…No ink on you. Not a drop. Good.','The Knox boy. You were always late for supper too.','You’ll not know me like this. It’s Tamsin. I told you stories by the well, when you were small enough to believe them. I brought half this village into the world.','Now I sit in its cellars and watch it go out again.'],
+      choices:[{id:'what',text:'What happened to you?',next:{lines:['The fog came up the lane the night before the spring fair, and stopped at the well, like it was waiting to be asked in.','Aldous Crane asked it. Our reeve. He wrote every one of our names in his tithe book, and gave the book away.','A name is what holds you together. Without it the ink grows over you. Slowly. From the outside in.'],
           choices:[{id:'who',text:'Who else is down here?',next:WHO_ELSE},leave('I’ll go carefully.')]}},
         {id:'who',text:'Who else is down here?',next:WHO_ELSE},leave('I’ll go carefully.')]};
     if(n===1||!S.said.moths) return {lines:['You’ve seen what the moths do to ink, up there. They ate the dark off the lighthouse. We all felt it, down here.','They’d eat this off me too. And there’d be nothing left underneath. It’s gone all the way through. The ink is all that keeps my shape.','That’s the thing about a name. Give a body back its name, and there’s something under the ink again. Something for the moths to leave.'],
@@ -282,7 +282,7 @@ const SCRIPT={
     if(S.names&&!S.named.corwin) return {lines:['You went down. You came back up. Nobody comes back up from the store.','Is that… is that the ledger? He never let me hold it after. Not once.'],
       choices:[nameChoice('corwin'),leave('Not yet.')]};
     if(S.bossDead) return {lines:['It’s very quiet. Is the reeve… is he well?','I should go and see if he wants anything. I always see if he wants anything.']};
-    if(n===0){ S.trapTold=true; return {lines:['A visitor! Oh, how good. How very good. Come in out of the dark.','Corwin. Clerk to the reeve. The rest of it is… misfiled, I’m afraid.',
+    if(n===0){ S.trapTold=true; return {lines:['A visitor! Oh, how good. How very good. Come in out of the dark.','Corwin. Clerk to the reeve. The rest of it is… misfiled, I’m afraid.','Have we met? You’ve a face for dice. I used to win off a boy with a face like that. Every time. Funny, the things you keep.',
         lie('You’ll want the quick way down to the store. Through the cellars: the old root cellar, past the first bay. The boards are new. Perfectly sound.'),
         'And don’t mind Tamsin. She’s been in that cellar a long while. She says things.'],
       choices:[{id:'store',text:'What’s in the store?',next:{lines:['The tithe. Grain, wool, the odd hen. And the reeve, of course, minding all of it.',lie('He’s a friend to you. A friend to everyone. He’d so like to meet you.')]}},
@@ -307,7 +307,7 @@ const SCRIPT={
         leave('I’ll find it.')]}; }
     if(S.registerEcho&&!S.said.wrenEcho){ S.said.wrenEcho=true; return {lines:['You saw it? Through the glass? Where did my page go?'],
       choices:[{id:'store',text:'Down to the store. Crane has it.',next:{lines:['Then he’s got me in his pocket.','Please hurry. I keep forgetting what I was going to say.']}},leave()]}; }
-    if(n===1) return {lines:['My father’s at the mill-race. Hob. He used to sing while the stone turned.','He only says the one thing now. Over and over. Three for the grain, two for the well, one for the reeve.','It was the tithe. How the sacks were shared. He’d count it out on his fingers for me.'],choices:[leave()]};
+    if(n===1) return {lines:['You’re Hesper’s sailor. I know you. She read me every letter you ever sent. The good ones twice.','My father’s at the mill-race. Hob. He used to sing while the stone turned.','He only says the one thing now. Over and over. Three for the grain, two for the well, one for the reeve.','It was the tithe. How the sacks were shared. He’d count it out on his fingers for me.'],choices:[leave()]};
     return {lines:[['Still here. Still me. Mostly.','I tried to say the hymn we sang at harvest. I got as far as the second line.','If you see my father, tell him I’m sweeping. He likes to know I’m busy.'][n%3]],choices:[leave()]};
   },
   hob(n){
@@ -329,7 +329,7 @@ const LAST={
   tamsin:()=>['…Rowe. Tamsin Rowe. My mother’s name was Rowe.','Oh. I’d forgotten how heavy it was. A good weight.',
     ...(S.wren.saved?['And Wren’s warm again. I heard her laugh, up the stair. That’ll do me.']:['Go to Wren. The moths will eat what isn’t her now. Stand by her while they do.']),'Mind the stair, child. I’m going up it.'],
   corwin:()=>['Ashe. Corwin Ashe. I wrote it in myself, in my best hand. He stood behind me while I did.','I told you the boards were sound. They weren’t. I told you he was your friend. He wasn’t.','I said what he wanted said, for so long I forgot I was saying it.','I’m sorry. I think I can stop now.'],
-  hob:()=>['Hob.','Hob Hollis. Miller.',S.wren.saved?'My girl came up the race this morning. Warm hands. Did you see?':'Tell my girl the stone’s turning. Tell her I heard her.','Three for the grain. Two for the well. And one… no. None for the reeve. Not any more.']
+  hob:()=>['Hob.','Hob Hollis. Miller.','…You. You rode my wheel, boy. Round and round, and your da shouting at you to get down.',S.wren.saved?'My girl came up the race this morning. Warm hands. Did you see?':'Tell my girl the stone’s turning. Tell her I heard her.','Three for the grain. Two for the well. And one… no. None for the reeve. Not any more.']
 };
 function speak(id){
   if(!S.names||S.named[id])return null;
@@ -645,8 +645,8 @@ G.on('undercroft:exit',()=>{ if(S.wren.saved&&!S.wren.left){ S.wren.left=true; i
 
 /* ---------------------------------------------------------------- Halloran (creatures.js asks G.creatures.halloranHooks) */
 function halloranHook(){
-  if(S.wren.saved&&S.wren.left&&!S.hal.came){ S.hal.came=true; return 'She came back? …Nobody comes back.'; }
-  if(S.discovered&&!S.hal.hamlet){ S.hal.hamlet=true; return 'The hamlet. Wickham’s End. I bought my lamp oil off the miller’s cart, once. Crane kept the tithe. Kept more than that, by the end.'; }
+  if(S.wren.saved&&S.wren.left&&!S.hal.came){ S.hal.came=true; return 'Wren came back? …Nobody comes back. She and Hesper were thick as thieves, Tide. If anyone knows which way she went, it’s Wren.'; }
+  if(S.discovered&&!S.hal.hamlet){ S.hal.hamlet=true; return 'You’ve been down in Wickham’s End, then. Your da’s house had the green door. Crane kept the tithe. Kept more than that, by the end.'; }
   return null;
 }
 function hookHalloran(){ const C=G.creatures; if(!C)return; if(!C.halloranHooks)C.halloranHooks=[]; if(C.halloranHooks.indexOf(halloranHook)<0)C.halloranHooks.push(halloranHook); }

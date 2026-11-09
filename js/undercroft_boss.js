@@ -536,7 +536,7 @@ function startFight(){
   snd('crane_recite',home);
   if(!S.bossSeen){ S.bossSeen=true;
     G.ui.say('Among the grain bins a tall man in a reeve’s coat is reading aloud from a ledger. His skin is pages. Every name he reads crawls across him in wet ink.',null,{priority:'high'});
-    later(4,()=>G.ui.say('“Wickham’s End. The tithe for the year. All present; all accounted for. All but you.”','Aldous Crane',{priority:'high',key:'crane'})); }
+    later(4,()=>G.ui.say('“Wickham’s End. The tithe for the year. All present; all accounted for. All but you, Knox. You and the keeper’s girl.”','Aldous Crane',{priority:'high',key:'crane'})); }
 }
 function resetFight(why){
   if(!B.built)return;
@@ -734,10 +734,11 @@ function takeLedger(){
   G.flag('titheLedger',true);
   G.emit('undercroft:ledger',{taken:true});
   try{ G.progress&&G.progress.reward&&G.progress.reward({id:'ledger',icon:'ledger',name:'The Tithe Ledger',eyebrow:'Wickham’s End',
-    desc:'Every name in Wickham’s End, in the reeve’s cramped hand. Heavier than a book should be. Some of them might still be given back.',sub:'Speak a name to its owner'}); }catch(e){console.error(e);}
+    desc:'Every name in Wickham’s End in the reeve’s cramped hand, all struck through but one: beside “Hesper Halloran” the line is left blank. Some of the names might still be given back.',sub:'Speak a name to its owner'}); }catch(e){console.error(e);}
   try{ G.flow&&G.flow.writeSave&&setTimeout(()=>{ if(isPlay())G.flow.writeSave(); },800); }catch(e){}
 }
 const LAST_PAGE='I kept my name. I didn’t keep anything else.';
+const LAST_PAGE2='The keeper’s girl would not give hers. She went to give something else.';
 function placeLastPage(pos){
   if(!lastPage.g){
     const M=mats(), g=new THREE.Group();
@@ -750,8 +751,8 @@ function placeLastPage(pos){
 }
 function readLastPage(){
   const t='“'+LAST_PAGE+'”';   // a reading on the conversation card (talk.js), the caption if it can't pause now
-  if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'Aldous Crane’s last page',title:'',portrait:'page',key:'page',lines:[{text:t,who:'Aldous Crane’s last page'}]});
-  else G.ui.say(t,'Aldous Crane’s last page',{priority:'high',key:'page'});
+  if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'Aldous Crane’s last page',title:'',portrait:'page',key:'page',lines:[{text:t,who:'Aldous Crane’s last page'},{text:'Below it, smaller, as if added later: “'+LAST_PAGE2+'”',who:'Aldous Crane’s last page'}]});
+  else{ G.ui.say(t,'Aldous Crane’s last page',{priority:'high',key:'page'}); G.ui.say('“'+LAST_PAGE2+'”','Aldous Crane’s last page',{key:'page2'}); }
   const first=!S.pageRead; S.pageRead=true; G.emit('undercroft:lastPage',{first});
 }
 function updateProps(dt){
