@@ -204,7 +204,7 @@ const T={hp:80,p2:48,p3:20,arenaR:18,startR:12.5,leaveR:21,
   pulseWind:.8,pulseR:3.4,pulseDmg:1,underT:1.6,
   cool:[1.6,2.6],coolP3:[2.4,3.4],
   // phase 3: the sealing
-  sealNeed:8,sealDecay:.03,eatRate:2,shieldR:4.2,seamR:1.7};
+  sealNeed:8,sealDecay:.03,eatRate:2,shieldR:4.2,shieldRate:1.4,seamR:1.7};
 const B={built:false,state:'dormant',st:0,phase:1,hp:T.hp,cool:2,atk:null,flash:0,rise:0,solid:0,outT:0,underT:0,
   handT:T.handFirst,hold:T.holdMax,inkR:T.inkR0,inkTickT:0,seal:0,sealOn:false,glareT:T.glareEvery,heading:0,lastHitT:-9,deadT:0,
   hesper:{pose:'hold',at:V(),hold:1}};
@@ -245,11 +245,11 @@ function answerMat(){
     fragmentShader:`uniform float uTime;uniform float uSolid;uniform float uFade;uniform float uFlash;uniform float uGlare;uniform float uBase;varying vec3 vN;varying vec3 vV;varying vec3 vW;
       void main(){ float f=1.-abs(dot(normalize(vN),normalize(vV)));
         float w=sin(vW.y*3.1-uTime*2.3+sin(vW.x*2.+uTime)*1.4)*.5+.5, w2=sin(vW.y*7.3+uTime*3.7+vW.z*3.)*.5+.5;
-        vec3 glare=vec3(.78,.62,1.)*(.55+1.6*f)+vec3(1.)*uGlare*(.6+.8*w2);
+        vec3 glare=vec3(.62,.46,.95)*(.22+.95*f)+vec3(.9,.85,1.)*uGlare*(.4+.6*w2);
         vec3 solid=vec3(.09,.04,.16)+vec3(.55,.3,1.)*pow(f,2.2)*1.8+vec3(.3,.15,.6)*w*.35;
         vec3 col=mix(glare,solid,uSolid)+vec3(.9,.8,1.)*uFlash;
         float low=smoothstep(uBase,uBase+1.2,vW.y);
-        float a=mix((.12+.5*f)*(.7+.3*w2)+uGlare*.35,.94,uSolid)*uFade*low;
+        float a=mix((.06+.38*f)*(.7+.3*w2)+uGlare*.3,.94,uSolid)*uFade*low;
         if(a<.01)discard; gl_FragColor=vec4(col,clamp(a,0.,1.)); }`});
 }
 function hollowTex(){ return G.canvasTex(128,(g,s)=>{ const gr=g.createRadialGradient(s/2,s/2,0,s/2,s/2,s/2);
@@ -327,7 +327,7 @@ function buildDecals(){
   inkRing=new THREE.Mesh(new THREE.PlaneGeometry(2,2).rotateX(-PI/2),mats().ink); inkRing.visible=false; inkRing.renderOrder=1; G.scene.add(inkRing);
   seamGlow=new THREE.Mesh(new THREE.PlaneGeometry(2,2).rotateX(-PI/2),mats().seam); seamGlow.visible=false; seamGlow.renderOrder=2; G.scene.add(seamGlow);
 }
-let ansHB=null;
+let ansHB=null, seamHB=null, shieldHB=null;
 function build(){
   if(B.built)return; B.built=true; arenaGeo();
   ans=buildAnswer(); buildDecals();
@@ -335,6 +335,14 @@ function build(){
   ansHB={team:'enemy',pos:V(),radius:T.bodyR,height:T.bodyH,targetable:true,corrupt:false,name:'The Answer',lockOffset:3.4,answer:true,
     alive:()=>B.state==='fight'&&B.phase>=2&&B.rise>.6,hit:info=>hitAnswer(info)};
   G.combat.add(ansHB);
+  // phase 3: what the swarm sees (creatures.js only lets moths hunt corrupt hurtboxes that opt in): the Answer's open hollow,
+  // which pulls them all, and Hesper's shield, which keeps the ones she catches (neither takes damage from them)
+  const p3=()=>B.state==='fight'&&B.phase===3;
+  seamHB={team:'enemy',pos:V(),radius:1.2,height:2.6,targetable:false,corrupt:true,name:'The Answer',answerHollow:true,
+    mothPrey:p3,mothRange:30,mothWant:999,mothDamage:0,alive:p3,hit:()=>{}};
+  shieldHB={team:'neutral',pos:V(),radius:1,height:2,targetable:false,corrupt:true,name:'Hesper',hesperShield:true,
+    mothPrey:p3,mothRange:.1,mothWant:1,mothDamage:0,alive:p3,hit:()=>{}};
+  G.combat.add(seamHB); G.combat.add(shieldHB);
 }
 
 /* ---------------------------------------------------------------- telegraphs */
@@ -547,17 +555,21 @@ function hitAnswer(info){
 /* ---------------------------------------------------------------- the moths (phase 3): it pulls them in; Hesper catches some */
 let eatAcc=0; const pulled=new Set(), shielded=new Set(); let ansPrey=null, hesPrey=null;
 function mothsAll(){ const c=G.creatures; return (c&&c.moths)||[]; }
+let shieldAcc=0;
 function pullMoths(dt){
+  shieldAcc=Math.min(2,shieldAcc+dt*T.shieldRate);   // she can only catch so many at once
   const ap=V(seamP.x,floorY+3.4,seamP.z), hp=V(B.hesper.at.x,floorY+1.3,B.hesper.at.z);
-  ansHB.pos.set(seamP.x,floorY,seamP.z);
-  if(!ansPrey)ansPrey={key:ansHB,center:V(),alive:()=>B.state==='fight'&&B.phase===3,r:1.6};
-  if(!hesPrey)hesPrey={key:B.hesper,center:V(),alive:()=>B.state==='fight'&&B.phase===3,r:1.4};
+  ansHB.pos.set(seamP.x,floorY,seamP.z); seamHB.pos.set(seamP.x,floorY+2,seamP.z); shieldHB.pos.set(B.hesper.at.x,floorY,B.hesper.at.z);
+  if(!ansPrey)ansPrey={key:seamHB,center:V(),alive:()=>B.state==='fight'&&B.phase===3,r:1.6};
+  if(!hesPrey)hesPrey={key:shieldHB,center:V(),alive:()=>B.state==='fight'&&B.phase===3,r:1.4};
   ansPrey.center.copy(ap); hesPrey.center.copy(hp);
   for(const m of mothsAll()){
     if(shielded.has(m)){ if(m.tgt!=='hunt')shielded.delete(m); else m.prey=hesPrey; continue; }
     if(pulled.has(m)){ if(m.tgt!=='hunt'){ pulled.delete(m); continue; }
-      m.prey=ansPrey; if(m.p.distanceToSquared(hp)<T.shieldR*T.shieldR){ pulled.delete(m); shielded.add(m); m.prey=hesPrey; m.rad=.4+rnd()*.9; } continue; }
+      if(m.prey&&m.prey.key!==seamHB&&m.prey.key!==shieldHB){ pulled.delete(m); continue; } m.prey=ansPrey;
+      if(shieldAcc>=1&&m.p.distanceToSquared(hp)<T.shieldR*T.shieldR){ shieldAcc-=1; pulled.delete(m); shielded.add(m); m.prey=hesPrey; m.rad=.4+rnd()*.9; } continue; }
     if(m.tgt!=='lantern'&&m.tgt!=='hunt'&&m.tgt!=='wander')continue;
+    if(m.tgt==='hunt'&&m.prey&&m.prey.key!==seamHB)continue;
     if(m.p.distanceToSquared(ap)>30*30)continue;
     m.tgt='hunt'; m.prey=ansPrey; m.rad=.3+rnd()*.6; m.hy=rnd()*.6; m.feedB=null; pulled.add(m);
   }
@@ -664,7 +676,7 @@ function render(dt){
     ans.body.rotation.y=Math.sin(t*.4)*.1; ans.inner.rotation.y=-t*.3;
     ans.hollow.scale.set(1.1+.15*Math.sin(t*1.3)+(B.phase===3?.5:0),1.4+.15*Math.sin(t*1.1),1);
     M.hollow.opacity=k*(.6+.4*B.solid);
-    M.glow.opacity=k*(.25+.55*(1-B.solid)+(B.glareK||0)*.8); ans.glow.scale.set(7+(B.glareK||0)*6,9+(B.glareK||0)*5,1);
+    M.glow.opacity=k*(.12+.22*(1-B.solid)+(B.glareK||0)*.6); ans.glow.scale.set(7+(B.glareK||0)*6,9+(B.glareK||0)*5,1);
     ans.light.intensity=k*(1.2+1.4*B.solid+(B.glareK||0)*3+B.flash);
   }
 }

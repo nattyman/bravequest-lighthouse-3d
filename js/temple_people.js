@@ -222,7 +222,7 @@ function updateSanctum(dt){
     h.pos.y=floorAt(h.pos.x,h.pos.z,h.pos.y+1.5);
   }
   if(h.leaving==='walk'){ const ex=anchor('sanctum','exit')||W(12,-16,-113); const d=ex.clone().sub(h.pos); d.y=0; const L=d.length();
-    if(L<1){ h.leaving='gone'; h.root.visible=false; goneHome(); } else { h.pos.addScaledVector(d.normalize(),Math.min(L,1.4*dt)); h.pos.y=floorAt(h.pos.x,h.pos.z,h.pos.y+1.5); h.yaw+=U.angDiff(Math.atan2(d.x,d.z),h.yaw)*Math.min(1,dt*4); } }
+    if(L<1){ h.leaving='gone'; h.root.visible=false; goneHome(); } else { h.pos.addScaledVector(d.normalize(),Math.min(L,2.2*dt)); h.pos.y=floorAt(h.pos.x,h.pos.z,h.pos.y+1.5); h.yaw+=U.angDiff(Math.atan2(d.x,d.z),h.yaw)*Math.min(1,dt*4); } }
   else {
     // she faces the seam while she holds it; otherwise the player (or the fight)
     const seam=anchor('sanctum','seam')||W(0,-16,-100), pp=P().pos;
@@ -518,8 +518,8 @@ function talkWren(){
 function vigilDoor(){ const t=TP(); if(t&&t.door)return V(t.door.x,t.door.y,t.door.z); const l=LM().vigilDoor; if(l)return V(l.x,l.y,l.z);
   const sp=LM().lanternSpot||{x:-160,y:9,z:9}; const x=sp.x-20, z=sp.z; return V(x,G.world.height?G.world.height(x,z):sp.y,z); }
 function unlock(restored){
-  S.wrenAsked=true;
-  if(S.unlocked&&!restored)return; const first=!S.unlocked; S.unlocked=true;
+  if(!restored)S.wrenAsked=true;
+  const first=!S.unlocked; S.unlocked=true;
   if(first){ const t=TP(); if(t&&t.unlock){ if(!t.unlocked)t.unlock({restored:!!restored,quiet:!!restored}); } else G.emit('temple:unlock',{restored:!!restored}); }
   addMarker();
   if(restored)return;

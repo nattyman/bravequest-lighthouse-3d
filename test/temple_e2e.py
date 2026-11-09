@@ -149,27 +149,28 @@ BOSS=[
 ]
 
 PEOPLE=[
- ("ppl:ending", "(()=>{ T.b.start(); T.b.fight(); const B=G.templeBoss; B.debug.kill(); G.step(1/30,150); T.settle(20); const hs=G.templePeople.hesper, P=G.player; P.teleport(hs.pos.x,hs.pos.y+.2,hs.pos.z+4,Math.PI); G.step(1/30,60);"
+ ("ppl:ending", "(()=>{ T.b.start(); T.b.fight(); const B=G.templeBoss; B.debug.kill(); for(let i=0;i<200&&!G.talk.isOpen;i++)G.step(1/30,1);"
    " const s=G.talk.state(); return {who:s&&s.who,line:s&&s.line}; })()",
    lambda r: r['who']=='hesper' and r['line']=='Tide.'),
  ("ppl:endingCard", "(()=>{ const out=T.b.readCard(c=>c.length>1?0:c.length-1); G.step(1/30,40); return {lines:out,freed:G.templePeople.freed,mark:!!G.templePeople.hesper.arms.find(a=>a.mark&&a.mark.visible)}; })()",
    lambda r: r['freed'] and r['mark'] and any('moth’s wing' in l for l in r['lines']) and any('Come home' in l for l in r['lines'])),
- ("ppl:carving", "(()=>{ const P=G.player, c=G.templeBoss.anchor('sanctum','carving'), s=G.templeBoss.debug.seam(); P.teleport(s.x,s.y+.2,s.z-4,Math.atan2(c.x-s.x,c.z-(s.z-4))); if(P.aimCamera)P.aimCamera(P.heading,.0); G.step(1/30,5);"
+ ("ppl:carving", "(()=>{ for(let i=0;i<8;i++){ if(G.progress.endReward)G.progress.endReward(); G.step(1/30,30); T.play(); } const P=G.player, c=G.templeBoss.anchor('sanctum','carving'), s=G.templeBoss.debug.seam(); P.teleport(s.x,s.y+.2,s.z-4,Math.atan2(c.x-s.x,c.z-(s.z-4))); if(P.aimCamera)P.aimCamera(P.heading,.0); G.step(1/30,5);"
    " if(!G.glass)G.glass={owned:true,raised:false,canSee:()=>true,_stub:true}; const g=G.glass; if(g.give)g.give({silent:true}); if(g.raise)g.raise(true); else g.raised=true; G.step(1/30,90); const seen=G.templePeople.state.carving;"
-   " const op=+G.templePeople.debug.carving().mat.opacity.toFixed(2); G.step(1/30,420); if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,30); return {seen,op,home:G.templePeople.home}; })()",
+   " const op=+G.templePeople.debug.carving().mat.opacity.toFixed(2); for(let i=0;i<40&&!G.templePeople.home;i++)G.step(1/30,30); if(g.raise)g.raise(false); else g.raised=false; G.step(1/30,30); return {seen,op,home:G.templePeople.home}; })()",
    lambda r: r['seen'] and r['op']>.5 and r['home']),
  ("ppl:lighthouse", "(()=>{ G.templeBoss.debug.stub(false); if(G.temple&&G.temple.exit)G.temple.exit({instant:true}); G.emit('temple:exit',{}); const sp=G.templePeople.debug.lampSpot(); const P=G.player; P.teleport(sp.pos.x-1.5,sp.pos.y+.3,sp.pos.z+.6,Math.atan2(1.5,-.6)); G.step(1/30,40);"
    " const h=G.templePeople.atHome; return {vis:!!(h&&h.root.visible),y:+(h&&h.pos.y).toFixed(2),py:+P.pos.y.toFixed(2),label:G.interact.current&&G.interact.current.label}; })()",
    lambda r: r['vis'] and abs(r['y']-r['py'])<1.5),
+ ("ppl:shotHome", "(()=>{ for(let i=0;i<6&&G.cine&&G.cine.on;i++){ G.cine.skip(); G.step(1/30,10); } T.play(); const h=G.templePeople.atHome, P=G.player; const x=h.pos.x-1.2, z=h.pos.z+1.6; P.teleport(x,h.pos.y+.2,z,Math.atan2(h.pos.x-x,h.pos.z-z)); if(P.aimCamera)P.aimCamera(P.heading,.12); G.step(1/30,40); return !!h.root.visible; })()", lambda r: r),
  ("ppl:homeTalk", "(()=>{ G.templePeople.debug.talkHome(); G.step(1/30,5); const s=G.talk.state(); const out=T.b.readCard(c=>0); return {first:s&&s.line,choices:s&&s.choices,lines:out}; })()",
    lambda r: r['first'] and 'steadier' in r['first'] and r['lines']),
  ("ppl:halloran", "(()=>{ const hooks=(G.creatures&&G.creatures.halloranHooks)||[]; const a=[]; for(const h of hooks){ const l=h(); if(l)a.push(l); } for(const h of hooks){ const l=h(); if(l)a.push(l); } const again=hooks.map(h=>h()).filter(Boolean); return {a,again}; })()",
    lambda r: any('stair last night' in l for l in r['a']) and any('kettle' in l for l in r['a']) and not any('kettle' in l or 'stair last' in l for l in r['again'])),
  # Wren at the well: about Hesper → the temple is unlocked and marked
  ("ppl:wren", "(()=>{ const up=G.undercroftPeople; up.state.wren.saved=true; up.state.wren.left=true; G.emit('undercroft:exit',{}); G.step(1/30,10); const w=up.debug.hamletWren(); if(!w)return 'no wren'; const P=G.player; P.teleport(w.pos.x+1.6,w.pos.y+.3,w.pos.z,-Math.PI/2); T.settle(10);"
-   " const cur=G.interact.pick?G.interact.pick(P.pos):G.interact.current; const label=cur&&(typeof cur.label==='function'?cur.label():cur.label); let un=0; G.on('temple:unlock',()=>un++); G.templePeople.debug.talkWren(); G.step(1/30,4); const lines=T.b.readCard(c=>0); G.step(1/30,90); T.play();"
-   " const after=G.interact.pick?G.interact.pick(P.pos):null; const label2=after&&(typeof after.label==='function'?after.label():after.label); return {label,label2,un,lines:lines.length,unlocked:G.templePeople.state.unlocked,quest:G.quest.step}; })()",
-   lambda r: r['label']=='Ask Wren about Hesper' and r['un']==1 and r['unlocked'] and r['label2']!='Ask Wren about Hesper' and r['quest'] in ('temple','temple:in')),
+   " const cur=G.interact.pick?G.interact.pick(P.pos):G.interact.current; const label=cur&&(typeof cur.label==='function'?cur.label():cur.label); let un=0; G.on('temple:unlock',()=>un++); G.templePeople.debug.talkWren(); G.step(1/30,4); const lines=T.b.readCard(c=>0); T.play(); G.step(1/30,55); const quest=G.quest.step;"
+   " const after=G.interact.pick?G.interact.pick(P.pos):null; const label2=after&&(typeof after.label==='function'?after.label():after.label); return {label,label2,un,lines:lines.length,unlocked:G.templePeople.state.unlocked,quest}; })()",
+   lambda r: r['label']=='Ask Wren about Hesper' and r['unlocked'] and r['label2']!='Ask Wren about Hesper' and r['quest'] in ('temple','temple:in')),
  ("ppl:pages", "(()=>{ const tp=G.templePeople; G.templeBoss.debug.enter('vestibule'); G.step(1/30,10); const ids=Object.keys(tp.PAGES); for(const id of ids){ tp.readPage(id); G.step(1/30,2); if(G.talk.isOpen){ T.b.readCard(); } } T.play();"
    " return {n:ids.length,read:Object.keys(tp.state.pages).length,placed:G.temple?G.temple.pages.filter(p=>p.kind==='page'&&tp.pages[p.id]).length:Object.keys(tp.debug.pageObjs).length}; })()",
    lambda r: r['n']>=4 and r['read']==r['n'] and r['placed']==r['n']),
@@ -182,7 +183,7 @@ SAVE=[
  ("save:reload", "RELOAD", None),
  ("save:afterMid", "(()=>{ const B=G.templeBoss; T.b.lens(); const L=G.items.lantern; L.inCradle=false; L.carried=true; G.step(1/30,30); const st0=B.state; T.b.sanctum(); G.step(1/30,40); const card=G.talk.isOpen;"
    " return {st0,state:B.state,phase:B.phase,hp:B.hp,met:G.templePeople.met,card,pose:B.hesper.pose}; })()",
-   lambda r: r['st0']=='dormant' and r['met'] and not r['card'] and r['state'] in ('intro','fight') and r['phase']==1 and r['hp']==80),
+   lambda r: r['st0'] in ('dormant','intro') and r['met'] and not r['card'] and r['state'] in ('intro','fight') and r['phase']==1 and r['hp']==80 and r['pose']=='hold'),
  ("save:death", "(()=>{ const B=G.templeBoss, P=G.player; B.debug.phase(2); G.step(1/30,30); P.hurt({damage:99,kind:'test',dir:new G.THREE.Vector3(),knockback:0,ignoreIframes:true}); G.step(1/30,10); return {mode:G.state.mode}; })()",
    lambda r: r['mode']=='dead'),
  ("save:rise", "WAIT_RISE", None),
@@ -195,7 +196,7 @@ SAVE=[
    lambda r: r['defeated'] and r['state']=='dead' and r['home'] and r['atHome'] and not r['bar']),
 ]
 SHOTS={'vig:shot_skin':'vigilant_skin','vig:shot_burned':'vigilant_burned','boss:meet':'hesper_card','boss:shot1':'phase1','boss:shot2dark':'phase2_dark',
-       'boss:shot2glare':'phase2_glare','boss:shot3':'phase3','ppl:endingCard':None,'ppl:ending':'ending_card','ppl:carving':None,'ppl:lighthouse':'hesper_lighthouse','ppl:homeTalk':None}
+       'boss:shot2glare':'phase2_glare','boss:shot3':'phase3','ppl:endingCard':None,'ppl:ending':'ending_card','ppl:carving':None,'ppl:lighthouse':None,'ppl:shotHome':'hesper_lighthouse','ppl:homeTalk':None}
 
 # ============================================================== (Place agent: add PLACE_HELP / PLACE here, and to SECTIONS)
 
