@@ -221,7 +221,7 @@ VIGIL=[
    " const vis=m.parts.skin.visible; return {skin:m.skin,t:+t.toFixed(2),vis}; })()",
    lambda r: r['skin']==0 and 1.0<=r['t']<=1.6 and r['vis'] is False),
  ("vig:shot_burned", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); T.hold(); T.b.near(m,4.2); T.b.side(m); m.state='chase'; G.step(1/30,2); return m.skin; })()", lambda r: r==0),
- ("vig:kill", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive&&!m.skin); let n=0; while(m.alive&&!m.dying&&n<6){ T.hold(); T.b.strike(m.pos,2); n++; G.step(1/30,3); } return {n,dying:m.dying}; })()",
+ ("vig:kill", "(()=>{ let m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive&&!m.dying&&!m.skin); if(!m){ m=T.b.vig('reliquary')[0]; T.hold(); T.b.near(m,3.5); for(let i=0;i<60&&m.skin;i++){ T.hold(); T.b.aim(m.skinPos); G.step(1/30,1); } T.b.unaim(); } T.b.near(m,2); let n=0; while(m.alive&&!m.dying&&n<6){ T.hold(); T.b.strike(m.pos,2); n++; G.step(1/30,3); } return {n,dying:m.dying}; })()",
    lambda r: r['dying'] and r['n']==3),
  # one attack: a long readable wind-up (sleeves rise), then a 2-half-heart sweep
  ("vig:attack", "(()=>{ const vs=T.b.vig('reliquary'); const m=vs[0]; for(const o of vs.slice(1))G.monsters.despawn(o); T.b.shut(false); T.hold(); T.b.near(m,1.8); m.state='chase'; m.cool=0; const P=G.player, hp0=P.hp; let wind=null, hit=null, t=0;"
