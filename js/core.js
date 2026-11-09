@@ -658,12 +658,13 @@ G.combat={
     if(hits.length)G.emit('strike',{hits,team:o.team,kind:o.kind});
     return hits;
   },
-  /** best lock-on candidate in front of `from` facing `dir` (Vector3) */
-  nearestTarget(from,maxDist=18,dir=null,team='enemy'){
+  /** best lock-on candidate in front of `from` facing `dir` (Vector3); prio: a hurtbox flagged lockPriority wins wherever it is */
+  nearestTarget(from,maxDist=18,dir=null,team='enemy',prio=false){
     let best=null,bs=1e9;
     for(const hb of G.hurtboxes){ if(hb.team!==team||hb.targetable===false||(hb.alive&&!hb.alive()))continue;
-      const dx=hb.pos.x-from.x,dz=hb.pos.z-from.z,d=Math.hypot(dx,dz); if(d>maxDist)continue;
-      let s=d; if(dir){const dot=(dx*dir.x+dz*dir.z)/Math.max(d,1e-3); s=d*(1.6-dot);}
+      const dx=hb.pos.x-from.x,dz=hb.pos.z-from.z,d=Math.hypot(dx,dz), pri=prio&&!!hb.lockPriority; if(d>maxDist+(pri?4:0))continue;
+      let s=d; if(dir&&!pri){const dot=(dx*dir.x+dz*dir.z)/Math.max(d,1e-3); s=d*(1.6-dot);}
+      if(pri)s-=1000;   // hb.lockPriority (a crab on the raft): chosen first, wherever the camera points
       if(s<bs){bs=s;best=hb;} }
     return best;
   },
