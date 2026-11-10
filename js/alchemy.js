@@ -97,6 +97,8 @@ const A=G.alchemy={
   },
   canBrew(id){ const r=RECIPES[id]; if(!r||!A.known.has(id))return false; if(r.potion&&(!G.potions||potionsFull()))return false; for(const k in r.needs)if(!G.inv.has(k,r.needs[k]))return false; return true; },
   brew(id,o={}){ return brew(id,o); },
+  /** sparkles off the bench whose panel is open, and its burner flaring (progression.js: tempering) */
+  benchFx(hex,n,o){ const tb=activeTable||table; if(!tb)return; sparkle(tb.world.clone().setY(tb.world.y+tb.sparkleY),hex||'#c4a0ff',n||18,o||{}); brewT=Math.max(brewT,.6); setTimeout(()=>{ if(!brewing)brewT=0; },650); },
   pour(){ return pour(); },
   openTable(t){ activeTable=t||table; openPanel(); },
   closeTable(){ closePanel(); },

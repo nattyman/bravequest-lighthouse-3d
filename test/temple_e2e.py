@@ -224,6 +224,11 @@ VIGIL=[
  ("vig:shot_burned", "(()=>{ const m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive); T.hold(); T.b.near(m,4.2); T.b.side(m); m.state='chase'; G.step(1/30,2); return m.skin; })()", lambda r: r==0),
  ("vig:kill", "(()=>{ let m=G.templeBoss.monsters.find(m=>m.kind==='vigilant'&&m.alive&&!m.dying&&!m.skin); if(!m){ m=T.b.vig('reliquary')[0]; T.hold(); T.b.near(m,3.5); for(let i=0;i<60&&m.skin;i++){ T.hold(); T.b.aim(m.skinPos); G.step(1/30,1); } T.b.unaim(); } T.b.near(m,2); let n=0; while(m.alive&&!m.dying&&n<6){ T.hold(); T.b.strike(m.pos,2); n++; G.step(1/30,3); } return {n,dying:m.dying}; })()",
    lambda r: r['dying'] and r['n']==3),
+ # playtest 2026-11-09: the staff alone cracks the skin after 4 blows (then 3 more kill it); and locked on, the beam finds the skin
+ ("vig:crack", "(()=>{ const vs=T.b.vig('reliquary'); const m=vs[0]; let n=0, burnBy=null; G.on('vigilant:burn',e=>{ if(e.monster===m)burnBy=e.by; }); while(m.alive&&!m.dying&&n<12){ T.hold(); T.b.near(m,2); T.b.strike(m.pos,2); n++; G.step(1/30,20); } return {n,dying:m.dying,burnBy}; })()",
+   lambda r: r['dying'] and r['n']==7 and r['burnBy']=='staff'),
+ ("vig:lockBeam", "(()=>{ const vs=T.b.vig('reliquary'); const m=vs[0]; T.hold(); T.b.near(m,4); G.player.lockTarget=m.hb; G.lens.focus(true); let t=0; for(let i=0;i<90&&m.skin;i++){ T.hold(); G.player.lockTarget=m.hb; G.step(1/30,1); t++; } G.lens.focus(false); G.player.lockTarget=null; G.step(1/30,2); return {skin:m.skin,secs:+(t/30).toFixed(1)}; })()",
+   lambda r: r['skin']==0 and r['secs']<2.5),
  # one attack: a long readable wind-up (sleeves rise), then a 2-half-heart sweep
  ("vig:attack", "(()=>{ const vs=T.b.vig('reliquary'); const m=vs[0]; for(const o of vs.slice(1))G.monsters.despawn(o); T.b.shut(false); T.hold(); T.b.near(m,1.8); m.state='chase'; m.cool=0; const P=G.player, hp0=P.hp; let wind=null, hit=null, t=0;"
    " for(let i=0;i<120;i++){ G.step(1/30,1); t+=1/30; if(m.state==='windup'&&wind==null)wind=t; if(P.hp<hp0&&hit==null){hit=t;break;} } return {lead:hit&&wind?+(hit-wind).toFixed(2):null,dmg:hp0-P.hp}; })()",

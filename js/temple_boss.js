@@ -175,8 +175,11 @@ G.on('vigilant:notice',e=>{ if(!inside())return;
 G.on('vigilant:lost',()=>{ if(!inside())return; const L=lantern();
   if(L&&L.shut)say('vigLost','In the dark it stops, and stands, listening. Then it turns back to its vigil.',null,{priority:'normal'}); });
 G.on('vigilant:glance',e=>{ if(!inside()||!e||e.kind==='swarm')return;
-  say('vigGlance',lensOwned()?'The staff skids off its skin of ink. Burn the ink off with the Lens first.':'The staff skids off its skin of ink as if off wet slate. Shut the lantern: it hunts your light.',null,{priority:'high'}); });
-G.on('vigilant:burn',()=>{ if(!inside())return; say('vigBurn','Under the beam the ink chars and peels away. Underneath it’s only grey robes and fog. That you can hit.',null,{priority:'high'}); snd('vigilant_burn',null); });
+  say('vigGlance',lensOwned()?'The staff skids off its skin of ink, but the ink cracks. Keep hitting, or burn it off faster with the Lens: lock on and hold the shutter.':'The staff skids off its skin of ink as if off wet slate, but the ink cracks. Keep hitting. Or shut the lantern: it hunts your light.',null,{priority:'high'}); });
+G.on('vigilant:burn',e=>{ if(!inside())return;
+  if(e&&e.by==='staff')say('vigCrack','The ink skin splits and falls away in flakes. Underneath it’s only grey robes and fog. That you can hit.',null,{priority:'high'});
+  else say('vigBurn','Under the beam the ink chars and peels away. Underneath it’s only grey robes and fog. That you can hit.',null,{priority:'high'});
+  snd('vigilant_burn',null); });
 
 
 /* =====================================================================

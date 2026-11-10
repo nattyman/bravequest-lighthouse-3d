@@ -419,7 +419,7 @@ function reconcile(quiet){
 
 /* ---------------------------------------------------------------- the reward moment */
 const queue=[]; const reward={active:null,t:0};
-const LIFT=1.7, CARD=3.6;
+const LIFT=1.7, CARD=7;   // the card stays up 7 s (playtest 2026-11-09: 3.6 s was gone before you'd read what was inside)
 let card=null, liftObj=null;
 function later(s,fn){ pend.push({t:s,fn}); }
 const pend=[];
@@ -432,6 +432,8 @@ function startReward(o){
   p.camPull={yaw:(p.heading||0)+PI,pitch:.1,dist:3.4,rate:4};
   liftObj=relicFor(o.icon); liftObj.scale.multiplyScalar(1.15); root.add(liftObj);
   showCard(o); sting(o.icon==='heart'||o.icon==='shard'&&o.pips===4);
+  // and it goes in the message log (L), so a reward you missed can be read again
+  try{ if(G.ui&&G.ui.logLine)G.ui.logLine(o.name+(o.desc?'. '+o.desc:'')+(o.sub?' ('+o.sub+')':''),o.eyebrow||'Found'); }catch(_){}
 }
 function endLift(){
   if(reward.lifted)return; reward.lifted=true;
@@ -562,6 +564,16 @@ const CSS=`
 #temperList{display:grid;gap:8px}
 .tmp-up{display:grid;grid-template-columns:34px 1fr auto;gap:4px 12px;align-items:center;padding:9px 12px;border-radius:3px;background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 1px rgba(60,40,30,.18)}
 .tmp-up.ready{background:rgba(165,108,255,.13);box-shadow:inset 0 0 0 1px rgba(75,56,99,.45)}
+.tmp-busy{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:8px;border-radius:3px;background:rgba(255,170,90,.16);box-shadow:inset 0 0 0 1px rgba(170,100,40,.4);animation:tmpGlow .9s infinite alternate}
+.tmp-busy svg{width:30px;height:30px;flex:none;transform-origin:50% 80%}
+.tmp-busy span{font-family:var(--serif);font-style:italic;font-size:16px;color:#6a3a1e}
+.tmp-busy.strike svg{animation:tmpStrike .35s ease-out}
+.tmp-up.working{box-shadow:inset 0 0 0 2px rgba(220,140,60,.7);background:rgba(255,170,90,.14)}
+.tmp-up.just{animation:tmpDone 1.4s ease-out}
+@keyframes tmpGlow{from{background:rgba(255,170,90,.1)}to{background:rgba(255,190,110,.3)}}
+@keyframes tmpStrike{0%{transform:scale(1.25) rotate(-8deg);filter:brightness(1.8)}100%{transform:none;filter:none}}
+@keyframes tmpDone{0%{background:rgba(255,220,140,.75);transform:scale(1.03)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.tmp-busy,.tmp-busy.strike svg,.tmp-up.just{animation:none}}
 .tmp-up.owned{background:rgba(200,162,76,.16);box-shadow:inset 0 0 0 1px rgba(138,106,46,.45)}
 .tmp-up>svg{width:30px;height:30px}
 .tmp-up .nm{font-family:var(--serif);font-size:18.5px;color:#21161f;line-height:1.15}
@@ -645,6 +657,28 @@ function buy(id,o={}){
   if(!o.silent)rewardFn({id:'upgrade',icon:id,name:u.name,eyebrow:'Tempered at the keeper’s bench',desc:u.effect+'.',sub:marksHeld()+' '+(marksHeld()===1?'Mark':'Marks')+' left'});
   renderTemper(); autosave(); return true;
 }
+/* tempering takes a moment, like brewing (playtest 2026-11-09: it used to happen the instant you clicked): ~3 s of the
+   violet flame and four hammer strikes, sparks off the bench, then the upgrade and its reward card. buy() stays instant
+   (tests, gifts, saves); the Temper button goes through temper(). */
+const TEMPER_S=3, TEMPER_STRIKES=[.3,1.0,1.7,2.4];
+let tempering=null, justTempered=null;
+function temperClang(i){
+  const A=G.audio; if(!A||!A.ready||!A.S||!A.context)return;
+  const t=A.context.currentTime, S2=A.S;
+  try{ S2.clank&&S2.clank(t,{g:.13+.02*i}); S2.thud&&S2.thud(t,{g:.18,dur:.2}); if(i===TEMPER_STRIKES.length-1)S2.bell&&S2.bell(t+.05,57,{g:.12,decay:3}); }catch(_){}
+}
+function temper(id){
+  if(tempering||owns(id)||!canBuy(id))return false;
+  tempering={id}; renderTemper();
+  G.emit('progress:tempering',{id});
+  const fx=(h,n,o)=>{ try{ G.alchemy&&G.alchemy.benchFx&&G.alchemy.benchFx(h,n,o); }catch(_){} };
+  fx('#c4a0ff',14,{radius:.25,up:1.2});
+  TEMPER_STRIKES.forEach((s,i)=>setTimeout(()=>{ if(!tempering)return; temperClang(i); fx('#ffc070',10+i*5,{radius:.2,up:1.4+i*.3});
+    const el=listEl&&listEl.querySelector('.tmp-busy'); if(el){ el.classList.remove('strike'); void el.offsetWidth; el.classList.add('strike'); } },s*1000));
+  setTimeout(()=>{ const t=tempering; tempering=null; if(!t)return; justTempered=t.id; const ok=buy(t.id); fx('#c4a0ff',ok?44:8,{radius:.35,up:2.4});
+    setTimeout(()=>{ justTempered=null; renderTemper(); },1600); },TEMPER_S*1000);
+  return true;
+}
 function injectTemper(){
   const panel=$('alchemy'); if(!panel||tabsEl)return !!tabsEl;
   const head=panel.querySelector('.alch-head'); if(!head)return false;
@@ -653,7 +687,7 @@ function injectTemper(){
   head.after(tabsEl);
   listEl=document.createElement('div'); listEl.id='temperList'; tabsEl.after(listEl);
   tabsEl.addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b)setTab(b.dataset.tab,true); });
-  listEl.addEventListener('click',e=>{ const b=e.target.closest('[data-buy]'); if(b&&!b.disabled)buy(b.dataset.buy); });
+  listEl.addEventListener('click',e=>{ const b=e.target.closest('[data-buy]'); if(b&&!b.disabled)temper(b.dataset.buy); });
   // left/right (keys or d-pad via the pad's arrow emulation) switch tabs when a tab has focus
   tabsEl.addEventListener('keydown',e=>{ if(e.code==='ArrowRight'||e.code==='ArrowLeft'){ setTab(tab==='brew'?'temper':'brew',true); e.preventDefault(); } });
   return true;
@@ -674,12 +708,14 @@ function renderTemper(){
   if(tab!=='temper')return;
   const keep=document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.buy;
   let h='';
+  if(tempering){ const tu=UP[tempering.id];
+    h+=`<div class="tmp-busy" aria-live="polite">${ICON[tempering.id]||''}<span>Tempering ${esc(tu?tu.name:'')}… the violet flame takes the metal</span></div>`; }
   for(const u of UPGRADES){
-    const own=owns(u.id), ok=canBuy(u.id), av=available(u);
+    const own=owns(u.id), ok=canBuy(u.id)&&!tempering, av=available(u);
     const cost=own?'':Object.keys(u.cost).map(k=>`<span class="${have(k)<u.cost[k]?'short':''}">${INV_ICON[k]||''}${u.cost[k]} ${esc(NAMES[k]||k)}${u.cost[k]>1&&k!=='kelp'&&k!=='ichor'?'s':''} <small style="font-weight:400;color:#7a6a6e">(${have(k)})</small></span>`).join('');
-    h+=`<div class="tmp-up${own?' owned':ok?' ready':''}">${ICON[u.id]}<div><div class="nm">${esc(u.name)}</div><div class="eff">${esc(u.effect)}</div>
+    h+=`<div class="tmp-up${own?' owned':ok?' ready':''}${justTempered===u.id?' just':''}${tempering&&tempering.id===u.id?' working':''}">${ICON[u.id]}<div><div class="nm">${esc(u.name)}</div><div class="eff">${esc(u.effect)}</div>
       ${own?'':`<div class="note">${esc(av?u.desc:'Needs the moth jar from the sea cave first.')}</div><div class="tmp-cost">${cost}</div>`}</div>
-      ${own?`<span class="own">${S.upgrades[u.id]==='gift'?'Given':'Tempered'}</span>`:`<button class="btn" type="button" data-buy="${u.id}" ${ok?'':'disabled'} aria-label="Temper ${esc(u.name)}">Temper</button>`}</div>`;
+      ${own?`<span class="own">${S.upgrades[u.id]==='gift'?'Given':'Tempered'}</span>`:`<button class="btn" type="button" data-buy="${u.id}" ${ok?'':'disabled'} aria-label="Temper ${esc(u.name)}">${tempering&&tempering.id===u.id?'Tempering…':'Temper'}</button>`}</div>`;
   }
   listEl.innerHTML=h;
   if(keep){ const f=listEl.querySelector(`[data-buy="${keep}"]:not(:disabled)`)||listEl.querySelector('[data-buy]:not(:disabled)')||$('tabTemper'); try{f.focus({preventScroll:true});}catch(_){f.focus();} }
@@ -770,7 +806,7 @@ G.persist.register('progress',{
 
 /* ---------------------------------------------------------------- API */
 const API=G.progress={
-  reward:rewardFn, state:S, UPGRADES, owns, buy, canBuy, maxHp, apply:()=>apply(),
+  reward:rewardFn, state:S, UPGRADES, owns, buy, temper, get tempering(){ return tempering&&tempering.id; }, canBuy, maxHp, apply:()=>apply(),
   get marks(){ return marksHeld(); }, get shards(){ return shardN(); }, get wings(){ return wingN(); },
   get spots(){ return SPOTS; }, get caches(){ return CACHES; }, get busy(){ return !!reward.active||queue.length>0; },
   get rewarding(){ return reward.active?reward.active.id:null; },

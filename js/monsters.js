@@ -1600,7 +1600,7 @@ function startStag(){
    vigilant:lost {monster}, vigilant:glance {monster, kind}, vigilant:burn {monster}.
    ===================================================================== */
 P.vigilant={hp:5,radius:.45,height:2.4,aggro:16,hear:25,touch:2.4,lose:3.2,speed:2.7,wander:.55,strikeRange:2.3,strikeWind:.85,
-  strikeDmg:2,strikeDist:1.4,recover:.95,hurt:.4,burn:1.2,searchT:2.6};
+  strikeDmg:2,strikeDist:1.4,recover:.95,hurt:.4,burn:1.2,searchT:2.6,cracks:4};
 function lensOn(){ const L=G.lens; return !!(L&&L.focused); }
 function lanternOpenCarried(){ const L=G.items&&G.items.lantern; return !!(L&&L.found&&L.carried&&L.lit&&L.lit()); }
 function vigilantSenses(m,pp,dP){
@@ -1690,13 +1690,13 @@ function burnByBeam(m,dt){
   if(beamTouches(m.skinPos,.95)){ m.burnT+=dt; if(m.burnT>=P.vigilant.burn)burnSkin(m); }
   else m.burnT=Math.max(0,m.burnT-dt*.5);
 }
-function burnSkin(m){
+function burnSkin(m,by){
   if(!m.skin||!m.alive||m.dying)return;
   m.skin=0; lensBurnRemove(m); m.flash=1;
   const I=INK(); if(I){ m.center.set(m.pos.x,m.pos.y+1.4,m.pos.z); I.burst(m.center,{n:30,speed:2.4,size:[.4,1.2],life:[.6,1.3],up:1.8,embers:24,drops:6}); }
   for(let k=0;k<14;k++)ember(m.pos.x+(rnd()-.5)*.6,m.pos.y+.4+rnd()*1.8,m.pos.z+(rnd()-.5)*.6,(rnd()-.5)*1.5,1.5+rnd()*2,(rnd()-.5)*1.5,.8+rnd()*.6,.2);
   if(m.state==='idle'||m.state==='search'||m.state==='return'){ m.aggro=true; setState(m,'chase'); }
-  G.emit('vigilant:burn',{monster:m,pos:m.pos.clone()});
+  G.emit('vigilant:burn',{monster:m,pos:m.pos.clone(),by:by||'lens'});
 }
 /* staff, bolt and swarm all glance off the ink skin (no damage); true = the hit was turned */
 function vigilantGlance(m,info){
@@ -1706,6 +1706,8 @@ function vigilantGlance(m,info){
   if(info.kind!=='swarm'){ sparks(m.center,8,.6); m.kv.x+=dir.x*.8; m.kv.z+=dir.z*.8; }
   if(m.state==='idle'||m.state==='search'||m.state==='return'){ m.aggro=true; setState(m,'chase'); }
   G.emit('vigilant:glance',{monster:m,kind:info.kind});
+  // playtest 2026-11-09 ("impossible to kill"): enough blows crack the skin too. The Lens is quicker; the staff still works
+  if(info.kind!=='swarm'){ m.cracks=(m.cracks||0)+1; if(m.cracks>=P.vigilant.cracks)burnSkin(m,'staff'); }
   return true;
 }
 function updateVigilant(m,dt){

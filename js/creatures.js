@@ -983,7 +983,8 @@ const HAL_PRE=[
   'Last spring. The night before the fair. The fog came in, the lamp went wrong, and by morning Wickham’s End was gone. Not burned. Unmade. Nobody’s been up the tower since. Nobody who came back down, anyway.',
   'Don’t look at the arm. I know. It started with the arm, the night the lamp went wrong, and it’s been climbing since. Nineteen years I kept that light. Now I can’t stand to be near it.',
   'Funny thing about moths. Out here they gather where there’s nothing to see at all. She said that meant something. I never asked what.',
-  'Go on, Tide. I’ll keep.'
+  'Go on, Tide. I’ll keep.',
+  'And Tide. The old trunk against the back wall of the cottage. She put something of yours in there the winter you left, and she wouldn’t let me so much as lift the lid. Go and see.'   // [9] playtest 2026-11-09: until it's taken
 ];
 /* after the storm lantern failed in the lamp room: he waits at the foot of the tower */
 const HAL_FAIL=[
@@ -1294,7 +1295,7 @@ function halloranAt(pos,yaw){
    Every line he says is still a 'talk' event {who:'Halloran', line, index (in that part's list), phase} — flow.js moves
    the objective on from those, audio.js murmurs them. */
 const HAL_TALK={
-  start:{lines:()=>HAL_PRE, open:s=>s.talks?[4]:[0,1,2], topics:[
+  start:{lines:()=>HAL_PRE, open:s=>(s.talks?[4]:[0,1,2]).concat(G.items.cloak&&G.items.cloak.owned?[]:[9]), topics:[
     {id:'hesper',text:'Where’s Hesper?',say:s=>s.heard[4]?[3]:[3,4]},
     {id:'here',text:'What happened here?',say:[5]},
     {id:'arm',text:'What happened to you?',say:[6]},

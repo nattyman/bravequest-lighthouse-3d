@@ -106,7 +106,15 @@ function aim(){
   const L=lantern(), cam=G.camera; if(!L||!cam)return false;
   const origin=(L.world&&L.world.lengthSq()>0)?L.world:G.player.pos.clone().add(V(0,1.1,0));
   if(S.aimAt){ beam.origin.copy(origin); beam.dir.copy(S.aimAt).sub(origin).normalize(); return true; }
-  cam.getWorldDirection(_d);
+  // locked on (Q): the beam goes to what you're locked on to — its ink skin if it has one (playtest 2026-11-09: with the
+  // camera swinging round a Vigilant the crosshair kept missing it, so the beam never burned and they seemed unkillable)
+  const lt=G.player&&G.player.lockTarget;
+  if(lt&&lt.pos&&(!lt.alive||lt.alive())){
+    const sk=burnables.find(q=>q.hb===lt&&!(q.burned&&!q.keep)&&(!q.enabled||q.enabled()));
+    if(sk)_t.copy(sk.pos); else _t.set(lt.pos.x,lt.pos.y+(lt.height||1.6)*.55,lt.pos.z);
+    beam.origin.copy(origin); beam.dir.copy(_t).sub(origin).normalize(); if(isFinite(beam.dir.x)&&beam.dir.lengthSq()>.5)return true;
+  }
+  cam.updateMatrixWorld(); cam.getWorldDirection(_d);
   // the point under the crosshair (or far along it)
   let far=40; const w=worldHit(cam.position,_d,40); if(w)far=w.dist;
   _t.copy(cam.position).addScaledVector(_d,Math.max(far,4));

@@ -76,7 +76,8 @@ Persist with the item (`G.items.lens`), and a reward card when found.
 ## Monsters and the boss
 - **Vigilants** (new): hollow-eyed acolytes in grey robes of fog, with an ink skin. They hunt by light: lantern open or beam on
   → they come; shutter shut → they lose you after a few seconds. Staff hits glance off the ink skin until the beam burns it
-  (then they're ordinary). 2–4 per room, never in the sanctum.
+  (then they're ordinary). Playtest 2026-11-09: four glancing staff blows also crack the skin off, and while you're locked on (Q)
+  the beam goes straight to the locked Vigilant's skin. 2–4 per room, never in the sanctum.
 - Plus existing hollows and 2 hounds (the well).
 - **The boss: The Answer** — what has been pressing through the seam since spring. Fight target 4–5 minutes.
   - Phase 1 (Hesper still holding): hands of ink reach up out of the seam around her; burn their skin with the beam, strike them;

@@ -1303,7 +1303,10 @@ function buildCottage(kit,r){
     fk.box('fwood',.42,.08,.04,0,F+1.0,.19,0,0,0,col('#7a5236')); fk.box('fwood',.42,.06,.04,0,F+.76,.19,0,0,0,col('#7a5236'));
     fk.box('fcloth',.38,.05,.36,0,F+.5,-.01,0,0,0,col('#6c3f5f'));
     fk.frame=f0;};
-  chair(TX-.15,TZ-.72,PI+.15); chair(TX+.2,TZ+.74,-.2);
+  // the north chair was right in front of the logbook (playtest 2026-11-09: Jacob and Ethan both walked past the note): it's
+  // pushed back at the table's west end now, still askew as if someone only just got up
+  const CHN=[TX-1.08,TZ-.12];
+  chair(CHN[0],CHN[1],-PI/2+.45); chair(TX+.2,TZ+.74,-.2);
   // logbook (open), quill + inkpot, candle, mug
   const LB=mat4(TX+.25,F+.83,TZ-.05,0,.25,0);
   fk.add('fcloth',UNITBOX,LB.clone().multiply(mat4(0,0,0,0,0,0,.52,.03,.36)),col('#5a3422'));
@@ -1363,7 +1366,7 @@ function buildCottage(kit,r){
   FB(TX-.72,TX+.72,TZ-.4,TZ+.4);         // table
   FB(SX0,SX1,-IZ,-IZ+SD+.02,2.6);        // dresser
   FB(IX-HD-.05,IX,-.6,HZ+hw+.25,4);      // hearth, woodstack, broom
-  G.addCollider({x:X+TX-.15,z:Z+TZ-.72,r:.28,y0:TOP-1,y1:TOP+1.2}); G.addCollider({x:X+TX+.2,z:Z+TZ+.74,r:.28,y0:TOP-1,y1:TOP+1.2});
+  G.addCollider({x:X+CHN[0],z:Z+CHN[1],r:.28,y0:TOP-1,y1:TOP+1.2}); G.addCollider({x:X+TX+.2,z:Z+TZ+.74,r:.28,y0:TOP-1,y1:TOP+1.2});
   G.addCollider({x:X-IX+.5,z:Z-IZ+.25,r:.28,y0:TOP-1,y1:TOP+2.4}); // coat on its peg
 
   /* ---------------- the chest (dynamic lid) ---------------- */
