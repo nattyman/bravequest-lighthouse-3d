@@ -1620,7 +1620,7 @@ LM.wreck=LP(WRECK.x,WRECK.z);
 LM.wreckStart=LP(71,64.2,{yaw:1.8});
 KEEP.push({x:79,z:66,r:9},{x:72,z:63.5,r:3});
 function buildWreck(){
-  const r=rnd(7311), parts=[], H=(x,z)=>height(x,z);
+  const r=rnd(7311), parts=[], hull=[], H=(x,z)=>height(x,z);   // hull[]: the broken boat itself (boat.js hides it once Rowan patches her)
   const wood=col('#94704f'), wood2=col('#5a4231'), wet=col('#3d2f27'), paint=col('#40606e'), paint2=col('#8c4a3a'), weed=col('#3f5230');
   const rk=col('#6a6f80'), rk2=col('#4c5262'), canvas=col('#b9ab8c'), canvas2=col('#8e8268'), rope=col('#a08a5e');
   const plank=(p,n,o,base,band)=>{ o.copy(base).lerp(wood2,.2+.2*Math.sin(p.y*9+vnoise(p.x*.8,p.z*.8)*3));
@@ -1647,30 +1647,30 @@ function buildWreck(){
   }
   // the bow half: up on the reef, heeled hard over, nose in the air
   const bx=85.6, bz=70.4, by=H(bx,bz)+1.7;
-  parts.push({g:hullHalf(5.6,3),m:mat4(bx,by,bz,.55,2.35,.42),c:(p,n,o)=>plank(p,n,o,wood,by+.15)});
+  hull.push({g:hullHalf(5.6,3),m:mat4(bx,by,bz,.55,2.35,.42),c:(p,n,o)=>plank(p,n,o,wood,by+.15)});
   // the stern half: dragged up onto the sand by the tide, on its side
   const sx=79.6, sz=66.4, sy=H(sx,sz)+1.15;
-  parts.push({g:hullHalf(4.8,9),m:mat4(sx,sy,sz,-.62,-.85,-.18),c:(p,n,o)=>plank(p,n,o,wood,sy+.05)});
+  hull.push({g:hullHalf(4.8,9),m:mat4(sx,sy,sz,-.62,-.85,-.18),c:(p,n,o)=>plank(p,n,o,wood,sy+.05)});
   // a transom board and the tiller lying by the stern
-  parts.push({g:new THREE.BoxGeometry(1.5,.9,.08),m:mat4(77.2,H(77.2,65.6)+.32,65.6,-.2,.6,1.15),c:(p,n,o)=>o.copy(paint2).lerp(wood2,vnoise(p.x*4,p.y*4)*.6)});
-  parts.push({g:new THREE.CylinderGeometry(.05,.07,1.6,6),m:mat4(76.4,H(76.4,64.2)+.06,64.2,PI/2,0,.9),c:wood2});
+  hull.push({g:new THREE.BoxGeometry(1.5,.9,.08),m:mat4(77.2,H(77.2,65.6)+.32,65.6,-.2,.6,1.15),c:(p,n,o)=>o.copy(paint2).lerp(wood2,vnoise(p.x*4,p.y*4)*.6)});
+  hull.push({g:new THREE.CylinderGeometry(.05,.07,1.6,6),m:mat4(76.4,H(76.4,64.2)+.06,64.2,PI/2,0,.9),c:wood2});
   // ribs: three bare frames standing out of the sand between the halves
   for(let k=0;k<3;k++){ const x=82.2+k*.9, z=68.2+k*.5, s=1-k*.12;
     const g=new THREE.TorusGeometry(1.05*s,.07,4,10,PI*.85);
-    parts.push({g,m:mat4(x,H(x,z)-.35,z,0,.75+k*.08,PI+.25+k*.1),c:(p,n,o)=>o.copy(wood2).lerp(wet,p.y<.3?.6:.1)}); }
+    hull.push({g,m:mat4(x,H(x,z)-.35,z,0,.75+k*.08,PI+.25+k*.1),c:(p,n,o)=>o.copy(wood2).lerp(wet,p.y<.3?.6:.1)}); }
   // the mast, snapped at the step, lying from the reef up the beach; the yard across it; a rag of sail
   const m0=V3(83.6,H(83.6,68.4)+.35,68.4), m1=V3(75.2,H(75.2,67.8)+.18,67.8), mm=m0.clone().add(m1).multiplyScalar(.5), mL=m0.distanceTo(m1);
-  parts.push({g:new THREE.CylinderGeometry(.11,.15,mL,8),m:new THREE.Matrix4().compose(mm,new THREE.Quaternion().setFromUnitVectors(V3(0,1,0),m1.clone().sub(m0).normalize()),V3(1,1,1)),c:(p,n,o)=>o.copy(wood).lerp(wood2,.4)});
-  parts.push({g:new THREE.CylinderGeometry(.07,.07,3.4,6),m:mat4(77.8,H(77.8,67.9)+.32,67.9,PI/2,0,.35),c:wood2});
+  hull.push({g:new THREE.CylinderGeometry(.11,.15,mL,8),m:new THREE.Matrix4().compose(mm,new THREE.Quaternion().setFromUnitVectors(V3(0,1,0),m1.clone().sub(m0).normalize()),V3(1,1,1)),c:(p,n,o)=>o.copy(wood).lerp(wood2,.4)});
+  hull.push({g:new THREE.CylinderGeometry(.07,.07,3.4,6),m:mat4(77.8,H(77.8,67.9)+.32,67.9,PI/2,0,.35),c:wood2});
   { const g=new THREE.PlaneGeometry(2.6,1.6,6,4), P=g.attributes.position;
     for(let i=0;i<P.count;i++){ const x=P.getX(i), y=P.getY(i); P.setZ(i,Math.sin(x*2.1+y*1.3)*.12+(vnoise(x*2,y*2)-.5)*.25); }
     g.computeVertexNormals(); const x=77.4, z=68.9;
-    parts.push({g,m:mat4(x,H(x,z)+.12,z,-PI/2+.12,0,.5),c:(p,n,o)=>o.copy(canvas).lerp(canvas2,vnoise(p.x*2,p.z*2)).lerp(wet,p.y<.12?.4:0)}); }
+    hull.push({g,m:mat4(x,H(x,z)+.12,z,-PI/2+.12,0,.5),c:(p,n,o)=>o.copy(canvas).lerp(canvas2,vnoise(p.x*2,p.z*2)).lerp(wet,p.y<.12?.4:0)}); }
   // rope: a coil on the sand and a line trailing from the stern into the wash
   { const x=74.2, z=62.6, y=H(x,z)+.05;
     for(let k=0;k<3;k++)parts.push({g:new THREE.TorusGeometry(.32-k*.05,.035,4,14),m:mat4(x+k*.02,y+k*.05,z,PI/2,0,0),c:rope});
     const pts=[V3(79.2,H(79.2,66.9)+.4,66.9),V3(80.4,H(80.4,68.2)+.05,68.2),V3(81.2,H(81.2,69.6)+.02,69.6),V3(80.6,H(80.6,71.4)+.02,71.4)];
-    parts.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.035,4,false),c:rope}); }
+    hull.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),14,.035,4,false),c:rope}); }
   // crates: one whole, one burst, one half under the sand
   const crates=[[76.2,63.4,.62,.3],[78.4,61.4,.55,1.1],[73.2,65.6,.6,-.5]];
   crates.forEach(([x,z,s,yaw],k)=>{ const y=H(x,z)+(k===2?s*.15:s*.48);
@@ -1685,9 +1685,10 @@ function buildWreck(){
     parts.push({g:new THREE.ConeGeometry(.18,.3,7),m:mat4(x+.78*Math.cos(.4),y+.34,z-.78*Math.sin(.4),0,.4,-PI/2),c:canvas2}); }
   const mesh=new THREE.Mesh(mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide}));
   mesh.castShadow=true; mesh.receiveShadow=true; mesh.name='wreck'; root.add(mesh);
+  const hullMesh=new THREE.Mesh(mergeParts(hull),mesh.material); hullMesh.castShadow=true; hullMesh.receiveShadow=true; hullMesh.name='wreckHull'; root.add(hullMesh);
   // the hull halves are solid: a pair of circles along each
-  for(const [x,z,rad,top] of [[85.2,70.2,1.2,2.4],[86.6,71.4,1,2.6],[79.8,66.2,1.15,1.6],[78.6,66.9,.9,1.4]])G.addCollider({x,z,r:rad,y0:-6,y1:H(x,z)+top});
-  W.wreck={mesh,parts:parts.length};
+  const hullCol=[]; for(const [x,z,rad,top] of [[85.2,70.2,1.2,2.4],[86.6,71.4,1,2.6],[79.8,66.2,1.15,1.6],[78.6,66.9,.9,1.4]]){ const c={x,z,r:rad,y0:-6,y1:H(x,z)+top}; G.addCollider(c); hullCol.push(c); }
+  W.wreck={mesh,hull:hullMesh,hullColliders:hullCol,parts:parts.length+hull.length};
 }
 function V3(x,y,z){return new THREE.Vector3(x,y,z);}
 G.system('wreck',{order:1,modes:'always',init(){ try{ buildWreck(); }catch(e){ console.error('wreck',e); } }});
