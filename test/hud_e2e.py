@@ -22,7 +22,7 @@ window.T={
   pin:null,
   stam(v,ex,n){ T.pin={s:v,e:!!ex}; G.step(1/30,n||20); return G.ui.staminaWheel(); },
   unpin(){ T.pin=null; },
-  lines(n){ G.ui.setCaptionSpeed('hold'); G.ui.clearCaptions(); const who=['Halloran','Maren','','Wren','Halloran','Corwin'];
+  lines(n){ G.ui.setCaptionSpeed('hold'); G.ui.clearCaptions(); const who=['Halloran','Hesper','','Wren','Halloran','Corwin'];
     for(let i=0;i<n;i++)G.ui.say(['The fog came in off the water before dawn, and it has not lifted since.','Keep the lantern shut near the patches.',
       'Something moves on the moor.','The bell in the hamlet rang once, then stopped.','The tower door faces west.','Mind the stair.'][i%6],who[i%6]);
     G.step(1/30,3); return G.ui.captionStack(); },
@@ -88,7 +88,7 @@ async def views(b):
               G.ui.advance(); G.ui.advance(); G.step(1/30,2); const s5=G.ui.captionStack(), c5=G.ui.captions();
               return {s0,q0:c0.queue.length,cur0:c0.cur.text.slice(0,12),s1,cur1:c1.cur.text.slice(0,12),q1:c1.queue.length,s2,s3,s4,s5,end:!c5.cur,
                 hint:document.querySelector('#cap .capnext').textContent}; })()""")
-            ok=(r['s0']['depth']==2 and r['s0']['count']=='+4' and r['s0']['who']==['Maren',''] and r['q0']==4
+            ok=(r['s0']['depth']==2 and r['s0']['count']=='+4' and r['s0']['who']==['Hesper',''] and r['q0']==4
                 and r['s1']['depth']==2 and r['s1']['count']=='+3' and r['s1']['leaving']>=1 and r['cur1'].startswith('Keep') and r['s1']['who']==['','Wren']
                 and r['s2']['depth']==2 and r['s2']['count']=='' and r['s3']['depth']==1 and r['s4']['depth']==0 and r['s5']['depth']==0 and r['end'])
             check('stack:advance',ok,r)

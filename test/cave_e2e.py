@@ -81,7 +81,10 @@ function ring(x,z,r){ r=r||12.5; const A={x:60,z:-15}, O=G.cave.origin, p=P().po
   let d=a1-a0; while(d>Math.PI)d-=2*Math.PI; while(d<-Math.PI)d+=2*Math.PI; const n=Math.max(1,Math.ceil(Math.abs(d)/.35)), pts=[];
   for(let i=0;i<=n;i++){ const a=a0+d*i/n; pts.push([A.x+Math.cos(a)*r,A.z+Math.sin(a)*r]); } pts.push([x,z]); return walk(pts,{local:true}); }
 const losses={}; G.on('moths:lost',e=>{ const k=G.cave.inside?(G.cave.room(P().pos)||'cave'):'island'; losses[k]=(losses[k]||0)+e.n; });
-return {keys,release,steer,walk,where,tap,label,use,wait,swarm,near,states,until,guard,hud,marker,fight,bolt,leap,ring,losses,top};
+// story moments and readings open the conversation card (talk.js), which pauses: read each through as it opens (first reply)
+const talkAuto={on:true,seen:[],names:[],read:[]}; G.on('talk:open',e=>{ talkAuto.seen.push(e&&e.who); if(!talkAuto.on)return; const st0=G.talk.state(); talkAuto.names.push(st0&&st0.name);
+  let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.line&&talkAuto.read[talkAuto.read.length-1]!==s.line)talkAuto.read.push(s.line); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } });
+return {keys,release,steer,walk,where,tap,label,use,wait,swarm,near,states,until,guard,hud,marker,fight,bolt,leap,ring,losses,top,talkAuto};
 })(); 'lib'
 """
 
@@ -409,6 +412,7 @@ async def main():
         errs=[]; pg.on('pageerror',lambda e: errs.append('PAGEERROR '+str(e))); pg.on('console',lambda m: errs.append(m.text) if m.type=='error' else None)
         async def boot():
             await pg.evaluate(LIB); await pg.evaluate(CAMCHECK)
+            await pg.evaluate('G.headless&&(G.headless.hold=true); 0')   # only G.step() moves the game: the tide can't drift between steps
         await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         await boot()
@@ -418,7 +422,7 @@ async def main():
                 await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png',timeout=120000); print('  shot',name[5:]); continue
             try:
                 if js=='WAIT_RISE':
-                    await pg.wait_for_timeout(2600); await pg.click('#rise'); await pg.wait_for_timeout(600); r={'ok':True}
+                    await pg.evaluate('G.headless.hold=false; 0'); await pg.wait_for_timeout(2600); await pg.click('#rise'); await pg.wait_for_timeout(600); await pg.evaluate('G.headless.hold=true; 0'); r={'ok':True}
                 elif js=='RELOAD':
                     await pg.reload(); await pg.wait_for_timeout(5000); await pg.click('#continue'); await pg.wait_for_timeout(2500); await boot(); r={'ok':True}
                 elif js=='DRAWCALLS':

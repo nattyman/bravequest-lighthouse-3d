@@ -204,7 +204,7 @@ function buildMoths(){
     const m={i,p:V(),v:V(),ph:rnd()*TAU,sp:(1.2+rnd()*2.2)*(rnd()<.5?-1:1),rad:.6+rnd()*1.6,hy:rnd()*1.4,
       tgt:'patch',idx:patches.length?i%patches.length:0,prey:null,gp:null,home:null,jx:(rnd()-.5)*.8,jy:(rnd()-.5)*.8,
       scale:.11+rnd()*.05,delay:0,press:rnd()*TAU};
-    if(i<N_GLASS){m.tgt='spot';m.rad=.6+rnd()*3.2;m.hy=rnd()*3;m.scale*=1.1;} // Act 1 v12: the moths left the lamp when it went wrong; they nest in the old wood with Maren's lantern
+    if(i<N_GLASS){m.tgt='spot';m.rad=.6+rnd()*3.2;m.hy=rnd()*3;m.scale*=1.1;} // Act 1 v12: the moths left the lamp when it went wrong; they nest in the old wood with Hesper's lantern
     else if(i<N_GLASS+N_SPOT){m.tgt='spot';m.rad=.35+rnd()*1.2;}
     else if(i>=NM-N_ROOST){m.tgt='roost';m.cave=true;m.scale*=.85;m.p.set(0,-999,0);} // hidden until a roost exists
     else if(i>=NM-N_ROOST-N_WANDER||!patches.length){m.tgt='wander';m.rad=3+rnd()*4;}
@@ -368,7 +368,7 @@ function preyList(){
     out.push({key:hb,hb,center:hb._swarmCenter,alive:()=>!(hb.alive&&!hb.alive()),r:(hb.radius||.6)+1.4,
       range:hb.mothRange||7,want:hb.mothWant||0,dmg:hb.mothDamage==null?1:hb.mothDamage,
       lure:()=>typeof hb.mothPrey==='function'?!!hb.mothPrey():!!hb.mothPrey}); }
-  // negatives: the swarm frees them in Act 1 (Maren's lantern); in the core loop a baited lantern draws it to them too.
+  // negatives: the swarm frees them in Act 1 (Hesper's lantern); in the core loop a baited lantern draws it to them too.
   // n.lure (companions.js' raven) can say no: the raven has to be weakened first.
   for(const n of negatives){ if(n.dead||n.dying&&n.fade<.3)continue; if(n.lure&&!n.lure())continue;
     out.push({key:n,neg:n,center:n.center,alive:()=>!n.dead,r:n.preyR||1.9,lure:()=>!!(G.loop&&G.loop.active&&baited())}); }
@@ -973,31 +973,38 @@ function updateNegatives(dt){
 }
 /* ---------------------------------------------------------------- Halloran, one of the Unmade */
 let hal=null;
+/* Act 1 (story pass): he knows the man in front of him. Rowan Knox, the boy he half raised; Hesper's "Tide". */
 const HAL_PRE=[
-  'You can see me. Most things out here can’t, anymore. Name was Halloran, once. I kept that light for nineteen years.',
-  'Don’t look at the arm. I know. It started with the arm.',
-  'You’ll want a light before you go in there. My old storm lantern hangs on the oil shed, back past the cottage. Plain oil, plain flame. It’ll see you up the stair.',
-  'The lamp went out the night the fog came. Nobody’s been up since. Nobody who came back down, anyway.',
-  'Funny thing about moths. Out here they gather where there’s nothing to see at all.',
-  'Go on. I’ll keep.'
+  'You can see me. Most things out here can’t, anymore.',
+  '...No. Hold still. Let me look at you.',
+  'You’re Rowan. You’re Tide. Seven years, boy. Seven years, and you pick tonight.',
+  'She kept the light. Right to the end, she kept it. Then she took her lantern into the wood, and she didn’t come back. Go up the tower. Read what she left. I can’t say it any better than she did.',
+  'You’ll want a light before you go in there. My old storm lantern hangs on the oil shed, back past the cottage. Plain oil, plain flame. It’ll see you up the stair.',   // [4]: flow.js moves the objective to the storm lantern
+  'Last spring. The night before the fair. The fog came in, the lamp went wrong, and by morning Wickham’s End was gone. Not burned. Unmade. Nobody’s been up the tower since. Nobody who came back down, anyway.',
+  'Don’t look at the arm. I know. It started with the arm, the night the lamp went wrong, and it’s been climbing since. Nineteen years I kept that light. Now I can’t stand to be near it.',
+  'Funny thing about moths. Out here they gather where there’s nothing to see at all. She said that meant something. I never asked what.',
+  'Go on, Tide. I’ll keep.',
+  'And Tide. The old trunk against the back wall of the cottage. She put something of yours in there the winter you left, and she wouldn’t let me so much as lift the lid. Go and see.'   // [9] playtest 2026-11-09: until it's taken
 ];
 /* after the storm lantern failed in the lamp room: he waits at the foot of the tower */
 const HAL_FAIL=[
-  'The moths left when the lamp went wrong. They nest in the old wood, west.',
-  'Maren knew something about them. The night the fog came she took her lantern, the violet one, out to the old tree at the forest’s heart. She never came back. The lantern might have stayed.',
+  'She tried the plain flame too, Tide. First thing she tried. The moths left when the lamp went wrong. They nest in the old wood, west. Same way she went.',
+  'The night the fog came, Hesper took her lantern, the violet one, out to the old tree at the forest’s heart. She knew something about the moths. More than I did. She never came back, but the lantern might have stayed.',
   'Something big walks those woods now. I hear it at night, breaking the trees. Keep that staff in your hand, and don’t let it corner you.',
-  'Follow the path down off the cliff and across the moor. Mind the hamlet. I’ll keep.'
+  'Follow the path down off the cliff and across the moor. Mind the hamlet. You knew those people, Rowan. They won’t know you. I’ll keep.'
 ];
 const HAL_MID=[
-  'That’s her lantern. Then Maren’s... well. Keep it close. And keep those moths off me.',
-  'My old flame only fed that thing up there. Hers is different. The moths know it.',
-  'Go on, then. Up you go.'
+  'That’s her lantern. She’d not have left that without a reason. Keep it close, Tide. And keep those moths off me.',
+  'My old flame only fed that thing up there. Hers is different. The moths know it. She always said they did.',
+  'Go on, then. Up you go. Light it for her.',
+  'Then she meant to go on without it. That’s her all over. She never once went where I told her.'
 ];
 const HAL_POST=[
   'You lit it. I felt it from down here, like sun on a bad tooth.',
   'Those moths went through the dark up there and didn’t leave a scrap of it.',
   'There’s more of it out on the island. More of me, too, if you go looking.',
-  'Mind the swarm when you come by. I’d like to stay as much myself as I’ve got left.'
+  'Mind the swarm when you come by, Tide. I’d like to stay as much myself as I’ve got left.',
+  'Still out there somewhere. She went on past that tree without a light, and the island doesn’t end at the tree. I’ve read her pages. She wasn’t done. Find her, Rowan. I can’t.'
 ];
 /* corruption stain: a toon material whose surface goes to ink where (aCor × uCreep + noise) passes a threshold,
    with a bruised, violet-lit creeping edge. aCor is a per-vertex 0..1 "how close to the source" value. */
@@ -1263,12 +1270,12 @@ function buildHalloran(){
     torso:chest,armL:shL,armR:shR,legL:thL,legR:thR,fore:elL,hand:inkHand,
     skirt:{geo:skG,pos:sp,prev:sprev,ang:sang,init:false},em,
     home,homeYaw,pos:home.clone(),heading:homeYaw,afraid:false,met:false,
-    pre:0,mid:0,post:0,fail:0,stand:false,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
+    talk:{start:{talks:0,heard:{}},failed:{talks:0,heard:{}},lantern:{talks:0,heard:{}},cured:{talks:0,heard:{}}},stand:false,walk:0,center:V(),hgt:1.9,ashT:0,shoutT:0,talkPos:V(),
     sit:1,fear:0,talkT:0,talkK:0,blinkT:2,shiftT:3,shift:0,shiftTo:0,twitchT:1,twitch:0,lookYaw:0,lookPitch:0,glanceT:0,creep:1};
   G.interact.add({pos:()=>hal.talkPos.copy(hal.pos),radius:2.8,priority:2,
     label:()=>hal.met?'Talk to Halloran':'Talk to the figure',
     enabled:()=>!hal.afraid&&isPlay(),
-    use:talkHalloran});
+    use:()=>talkHalloran()});
 }
 /* move him somewhere for a story beat (flow.js): teleports (the player is never watching), stands instead of sitting.
    halloranAt(null) sends him back to his barrel on the cliff path. */
@@ -1281,27 +1288,72 @@ function halloranAt(pos,yaw){
   hal.pos.copy(hal.home); hal.heading=hal.homeYaw; hal.afraid=false; hal.sit=hal.stand?0:1; hal.skirt.init=false;
   hal.g.position.copy(hal.pos); hal.g.rotation.y=hal.heading;
 }
-function talkHalloran(){
-  if(!hal||hal.afraid)return;
+/* Halloran talks on the conversation card (talk.js), like the people under the hamlet. Opening him shows the opening line
+   for where the story is (before the lamp · the storm lantern failed · Hesper's lantern found · the lamp cured), then 2–3
+   replies that lead to the rest of what he has to say for that part; later parts are still only reached by progress.
+   One-time lines other modules hand him (API.halloranHooks: fn() -> line|null) come first, as lines on the card.
+   Every line he says is still a 'talk' event {who:'Halloran', line, index (in that part's list), phase} — flow.js moves
+   the objective on from those, audio.js murmurs them. */
+const HAL_TALK={
+  start:{lines:()=>HAL_PRE, open:s=>(s.talks?[4]:[0,1,2]).concat(G.items.cloak&&G.items.cloak.owned?[]:[9]), topics:[
+    {id:'hesper',text:'Where’s Hesper?',say:s=>s.heard[4]?[3]:[3,4]},
+    {id:'here',text:'What happened here?',say:[5]},
+    {id:'arm',text:'What happened to you?',say:[6]},
+    {id:'moths',text:'And the moths?',needs:s=>!!s.heard[5],say:[7]},
+    {id:'go',text:'I’ll go.',say:s=>s.heard[4]?[8]:[4,8],end:true}]},
+  failed:{lines:()=>HAL_FAIL, open:()=>[0], topics:[
+    {id:'hesper',text:'Where did Hesper go?',say:[1]},
+    {id:'woods',text:'What’s in the woods?',say:[2]},
+    {id:'go',text:'I’ll go.',say:s=>s.heard[1]?[3]:[1,3],end:true}]},
+  lantern:{lines:()=>HAL_MID, open:()=>[0], topics:[
+    {id:'why',text:'Why will hers work?',say:[1]},
+    {id:'set',text:'She set it down on purpose.',say:[3]},
+    {id:'go',text:'I’ll go.',say:[2],end:true}]},
+  cured:{lines:()=>HAL_POST, open:s=>s.talks?[2]:[0], topics:[
+    {id:'moths',text:'The moths did it.',say:[1]},
+    {id:'over',text:'Is it over?',needs:s=>!s.heard[2],say:[2]},
+    {id:'hesper',text:'And Hesper?',say:[4]},
+    {id:'go',text:'I’ll go.',say:[3],end:true}]}
+};
+function halPhase(){
   const L=lantern();
-  const isCured=cured||(L&&L.cured);
-  const found=(L&&L.found)||G.flag('lanternFound');
-  const failed=!!((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'));
-  let line, index;
-  // one-time lines other modules hand him (the Undercroft: the hamlet, and Wren): API.halloranHooks = [fn() -> line|null]
-  for(const h of API.halloranHooks||[]){ let l=null; try{ l=h(); }catch(e){ console.error('halloran hook',e); } if(l){
-    hal.met=true; if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
-    hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3; G.ui.say(l,'Halloran'); G.emit('talk',{who:'Halloran',line:l,index:-1,phase:'hook'}); return; } }
-  if(isCured){index=Math.min(hal.post,HAL_POST.length-1);line=HAL_POST[index];hal.post++;}
-  else if(found){index=Math.min(hal.mid,HAL_MID.length-1);line=HAL_MID[index];hal.mid++;}
-  else if(failed){index=Math.min(hal.fail,HAL_FAIL.length-1);line=HAL_FAIL[index];hal.fail++;}
-  else{index=Math.min(hal.pre,HAL_PRE.length-1);line=HAL_PRE[index];hal.pre++;}
-  hal.met=true;
-  if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z);
-  hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3;
-  G.ui.say(line,'Halloran');
-  G.emit('talk',{who:'Halloran',line,index,phase:isCured?'cured':found?'lantern':failed?'failed':'start'});
+  if(cured||(L&&L.cured))return 'cured';
+  if((L&&L.found)||G.flag('lanternFound'))return 'lantern';
+  if((G.items.storm&&G.items.storm.failed)||G.flag('stormFailed'))return 'failed';
+  return 'start';
 }
+const halMeta=new Map();   // line text -> {phase, index}, for the 'talk' event
+function halLines(phase,idx){ const list=HAL_TALK[phase].lines(); return idx.map(i=>{ const t=list[Math.min(i,list.length-1)]; halMeta.set(t,{phase,index:Math.min(i,list.length-1)}); return t; }); }
+function halNode(phase,said,lines){
+  const P=HAL_TALK[phase], st=hal.talk[phase];
+  const choices=P.topics.filter(t=>!said.has(t.id)&&(!t.needs||t.needs(st))).map(t=>({id:t.id,text:t.text,
+    next:()=>{ said.add(t.id); const idx=typeof t.say==='function'?t.say(st):t.say; const ls=halLines(phase,idx); return t.end?{lines:ls}:halNode(phase,said,ls); }}));
+  return {lines,choices};
+}
+function halFace(){ if(G.player&&G.player.pos&&hal.sit<.5)hal.heading=Math.atan2(G.player.pos.x-hal.pos.x,G.player.pos.z-hal.pos.z); }
+/** open the card. opening (optional): [{text, phase, index}] said first instead of his usual opening (cave_boss.js: the keepers' cave) */
+function talkHalloran(opening){
+  if(!hal||hal.afraid)return false;
+  if(G.talk&&G.talk.isOpen)return G.talk.who==='Halloran';
+  const phase=halPhase(), st=hal.talk[phase];
+  const lines=[];
+  for(const h of API.halloranHooks||[]){ for(let k=0;k<3;k++){ let l=null; try{ l=h(); }catch(e){ console.error('halloran hook',e); } if(!l)break; halMeta.set(l,{phase:'hook',index:-1}); lines.push(l); } }
+  if(opening&&opening.length){ for(const o of opening){ halMeta.set(o.text,{phase:o.phase||'extra',index:o.index==null?-1:o.index}); lines.push(o.text); } }
+  else lines.push(...halLines(phase,HAL_TALK[phase].open(st)));
+  st.talks++;
+  hal.met=true; halFace(); hal.talkT=2.6;
+  const node=halNode(phase,new Set(),lines);
+  if(!G.talk){ for(const l of lines)G.ui.say(l,'Halloran'); return false; }
+  return G.talk.open(Object.assign({who:'Halloran',name:'Halloran',title:G.portraits?G.portraits.title('halloran'):'',portrait:'halloran',
+    onClose:()=>{ hal.talkT=Math.max(hal.talkT,1.2); }},node));
+}
+G.on('talk:line',e=>{
+  if(!e||e.who!=='Halloran'||!hal)return;
+  const m=halMeta.get(e.text)||{phase:'extra',index:-1};
+  if(m.index>=0){ const st=hal.talk[m.phase]; if(st)st.heard[m.index]=1; }
+  hal.talkT=2.6; hal.talkK=(hal.talkK+1)%3; halFace();
+  G.emit('talk',{who:'Halloran',line:e.text,index:m.index,phase:m.phase});
+});
 /* pose tables: standing / seated / afraid. Angles in radians (x: + = backward for limbs, − = forward) */
 const HP={
   stand:{hy:.92,hz:0,sp:.16,ch:.12,nk:-.12,hd:-.06,shLx:.05,shLz:.12,elL:-.25,shRx:.05,shRz:-.1,elR:-.2,thx:0,kn:0,an:0,sw:.0},
@@ -1486,7 +1538,7 @@ const API=G.creatures={lanternCount:0,swarmAt,restoreFreed,freed:0,total:0,negat
   addCustom, freeCustom, claimFreed:null, buildAnimal:(k,m)=>buildAnimal(k,m), animAnimal, animalGeos:k=>animalGeos(k), animalSpec:k=>animalSpec(k), KINDS, negInk:o=>negInk(o),
   toPatch, toRoost, setRoost, inCaveRegion, get roost(){return roost;}, clingR:null, N_ROOST,
   lanternPos:()=>lanternPos(), satchelPos:()=>satchelPos(),
-  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:()=>talkHalloran(),halloranAt:(p,yaw)=>halloranAt(p,yaw),
+  ash:(pos,n,spread)=>ashBurst(pos,n,spread),talk:o=>talkHalloran(o),halloranAt:(p,yaw)=>halloranAt(p,yaw),
   get glassOpen(){return glassOpen;}, get cured(){return cured;}};
 
 G.system('creatures',{order:30,modes:'always',

@@ -22,6 +22,8 @@ window.T={
   charge(frames){ const C=G._playerDbg.charge; G.input.setVirtual('attack',true); G.step(1/30,frames); const t=C.t; G.input.setVirtual('attack',false); G.step(1/30,4);
     const b=G.combat.projectiles.filter(p=>p.team==='player'&&p.kind==='bolt').pop(); const out={t:+t.toFixed(3),speed:b?+b.vel.length().toFixed(1):null,pierce:b?!!b.pierce:null}; G.step(1/30,40); return out; }
 };
+// story moments (a companion's first meeting, a reading) open the conversation card, which pauses: read each through as it opens
+if(!window.__talkAuto){ window.__talkAuto=1; G.input.lockPointer=()=>{}; G.input.unlockPointer=()=>{}; G.on('talk:open',()=>{ let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } }); }
 'ok'"""
 
 STEPS=[
@@ -43,11 +45,11 @@ STEPS=[
  ("baseline", "(()=>{ T.at(165,42,-10); G.player.heading=Math.PI/2; T.at(165,42,-10); window.BASE={swing:T.swing(), roll:T.roll(), charge:T.charge(30), pmax:G.potions.max, heal:G.potions.heal, jar:G.moths.jar.capacity, gather:G.player.mods.mothGather}; return BASE; })()",
    lambda r: r['swing']==2 and abs(r['roll']-0.1)<.002 and r['pmax']==3 and r['heal']==6 and r['jar']==60),
  # buy everything at the bench (Temper tab) with marks + materials
- ("temper", "(()=>{ G.progress.give('mark',13); G.inv.add('ichor',2,{silent:true}); G.inv.add('pearl',2,{silent:true}); G.inv.add('glowcap',5,{silent:true}); G.inv.add('brine',4,{silent:true}); G.inv.add('kelp',1,{silent:true});"
+ ("temper", "(async()=>{ G.progress.give('mark',13); G.inv.add('ichor',2,{silent:true}); G.inv.add('pearl',2,{silent:true}); G.inv.add('glowcap',5,{silent:true}); G.inv.add('brine',4,{silent:true}); G.inv.add('kelp',1,{silent:true});"
    " G.moths.jar.give({silent:true}); T.at(151.8,42,32.1); G.alchemy.openTable(); G.step(1/30,2); document.getElementById('tabTemper').click();"
-   " const rows=document.querySelectorAll('#temperList .tmp-up').length, bought=[]; for(const id of ['tip','lens','grip','bandolier','jar','charm','recipe2']){ const b=document.querySelector('[data-buy=\"'+id+'\"]'); if(b&&!b.disabled){ b.click(); bought.push(id); } }"
-   " const marks=G.progress.marks; document.getElementById('alchClose').click(); G.step(1/30,4); T.settle(); return {rows,bought,marks,owned:G.progress.UPGRADES.filter(u=>G.progress.owns(u.id)).map(u=>u.id)}; })()",
-   lambda r: r['rows']==7 and len(r['owned'])==7 and r['marks']==2),
+   " const rows=document.querySelectorAll('#temperList .tmp-up').length, bought=[]; let busy=null; for(const id of ['tip','lens','grip','bandolier','jar','charm','recipe2']){ const b=document.querySelector('[data-buy=\"'+id+'\"]'); if(b&&!b.disabled){ b.click(); bought.push(id);   if(busy==null)busy={strip:!!document.querySelector('#temperList .tmp-busy'),owned:G.progress.owns(id),others:[...document.querySelectorAll('[data-buy]')].filter(x=>!x.disabled).length};   await new Promise(r=>setTimeout(r,3200)); } }"
+   " const marks=G.progress.marks; document.getElementById('alchClose').click(); G.step(1/30,4); T.settle(); return {rows,bought,marks,busy,owned:G.progress.UPGRADES.filter(u=>G.progress.owns(u.id)).map(u=>u.id)}; })()",
+   lambda r: r['rows']==7 and len(r['owned'])==7 and r['marks']==2 and r['busy']['strip'] and not r['busy']['owned'] and r['busy']['others']==0),
  ("effects", "(()=>{ T.clear(); T.at(165,42,-10); G.player.heading=Math.PI/2; T.at(165,42,-10); const bl0=G.moths.baitLeft; G.moths.bait(100); const bait=G.moths.baitLeft-bl0;"
    " const c=T.charge(30); return {swing:T.swing(), roll:T.roll(), charge:c, chargeRatio:+(c.t/BASE.charge.t).toFixed(3), speedRatio:+(c.speed/BASE.charge.speed).toFixed(3), pmax:G.potions.max, heal:G.potions.heal, jar:G.moths.jar.capacity, bait:Math.round(bait), gather:G.player.mods.mothGather, carry:(G.potions.add(9,{silent:true}),G.potions.count)}; })()",
    lambda r: r['swing']==3 and abs(r['roll']-0.075)<.002 and 1.35<r['chargeRatio']<1.5 and abs(r['speedRatio']-1.3)<.02 and r['charge']['pierce'] is True and r['pmax']==5 and r['heal']==8 and r['jar']==100 and r['bait']==150 and r['gather']==1.25 and r['carry']==5),

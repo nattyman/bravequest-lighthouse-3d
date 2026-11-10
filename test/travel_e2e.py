@@ -2,7 +2,7 @@
 Covers: a new game starts at 2 hearts (HUD + journal) and shards grow it (4 -> a 3rd heart); a waystone unlocks when you walk
 up to it (caption, "new" on the chart) and survives save -> reload -> Continue; travel by mouse click on the chart, by the
 controller (RB + A + A) and by the keyboard (Tab + Enter + Enter), always through the confirm card; blocked cases (the Hollow
-Stag, Maren's lantern in Act 1, a hunting monster nearby, the lantern riding the cave raft, the fog over the destination) show
+Stag, Hesper's lantern in Act 1, a hunting monster nearby, the lantern riding the cave raft, the fog over the destination) show
 a reason on the card and nothing moves; travel out of the sea cave and back into it lands on dry floor through cave.js's own
 paths; Heart Shard / Keeper's Cache pins appear only once spotted, never under cloud, and fade once taken; an old (v1) save
 gets its waystones from quest progress. Screenshots in /tmp/claude-0/travel/.
@@ -92,7 +92,7 @@ FRESH=[
    r"""(()=>{ const done=T.go(); const s=G.map.debug.standFor(__ksel); const d=Math.hypot(G.player.pos.x-s.x,G.player.pos.z-s.z); return {ok:done&&d<.3&&T.solid().ok,sel:__ksel,d:+d.toFixed(2)}; })()"""),
  ("escCancels", "KEY m", r"""(()=>{ G.step(1/30,2); G.map.ask('lighthouse'); G.step(1/30,2); return {ok:!!G.map.confirming}; })()""", "KEY Escape",
    r"""(()=>{ G.step(1/30,2); const ok=G.map.isOpen&&!G.map.confirming; T.closeMap(); return {ok,open:G.map.isOpen}; })()"""),
- # blocked: a hunting monster, the Hollow Stag (and its tree), Maren's lantern carried in Act 1 -- a reason, and nothing moves
+ # blocked: a hunting monster, the Hollow Stag (and its tree), Hesper's lantern carried in Act 1 -- a reason, and nothing moves
  ("blockAggro", r"""(()=>{ T.tp(150,-20); T.clear(); const m=G.monsters.spawn('hollow',new THREE.Vector3(156,42,-20),{aggro:true}); G.step(1/30,30);
    const r=T.tryBlocked('cottage'); const st=m.state; window.__agg=m; return Object.assign(r,{state:st,ok:r.card.open&&r.card.blocked&&!r.card.go&&/hunting/.test(r.card.text)&&r.moved<.01&&!r.tr}); })()"""),
  ("shot:blocked", "SHOT blocked 'G.step(1/30,4)'"),
@@ -100,7 +100,7 @@ FRESH=[
  ("blockStag", r"""(()=>{ const e=G.flow.stagEdge(); T.tp(e.x,e.z); T.clear(); G.map.debug.unlock('tree',{quiet:true}); const towards=G.map.travelBlock('tree'); G.monsters.startStag(); G.step(1/30,30);
    const r=T.tryBlocked('lighthouse'); T.closeMap(); const B=G.monsters.boss; return Object.assign(r,{towards,boss:!!B,ok:!!B&&/Stag/.test(r.card.text)&&r.moved<.01&&/Stag/.test(towards||'')}); })()"""),
  ("blockLantern", r"""(()=>{ const B=G.monsters.boss; if(B)G.monsters.kill(B,{dir:new THREE.Vector3(0,0,1)}); G.step(1/30,60); T.tp(-20,-60); T.clear(); const L=G.items.lantern; L.found=true; L.carried=true; L.cured=false; G.step(1/30,5);
-   const r=T.tryBlocked('cottage'); T.closeMap(); L.carried=false; L.found=false; G.step(1/30,3); return Object.assign(r,{ok:/Maren’s lantern/.test(r.card.text)&&r.moved<.01&&!r.tr}); })()"""),
+   const r=T.tryBlocked('cottage'); T.closeMap(); L.carried=false; L.found=false; G.step(1/30,3); return Object.assign(r,{ok:/Hesper’s lantern/.test(r.card.text)&&r.moved<.01&&!r.tr}); })()"""),
  ("save", r"""(()=>{ T.clear(); G.step(1/30,4); const ok=G.flow.writeSave(); const d=G.flow.readSave(); localStorage.setItem('travelWp',JSON.stringify(T.wp()));
    localStorage.setItem('travelSeen',JSON.stringify(Object.keys(G.map.debug.seen))); return {ok:ok&&d.mods.map.v===2&&d.mods.map.wp.length>=5,wp:d.mods.map.wp,seen:d.mods.map.seen,maxHp:G.player.maxHp}; })()"""),
 ]

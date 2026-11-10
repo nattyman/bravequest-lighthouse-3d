@@ -97,6 +97,8 @@ const A=G.alchemy={
   },
   canBrew(id){ const r=RECIPES[id]; if(!r||!A.known.has(id))return false; if(r.potion&&(!G.potions||potionsFull()))return false; for(const k in r.needs)if(!G.inv.has(k,r.needs[k]))return false; return true; },
   brew(id,o={}){ return brew(id,o); },
+  /** sparkles off the bench whose panel is open, and its burner flaring (progression.js: tempering) */
+  benchFx(hex,n,o){ const tb=activeTable||table; if(!tb)return; sparkle(tb.world.clone().setY(tb.world.y+tb.sparkleY),hex||'#c4a0ff',n||18,o||{}); brewT=Math.max(brewT,.6); setTimeout(()=>{ if(!brewing)brewT=0; },650); },
   pour(){ return pour(); },
   openTable(t){ activeTable=t||table; openPanel(); },
   closeTable(){ closePanel(); },
@@ -807,7 +809,11 @@ function setupLogbook(){
       '“The fog only eats what the light can’t reach. Feed the light and it gives the ground back. Kelp and brine at low water make a stronger draught. I wrote the recipe on a loose page — I think it went with the old boat.”',
       'Tide times in a column, then: “Low water every five minutes or so, if you count the way the fog counts. Don’t get caught out on the sand.”',
       'In the margin, underlined twice: “Mender’s Draught. Two caps, and one bead of the black stuff the hollows leave behind. It sounds wrong. It mends you all the same. Keep a few bottles on you.”'];
-      G.ui.say(L[n%L.length]); n++; if(!A.known.has('tincture'))A.learn('tincture'); }});
+      const pageNode=()=>{ const t=L[n%L.length]; n++; return {lines:[{text:t,who:'The keeper’s logbook'}],
+        choices:[{id:'turn',text:'Turn the page.',next:()=>pageNode()},{id:'close',text:'Close the book.'}]}; };
+      if(G.talk&&G.talk.calm&&G.talk.calm()) G.talk.open(Object.assign({who:'page',name:'The keeper’s logbook',title:'In the keeper’s tidy hand',portrait:'page'},pageNode()));
+      else { G.ui.say(L[n%L.length],'The keeper’s logbook'); n++; }
+      if(!A.known.has('tincture'))A.learn('tincture'); }});
 }
 function groveRing(){
   if(S.groveBuilt)return; S.groveBuilt=true;

@@ -38,9 +38,10 @@ jobs:
                'map_e2e':'?debug&headless','raft_e2e':'?debug&headless','travel_e2e':'?debug&headless',
                'devtools_e2e':'','cave_e2e':'?debug&headless','undercroft_e2e':'?debug&headless',
                'houndsfx_e2e':'?debug&headless','stagsfx_e2e':'?debug&headless','bossmusic_e2e':'?debug',
-               'cloud_e2e':'?cloud'}
+               'temple_e2e':'?debug&headless','cloud_e2e':'?cloud'}
           want = [w.strip() for w in (os.environ.get('WANT') or '').split(',') if w.strip()]
           inc = [{'suite':k,'q':v} for k,v in S.items() if not want or k in want]
+          inc += [{'suite':w,'q':'?debug&headless'} for w in want if w not in S]   # a new suite not in the list yet
           open(os.environ['GITHUB_OUTPUT'],'a').write('matrix='+json.dumps({'include':inc})+'\n')
   suite:
     needs: plan
@@ -68,7 +69,7 @@ jobs:
       - name: Run ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/claude-0
-          python test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
+          python -u test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
           test ${PIPESTATUS[0]} -eq 0
         shell: bash
       - name: Failed checks

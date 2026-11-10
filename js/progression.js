@@ -1,8 +1,8 @@
 /* =====================================================================
    progression.js — rewards, collectibles and upgrades (spec: PROGRESSION.md)
-   - You start with 2 hearts (BASE_HP 4 half-hearts); max 8: 2 + 3 from shards + 3 boss hearts
+   - You start with 2 hearts (BASE_HP 4 half-hearts); max 9: 2 + 3 from shards + 4 boss hearts
    - Heart Shards (12 on the island, 4 = +1 heart) with a violet glint + chime
-   - Keeper's Hearts from the Hollow Stag, the Undertow and the Tithe-Keeper (Hamlet Undercroft) (+1 heart each)
+   - Keeper's Hearts from the Hollow Stag, the Undertow, the Tithe-Keeper (Hamlet Undercroft) and the Answer (the Vigil) (+1 heart each)
    - Moth Wings: every 2 negatives freed -> +20% stamina (4 max)
    - Keeper's Marks (currency) from 8 Keeper's Caches, bosses and first blight cures
    - "Temper" tab on the keeper's benches (alchemy panel): 7 upgrades with real effects
@@ -51,7 +51,7 @@ const UPGRADES=[
   {id:'bandolier',name:'Wide Bandolier',desc:'A keeper’s leather bandolier with room for more bottles.',effect:'Carry 5 Mender’s Draughts (was 3)',cost:{mark:1,brine:2}},
   {id:'jar',name:'Deep Jar',desc:'The moth jar, re-blown with a deeper belly.',effect:'Moth jar holds 100 (was 60)',cost:{mark:2,pearl:1,brine:2},needs:'jar'},
   {id:'charm',name:'Lantern Charm',desc:'A brass moth on a chain. The bait clings longer and the moths come quicker.',effect:'Bait lasts 50% longer · moths gather 25% faster',cost:{mark:3}},
-  {id:'recipe2',name:'Mender’s Recipe II',desc:'A margin note in Maren’s hand: steep the glowcaps twice.',effect:'Mender’s Draught heals 4 hearts (was 3)',cost:{mark:1,glowcap:2,kelp:1}}
+  {id:'recipe2',name:'Mender’s Recipe II',desc:'A margin note in Hesper’s hand: steep the glowcaps twice.',effect:'Mender’s Draught heals 4 hearts (was 3)',cost:{mark:1,glowcap:2,kelp:1}}
 ];
 const UP=Object.fromEntries(UPGRADES.map(u=>[u.id,u]));
 const owns=id=>!!S.upgrades[id];
@@ -280,7 +280,7 @@ function buildSpots(){
   { const x=150, z=-30, g=H(x,z), top=g+1.85;
     addPerch({x,z,r:.75,top}); pillar(root,x,z,g-.3,top,.75,{flare:1.4});
     SPOTS.push({id:'needle',name:'The headland needle',how:'A stone needle on the headland’s north side. Run at it and double jump onto the top.',pos:V(x,top+.55,z),from:V(x+2.5,g,z)}); }
-  /* 13–14. Companion shards (companions.js, COMPANIONS.md §4): Maren's sea-chest in the cottage (Ember fetches the key) and the
+  /* 13–14. Companion shards (companions.js, COMPANIONS.md §4): Hesper's sea-chest in the cottage (Ember fetches the key) and the
      raven's nest on the north cliff (Corvin brings it back). No glint to walk into: G.progress.grantShard(id) hands them over. */
   for(const e of (G.companions&&G.companions.shardSpots)||[])
     SPOTS.push({id:e.id,name:e.name,how:e.how,pos:e.pos.clone(),from:(e.from||e.pos).clone(),ext:true});
@@ -350,7 +350,7 @@ function dropHeart(src,pos,o){
 }
 function updateDrops(dt,p){
   for(const src in drops){ const d=drops[src]; d.t+=dt; d.mesh.rotation.y+=dt*1.4; d.mesh.position.y=d.pos.y+.75+Math.sin(d.t*2.2)*.1;
-    d.mesh.visible=d.interior==='undercroft'?inUndercroft():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave);
+    d.mesh.visible=d.interior==='undercroft'?inUndercroft():d.interior==='temple'?inTemple():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave)&&!inTemple();
     if(isPlay()&&p.alive&&d.mesh.visible&&Math.hypot(d.pos.x-p.pos.x,d.pos.z-p.pos.z)<1.3&&Math.abs(d.pos.y-p.pos.y)<1.8){
       root.remove(d.mesh); delete drops[src]; const o=d.o;
       const h=grantHeart(src), m=grantMarks(src,o.marks); if(h)heldHp+=2;
@@ -381,6 +381,14 @@ function onCrane(e){
   const x=at.x-1.6, z=at.z+1.2; let y=G.floorAt(x,z,at.y+2); if(!(y>at.y-2&&y<at.y+2))y=at.y;
   dropHeart('crane',V(x,y,z),{marks:2,interior:'undercroft',eyebrow:'Aldous Crane, the Tithe-Keeper',desc:'Under the last of his pages, something red and warm that was never written down. Your heart grows by one.'});
 }
+/* the Vigil: the Answer — the 9th heart (+2 Marks), left on the closed seam (temple_boss.js emits temple:bossDead {pos}) */
+function inTemple(){ const t=G.temple; if(t&&'inside' in t)return !!t.inside; const b=G.templeBoss; return !!(b&&b.inside&&b.inside()); }
+function onAnswer(e){
+  if(!e||e.restored)return;
+  const at=e.pos?V(e.pos.x,e.pos.y,e.pos.z):(P()&&P().pos?P().pos.clone():V());
+  const x=at.x+1.4, z=at.z+1.4; let y=G.floorAt(x,z,at.y+2); if(!(y>at.y-2&&y<at.y+2))y=at.y;
+  dropHeart('answer',V(x,y,z),{marks:2,interior:'temple',eyebrow:'The Answer',desc:'Where the seam closed, the stone is warm, and something red and warm is lying on it that was never given away. Your heart grows by one.'});
+}
 function onFreed(e){
   const before=wingN(); S.freed=Math.max(S.freed+1,(e&&e.freed)|0,G.state.freed|0); const n=wingN();
   if(n>before){ G.emit('progress:wing',{n});
@@ -401,6 +409,7 @@ function reconcile(quiet){
   if(F.bossDead){ if(grantMarks('gloaming',2))got.push('2 Marks'); if(grantCharm())got.push('the Lantern Charm'); }
   const CB=G.caveBoss; if(((CB&&CB.defeated)||G.flag('undertowDead'))&&!drops.undertow){ if(grantHeart('undertow'))got.push('a Keeper’s Heart'); if(grantMarks('undertow',2))got.push('2 Marks'); }
   const UB=G.undercroftBoss; if(((UB&&UB.defeated)||G.flag('craneDead'))&&!drops.crane){ if(grantHeart('crane'))got.push('a Keeper’s Heart'); if(grantMarks('crane',2))got.push('2 Marks'); }
+  const TB=G.templeBoss; if(((TB&&TB.defeated)||G.flag('answerDead'))&&!drops.answer){ if(grantHeart('answer'))got.push('a Keeper’s Heart'); if(grantMarks('answer',2))got.push('2 Marks'); }
   const fr=G.state.freed|0; if(fr>S.freed){ const w0=wingN(); S.freed=fr; if(wingN()>w0)got.push((wingN()-w0)+' Moth '+(wingN()-w0>1?'Wings':'Wing')); }
   for(const b of (G.blights||[])) if(b&&b.cured&&grantMarks('blight:'+b.id,1))got.push('a Mark');
   apply();
@@ -410,7 +419,7 @@ function reconcile(quiet){
 
 /* ---------------------------------------------------------------- the reward moment */
 const queue=[]; const reward={active:null,t:0};
-const LIFT=1.7, CARD=3.6;
+const LIFT=1.7, CARD=7;   // the card stays up 7 s (playtest 2026-11-09: 3.6 s was gone before you'd read what was inside)
 let card=null, liftObj=null;
 function later(s,fn){ pend.push({t:s,fn}); }
 const pend=[];
@@ -423,6 +432,8 @@ function startReward(o){
   p.camPull={yaw:(p.heading||0)+PI,pitch:.1,dist:3.4,rate:4};
   liftObj=relicFor(o.icon); liftObj.scale.multiplyScalar(1.15); root.add(liftObj);
   showCard(o); sting(o.icon==='heart'||o.icon==='shard'&&o.pips===4);
+  // and it goes in the message log (L), so a reward you missed can be read again
+  try{ if(G.ui&&G.ui.logLine)G.ui.logLine(o.name+(o.desc?'. '+o.desc:'')+(o.sub?' ('+o.sub+')':''),o.eyebrow||'Found'); }catch(_){}
 }
 function endLift(){
   if(reward.lifted)return; reward.lifted=true;
@@ -553,6 +564,16 @@ const CSS=`
 #temperList{display:grid;gap:8px}
 .tmp-up{display:grid;grid-template-columns:34px 1fr auto;gap:4px 12px;align-items:center;padding:9px 12px;border-radius:3px;background:rgba(255,255,255,.28);box-shadow:inset 0 0 0 1px rgba(60,40,30,.18)}
 .tmp-up.ready{background:rgba(165,108,255,.13);box-shadow:inset 0 0 0 1px rgba(75,56,99,.45)}
+.tmp-busy{display:flex;align-items:center;gap:12px;padding:10px 12px;margin-bottom:8px;border-radius:3px;background:rgba(255,170,90,.16);box-shadow:inset 0 0 0 1px rgba(170,100,40,.4);animation:tmpGlow .9s infinite alternate}
+.tmp-busy svg{width:30px;height:30px;flex:none;transform-origin:50% 80%}
+.tmp-busy span{font-family:var(--serif);font-style:italic;font-size:16px;color:#6a3a1e}
+.tmp-busy.strike svg{animation:tmpStrike .35s ease-out}
+.tmp-up.working{box-shadow:inset 0 0 0 2px rgba(220,140,60,.7);background:rgba(255,170,90,.14)}
+.tmp-up.just{animation:tmpDone 1.4s ease-out}
+@keyframes tmpGlow{from{background:rgba(255,170,90,.1)}to{background:rgba(255,190,110,.3)}}
+@keyframes tmpStrike{0%{transform:scale(1.25) rotate(-8deg);filter:brightness(1.8)}100%{transform:none;filter:none}}
+@keyframes tmpDone{0%{background:rgba(255,220,140,.75);transform:scale(1.03)}100%{transform:none}}
+@media (prefers-reduced-motion:reduce){.tmp-busy,.tmp-busy.strike svg,.tmp-up.just{animation:none}}
 .tmp-up.owned{background:rgba(200,162,76,.16);box-shadow:inset 0 0 0 1px rgba(138,106,46,.45)}
 .tmp-up>svg{width:30px;height:30px}
 .tmp-up .nm{font-family:var(--serif);font-size:18.5px;color:#21161f;line-height:1.15}
@@ -636,6 +657,28 @@ function buy(id,o={}){
   if(!o.silent)rewardFn({id:'upgrade',icon:id,name:u.name,eyebrow:'Tempered at the keeper’s bench',desc:u.effect+'.',sub:marksHeld()+' '+(marksHeld()===1?'Mark':'Marks')+' left'});
   renderTemper(); autosave(); return true;
 }
+/* tempering takes a moment, like brewing (playtest 2026-11-09: it used to happen the instant you clicked): ~3 s of the
+   violet flame and four hammer strikes, sparks off the bench, then the upgrade and its reward card. buy() stays instant
+   (tests, gifts, saves); the Temper button goes through temper(). */
+const TEMPER_S=3, TEMPER_STRIKES=[.3,1.0,1.7,2.4];
+let tempering=null, justTempered=null;
+function temperClang(i){
+  const A=G.audio; if(!A||!A.ready||!A.S||!A.context)return;
+  const t=A.context.currentTime, S2=A.S;
+  try{ S2.clank&&S2.clank(t,{g:.13+.02*i}); S2.thud&&S2.thud(t,{g:.18,dur:.2}); if(i===TEMPER_STRIKES.length-1)S2.bell&&S2.bell(t+.05,57,{g:.12,decay:3}); }catch(_){}
+}
+function temper(id){
+  if(tempering||owns(id)||!canBuy(id))return false;
+  tempering={id}; renderTemper();
+  G.emit('progress:tempering',{id});
+  const fx=(h,n,o)=>{ try{ G.alchemy&&G.alchemy.benchFx&&G.alchemy.benchFx(h,n,o); }catch(_){} };
+  fx('#c4a0ff',14,{radius:.25,up:1.2});
+  TEMPER_STRIKES.forEach((s,i)=>setTimeout(()=>{ if(!tempering)return; temperClang(i); fx('#ffc070',10+i*5,{radius:.2,up:1.4+i*.3});
+    const el=listEl&&listEl.querySelector('.tmp-busy'); if(el){ el.classList.remove('strike'); void el.offsetWidth; el.classList.add('strike'); } },s*1000));
+  setTimeout(()=>{ const t=tempering; tempering=null; if(!t)return; justTempered=t.id; const ok=buy(t.id); fx('#c4a0ff',ok?44:8,{radius:.35,up:2.4});
+    setTimeout(()=>{ justTempered=null; renderTemper(); },1600); },TEMPER_S*1000);
+  return true;
+}
 function injectTemper(){
   const panel=$('alchemy'); if(!panel||tabsEl)return !!tabsEl;
   const head=panel.querySelector('.alch-head'); if(!head)return false;
@@ -644,7 +687,7 @@ function injectTemper(){
   head.after(tabsEl);
   listEl=document.createElement('div'); listEl.id='temperList'; tabsEl.after(listEl);
   tabsEl.addEventListener('click',e=>{ const b=e.target.closest('[data-tab]'); if(b)setTab(b.dataset.tab,true); });
-  listEl.addEventListener('click',e=>{ const b=e.target.closest('[data-buy]'); if(b&&!b.disabled)buy(b.dataset.buy); });
+  listEl.addEventListener('click',e=>{ const b=e.target.closest('[data-buy]'); if(b&&!b.disabled)temper(b.dataset.buy); });
   // left/right (keys or d-pad via the pad's arrow emulation) switch tabs when a tab has focus
   tabsEl.addEventListener('keydown',e=>{ if(e.code==='ArrowRight'||e.code==='ArrowLeft'){ setTab(tab==='brew'?'temper':'brew',true); e.preventDefault(); } });
   return true;
@@ -665,12 +708,14 @@ function renderTemper(){
   if(tab!=='temper')return;
   const keep=document.activeElement&&document.activeElement.dataset&&document.activeElement.dataset.buy;
   let h='';
+  if(tempering){ const tu=UP[tempering.id];
+    h+=`<div class="tmp-busy" aria-live="polite">${ICON[tempering.id]||''}<span>Tempering ${esc(tu?tu.name:'')}… the violet flame takes the metal</span></div>`; }
   for(const u of UPGRADES){
-    const own=owns(u.id), ok=canBuy(u.id), av=available(u);
+    const own=owns(u.id), ok=canBuy(u.id)&&!tempering, av=available(u);
     const cost=own?'':Object.keys(u.cost).map(k=>`<span class="${have(k)<u.cost[k]?'short':''}">${INV_ICON[k]||''}${u.cost[k]} ${esc(NAMES[k]||k)}${u.cost[k]>1&&k!=='kelp'&&k!=='ichor'?'s':''} <small style="font-weight:400;color:#7a6a6e">(${have(k)})</small></span>`).join('');
-    h+=`<div class="tmp-up${own?' owned':ok?' ready':''}">${ICON[u.id]}<div><div class="nm">${esc(u.name)}</div><div class="eff">${esc(u.effect)}</div>
+    h+=`<div class="tmp-up${own?' owned':ok?' ready':''}${justTempered===u.id?' just':''}${tempering&&tempering.id===u.id?' working':''}">${ICON[u.id]}<div><div class="nm">${esc(u.name)}</div><div class="eff">${esc(u.effect)}</div>
       ${own?'':`<div class="note">${esc(av?u.desc:'Needs the moth jar from the sea cave first.')}</div><div class="tmp-cost">${cost}</div>`}</div>
-      ${own?`<span class="own">${S.upgrades[u.id]==='gift'?'Given':'Tempered'}</span>`:`<button class="btn" type="button" data-buy="${u.id}" ${ok?'':'disabled'} aria-label="Temper ${esc(u.name)}">Temper</button>`}</div>`;
+      ${own?`<span class="own">${S.upgrades[u.id]==='gift'?'Given':'Tempered'}</span>`:`<button class="btn" type="button" data-buy="${u.id}" ${ok?'':'disabled'} aria-label="Temper ${esc(u.name)}">${tempering&&tempering.id===u.id?'Tempering…':'Temper'}</button>`}</div>`;
   }
   listEl.innerHTML=h;
   if(keep){ const f=listEl.querySelector(`[data-buy="${keep}"]:not(:disabled)`)||listEl.querySelector('[data-buy]:not(:disabled)')||$('tabTemper'); try{f.focus({preventScroll:true});}catch(_){f.focus();} }
@@ -704,7 +749,7 @@ function journalData(){
   return {hearts:maxHp()/2, shardsInto:shardN()%SHARDS_PER_HEART, shards:shardN(), shardTotal:SPOTS.length||12, wings:wingN(), marks:marksHeld(), earned:marksEarned(), spent:S.spent,
     upgrades:UPGRADES.filter(u=>owns(u.id)).map(u=>u.id), caches:count(S.caches), cacheTotal:CACHES.length||8, freed:negs, freedTotal:negTotal,
     blights:bl.map(b=>({id:b.id,name:b.name,cured:!!b.cured})),
-    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)}]};
+    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)},{id:'answer',name:'The Answer',done:!!((G.templeBoss&&G.templeBoss.defeated)||S.hearts.answer)}]};
 }
 function renderJournal(){
   const d=journalData(), el=$('journalBody'); if(!el)return;
@@ -761,7 +806,7 @@ G.persist.register('progress',{
 
 /* ---------------------------------------------------------------- API */
 const API=G.progress={
-  reward:rewardFn, state:S, UPGRADES, owns, buy, canBuy, maxHp, apply:()=>apply(),
+  reward:rewardFn, state:S, UPGRADES, owns, buy, temper, get tempering(){ return tempering&&tempering.id; }, canBuy, maxHp, apply:()=>apply(),
   get marks(){ return marksHeld(); }, get shards(){ return shardN(); }, get wings(){ return wingN(); },
   get spots(){ return SPOTS; }, get caches(){ return CACHES; }, get busy(){ return !!reward.active||queue.length>0; },
   get rewarding(){ return reward.active?reward.active.id:null; },
@@ -771,7 +816,7 @@ const API=G.progress={
   /* devtools + tests */
   give(kind,n=1){
     if(kind==='shard'){ for(let i=0;i<n;i++){ const s=SPOTS.find(x=>!S.shards[x.id]); if(!s)break; collectShard(s,{silent:i<n-1}); } }
-    else if(kind==='heart'){ const src=['stag','undertow','crane'].find(k=>!S.hearts[k])||('dev'+count(S.hearts)); S.hearts[src]=1; apply(); rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'Test tools',desc:'Your heart grows by one.'}); }
+    else if(kind==='heart'){ const src=['stag','undertow','crane','answer'].find(k=>!S.hearts[k])||('dev'+count(S.hearts)); S.hearts[src]=1; apply(); rewardFn({id:'heart',icon:'heart',name:'Keeper’s Heart',eyebrow:'Test tools',desc:'Your heart grows by one.'}); }
     else if(kind==='mark'){ S.marks['dev:'+Date.now()+Math.random()]=n; renderTemper(); G.ui.toast('Keeper’s Mark',marksHeld()+' held'); }
     else if(kind==='wing'){ S.freed=Math.min(8,(wingN()+1)*WING_EVERY); apply(); wingFlourish(); G.ui.toast('Moth Wing',wingN()+' of 4'); }
     else if(kind==='upgrades'){ for(const u of UPGRADES)if(!owns(u.id))S.upgrades[u.id]=1; apply(); renderTemper(); }
@@ -806,6 +851,7 @@ G.system('progress',{order:62,modes:'always',
     G.on('boss:dead',onBoss);
     G.on('cave:bossDead',onUndertow);
     G.on('undercroft:bossDead',onCrane);
+    G.on('temple:bossDead',onAnswer);
     G.on('negative:freed',onFreed);
     G.on('blight:cured',onBlight);
     G.on('inv:change',()=>{ if(tab==='temper')renderTemper(); });

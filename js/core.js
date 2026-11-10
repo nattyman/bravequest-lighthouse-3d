@@ -467,10 +467,23 @@ function pollPad(dt){
   }catch(e){ if(!pad._err){pad._err=1;console.error('gamepad',e);} }
 }
 
+/* LENS HOOK (lens.js, the Vigil): once the Vigil Lens is yours and the lantern is open (G.lens.armed()), the shutter action
+   (F, controller RB, the lantern button) waits for its release: let go within .3 s and it is the shutter tap it always was
+   (sent on release); held .3 s it becomes the 'lens' action (G.input.down('lens'): the focused beam) and the shutter stays
+   open. Otherwise the shutter acts the moment it is pressed, as it always has. */
+const shHold={t:-1,on:false};
+function shutterHold(dt){
+  const hit=pressed.has('shutter')||vpressed.has('shutter');
+  if(shHold.t<0){ if(!hit||!(G.lens&&G.lens.armed&&G.lens.armed()))return; shHold.t=0; }
+  pressed.delete('shutter'); vpressed.delete('shutter');
+  if(G.input.down('shutter')){ shHold.t+=dt; if(shHold.t>=.3&&!shHold.on){ shHold.on=true; pressed.add('lens'); } return; }
+  if(shHold.on)released.add('lens'); else pressed.add('shutter');
+  shHold.t=-1; shHold.on=false;
+}
 G.input={
   BIND,
-  /** held this frame */
-  down:a=>vheld.has(a)||pad.acts.has(a)||BIND[a].some(c=>held.has(c)),
+  /** held this frame ('lens': the shutter held past .3 s with the Vigil Lens, see LENS HOOK) */
+  down:a=>a==='lens'?shHold.on:(vheld.has(a)||pad.acts.has(a)||BIND[a].some(c=>held.has(c))),
   /** went down since last frame */
   pressed:a=>pressed.has(a)||vpressed.has(a),
   released:a=>released.has(a),
@@ -496,7 +509,7 @@ G.input={
     return true;
   },
   /** called by the frame loop / G.step before systems update */
-  poll(dt){ pollPad(dt||0); },
+  poll(dt){ pollPad(dt||0); shutterHold(dt||0); },
   /** mouse / touch / right-stick look in pixels since last frame (+y = look down unless inverted).
       Invert is applied here, once, so every source respects G.settings.invertY. */
   look(){ return {x:lookX,y:G.settings.invertY?-lookY:lookY}; },
@@ -645,12 +658,13 @@ G.combat={
     if(hits.length)G.emit('strike',{hits,team:o.team,kind:o.kind});
     return hits;
   },
-  /** best lock-on candidate in front of `from` facing `dir` (Vector3) */
-  nearestTarget(from,maxDist=18,dir=null,team='enemy'){
+  /** best lock-on candidate in front of `from` facing `dir` (Vector3); prio: a hurtbox flagged lockPriority wins wherever it is */
+  nearestTarget(from,maxDist=18,dir=null,team='enemy',prio=false){
     let best=null,bs=1e9;
     for(const hb of G.hurtboxes){ if(hb.team!==team||hb.targetable===false||(hb.alive&&!hb.alive()))continue;
-      const dx=hb.pos.x-from.x,dz=hb.pos.z-from.z,d=Math.hypot(dx,dz); if(d>maxDist)continue;
-      let s=d; if(dir){const dot=(dx*dir.x+dz*dir.z)/Math.max(d,1e-3); s=d*(1.6-dot);}
+      const dx=hb.pos.x-from.x,dz=hb.pos.z-from.z,d=Math.hypot(dx,dz), pri=prio&&!!hb.lockPriority; if(d>maxDist+(pri?4:0))continue;
+      let s=d; if(dir&&!pri){const dot=(dx*dir.x+dz*dir.z)/Math.max(d,1e-3); s=d*(1.6-dot);}
+      if(pri)s-=1000;   // hb.lockPriority (a crab on the raft): chosen first, wherever the camera points
       if(s<bs){bs=s;best=hb;} }
     return best;
   },
@@ -728,7 +742,9 @@ G.models={};
 /* ?headless (tests): the game still updates in real time, but frames are only drawn when something may want to see them —
    the first frame after a G.step() (so a screenshot right after a scripted step is current), and ~2 a second otherwise.
    Software-rendered Chrome spends most of its CPU drawing frames nobody watches; this is the tests' big speed-up.
-   G.headless.draw(n) forces the next n frames to draw (e.g. before a screenshot of an animation). */
+   G.headless.draw(n) forces the next n frames to draw (e.g. before a screenshot of an animation).
+   G.headless.hold=true stops the real-time updates: the game then moves only by G.step(), so how fast the machine is (and how
+   long a test waits between steps) can't move the tide, the bait timer or a crab on its own. Frames still draw. */
 G.headless=/[?&]headless/.test(location.search)?{dirty:true,force:0,lastDraw:0,draw(n=2){this.force=Math.max(this.force,n);}}:null;
 G.step=(dt=1/30,n=1)=>{ const mode=G.state.mode; if(G.headless)G.headless.dirty=true; for(let k=0;k<n;k++){ G.input.poll(dt); G.time+=dt; G.dt=dt; G.hints.length=0;
   for(const s of systems){ if(!s.update)continue; if(s.modes!=='always'&&!s.modes.includes(mode))continue; try{s.update(dt);}catch(e){console.error('step '+s.name,e);} }
@@ -745,7 +761,9 @@ G.start=()=>{
   let last=performance.now();
   function frame(now){
     if(G.quality.cap&&now-last<1000/G.quality.cap-2){requestAnimationFrame(frame);return;}
-    const dt=Math.min(.05,(now-last)/1000); last=now; G.dt=dt;
+    const dt=Math.min(.05,(now-last)/1000); last=now;
+    const held=!!(G.headless&&G.headless.hold);   // a test holding the clock: only G.step() moves the game (draws still happen)
+    if(!held){ G.dt=dt;
     G.input.poll(dt);
     const steps=G.state.mode==='play'?Math.max(1,Math.min(8,G.timeScale|0)):1; // devtools time speed: n whole substeps
     for(let k=0;k<steps;k++){
@@ -760,12 +778,13 @@ G.start=()=>{
     }
     G.atmo.dark=U.damp(G.atmo.dark,G.atmo.darkTarget,2.2,dt);
     }
+    }
     const H=G.headless;
     if(!H||H.dirty||H.force>0||now-H.lastDraw>500){
       if(composer)composer.render(); else renderer.render(scene,camera);
       if(H){ H.dirty=false; if(H.force>0)H.force--; H.lastDraw=now; }
     }
-    G.input.endFrame();
+    if(!held)G.input.endFrame();
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);

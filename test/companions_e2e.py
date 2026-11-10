@@ -3,7 +3,7 @@ Covers: earning Ember (the first freed fox stays; a second fox still runs home; 
 standing stones flits off when you come close, a hit weakens it, then the swarm frees it); 9 negatives in all; following (heel, sit
 after 2 s, lie after 10 s, Corvin perches or rides your shoulder), the catch-up out of sight (never popping in on screen), through
 fast travel, into the sea cave and the Undercroft, onto the cave raft, waiting outside the lighthouse; the commands (R / T, D-pad
-left / right, the touch buttons, the prompts at the spots); each of the six spots solved by command with its reward (Maren's key
+left / right, the touch buttons, the prompts at the spots); each of the six spots solved by command with its reward (Hesper's key
 and sea-chest shard, the nest shard: 14 shards); scouting (pins + 45 s cooldown, then a caw); the fights (a nip breaks a wind-up, a
 dive delays an attack, nothing on a boss, no harm ever reaches them); save -> reload -> Continue; old saves (a freed fox gives Ember
 quietly; the raven's index gives Corvin). Screenshots in /tmp/claude-0/companions/.
@@ -35,6 +35,8 @@ HELP=r"""(()=>{ window.T={}; window.EV=[];
   T.press=i=>{ T.btn(i,true); G.step(1/30,2); T.btn(i,false); G.step(1/30,2); };
   T.msgs=n=>G.ui.messages().slice(-(n||3)).map(m=>m.text);
   T.said=re=>G.ui.messages().some(m=>re.test(m.text));
+  // story moments open the conversation card (talk.js): read each one through as it opens (first reply), and note who it was
+  window.CARDS=[]; G.on('talk:open',e=>{ CARDS.push(e&&e.who); let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } });
   return true; })()"""
 
 FRESH=[
@@ -109,6 +111,7 @@ FRESH=[
  ("bell", r"""(()=>{ G.cave.exit({instant:true}); G.step(1/30,20); const s=G.flow.snapshot(); s.mods.moths.cured=['well']; s.mods.undercroft={v:1,open:true,lit:[],reached:[],gates:{},trap:false,freeUsed:true,mill:false,prevCp:null}; s.quiet=true;
    G.flow.begin(s); G.step(1/30,20); T.light(); G.devtools.teleport('comp-bell'); G.step(1/30,60); T.clear(); G.step(1/30,30); const here=T.D().spotHere('corvin'); const lit0=G.undercroft.isLit('chapel');
    T.tap('raven',1); const n=T.finish(); G.step(1/30,30); return {ok:G.undercroft.inside&&here&&here.id==='bell'&&!lit0&&G.undercroft.isLit('chapel')&&G.companions.state.spots.bell&&T.said(/Wren/),here:here&&here.id,n,lit:G.undercroft.isLit('chapel'),dE:T.dE()}; })()"""),
+ ("cards", r"""(()=>{ const want=['ember','corvin','hesper','echo']; return {ok:want.every(w=>CARDS.includes(w)),cards:CARDS}; })()"""),   # the story beats came up as conversation cards
  ("ucFollow", r"""(()=>{ return {ok:T.dE()<10&&['shoulder','toShoulder'].includes(T.C().mode),dE:T.dE(),c:T.C().mode}; })()"""),
  # fights: a nip breaks a wind-up, a dive delays an attack, nothing on a boss, no harm to them
  ("nip", r"""(()=>{ G.undercroft.exit({instant:true}); G.step(1/30,30); T.tp(30,20); T.light(); T.clear(); G.step(1/30,60); const p=G.player.pos;

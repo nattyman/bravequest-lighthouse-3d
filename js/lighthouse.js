@@ -6,7 +6,7 @@
    lamp-room cure sequence (blob, lens, beam, G.atmo.cured).
    Act 1 (v12): Halloran's storm lantern (G.items.storm, hangs on the oil shed)
    gets you up the stair; set in the cradle it fails (the ink drinks the flame),
-   the ink then pulses at you; Maren's logbook on the sill; dead moth husks outside the glass.
+   the ink then pulses at you; Hesper's logbook on the sill; dead moth husks outside the glass.
    Before the cure the lamp turns an anti-light beam; G.lighthouse.beam = {yaw(), lit}.
    Ported from the-moth-climb.html (getFloor / constrain / cure).
    ===================================================================== */
@@ -628,7 +628,7 @@ function updateStorm(dt,t){
   u.globeMat.color.copy(T.spent?U.col('#6a6260'):U.col('#ffd8a0')); u.globeMat.opacity=T.spent?.35:.24;
 }
 
-/* ---------------------------------------------------------------- the sill: dead moth husks + Maren's logbook */
+/* ---------------------------------------------------------------- the sill: dead moth husks + Hesper's logbook */
 const LOG_A=ASTART+1.05;
 let logInteract=null;
 function buildSill(){
@@ -664,8 +664,12 @@ function buildSill(){
   logInteract=G.interact.add({pos:()=>V(wx(LOG_A,GLASS_R-.75),TOP,wz(LOG_A,GLASS_R-.75)),radius:1.7,priority:4,
     label:'Read the logbook on the sill',
     enabled:()=>inRoom(G.player.pos)&&!S.fail,
-    use(){ G.ui.say('“They always came to the lamp. I thought it was the light they wanted.”','The keeper’s logbook',{priority:'high',key:'logbook'});
-      if(!S.said.logbook){ S.said.logbook=true; setTimeout(()=>G.ui.say('The last entry, in Maren’s small, careful hand. Outside the glass, the dead moths lie in drifts against the parapet.'),400); }
+    use(){ const first=!S.said.logbook; S.said.logbook=true;
+      const lines=[{text:'“They always came to the lamp. I thought it was the light they wanted. It isn’t. Taking the violet lantern to the old tree tonight. Fair’s tomorrow. If he comes, Da, tell him I didn’t wait for him to keep it.”',who:'The keeper’s logbook'}];
+      if(first)lines.push({text:'The last entry, in Hesper’s small, careful hand. Outside the glass, the dead moths lie in drifts against the parapet.',who:''});
+      // a reading on the conversation card (talk.js), captions if it can't pause now
+      if(G.talk&&G.talk.moment)G.talk.moment({who:'page',name:'The keeper’s logbook',title:'The last entry',portrait:'page',lines,key:'logbook'});
+      else{ G.ui.say(lines[0].text,'The keeper’s logbook',{priority:'high',key:'logbook'}); if(lines[1])setTimeout(()=>G.ui.say(lines[1].text),400); }
       G.flag('logbook',true); G.emit('logbook:read'); }});
 }
 

@@ -60,7 +60,7 @@ EXPECT={
  'story':lambda s:s['obj']=='Get out of the cold' and not s['loop'] and not s['staff'],
  'loop':lambda s:s['loop'] and s['cured'] and s['staff'] and s['cloak'] and s['lamp'] and s['obj']=='Feed the light',
  'lamp-failed':lambda s:not s['loop'] and not s['cured'] and s['staff'] and s['obj']=='Go back down',
- 'stag':lambda s:not s['loop'] and not s['cured'] and s['staff'] and s['obj']=='Find Maren’s lantern',
+ 'stag':lambda s:not s['loop'] and not s['cured'] and s['staff'] and s['obj']=='Find Hesper’s lantern',
  'finale':lambda s:not s['loop'] and s['cured'] and s['staff'] and s['obj']=='Something is climbing the cliff',
  'sandbar':lambda s:s['loop'] and s['tideLow'] and s['carried'] and s['swarm']>=50 and not s['inside'] and 'Cave' in s['obj'],
  'cave:mouth':lambda s:s['inside'] and s['room']=='mouth' and s['open']==[] and s['lit']==[] and s['swarm']>=50,
@@ -93,10 +93,10 @@ async def run_start2(ctx,pg,errs,sid):
     if sid=='stag':
         r=await pg.evaluate("""(()=>{ G.input.setVirtual('forward',true); G.step(1/30,60); G.input.setVirtual('forward',false); G.step(1/30,30);
           const b=G.monsters.boss; return {obj:document.getElementById('obj').textContent,boss:b&&b.kind}; })()""")
-        check('stag: walking in raises the Hollow Stag',r['boss']=='stag' and r['obj']=='Take back Maren’s lantern',r)
+        check('stag: walking in raises the Hollow Stag',r['boss']=='stag' and r['obj']=='Take back Hesper’s lantern',r)
         r=await pg.evaluate("""(()=>{ const b=G.monsters.boss; let n=0; while(b&&b.alive&&!b.dying&&n<120){ G.combat.strike({x:b.pos.x,y:b.pos.y+1,z:b.pos.z,radius:3,team:'player',damage:4}); G.step(1/30,12); n++; } G.step(1/30,150);
           return {n,mode:G.state.mode,ending:!document.getElementById('ending').hidden,obj:document.getElementById('obj').textContent}; })()""")
-        check('stag: it falls, no ending, the lantern is next',not r['ending'] and r['obj']=='Take Maren’s lantern',r)
+        check('stag: it falls, no ending, the lantern is next',not r['ending'] and r['obj']=='Take Hesper’s lantern',r)
     if sid=='finale':
         r=await pg.evaluate("""(()=>{ window._fs=0; G.on('finale:start',()=>_fs++); const lh=G.world.lighthouse, d=lh.doorOut; G.player.teleport(d.x-3,d.y,d.z,-Math.PI/2); G.step(1/30,120);
           return {obj:document.getElementById('obj').textContent,fs:_fs,stag:!!G.monsters.boss}; })()""")
