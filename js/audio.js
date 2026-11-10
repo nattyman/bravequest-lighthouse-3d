@@ -498,8 +498,11 @@ function recDip(t,depth,hold){ if(!recBus)return; const g=recBus.gain; g.cancelS
 
 /* ---- game state → music state ---- */
 const STATES=['title','explore','forest','tower','combat','boss','cured','ending','dead','silent','caveDark','caveLit','caveCombat','caveBoss','caveResolve','caveHold'];
+// (playtest 2026-11-09: in the Vigil the rooms are stacked, so a hound on the floor below kept the battle music on;
+//  only count what's on your own level)
 function threatNear(P){ if(G.monsters&&G.monsters.list) for(const m of G.monsters.list){
     if(!m.alive||m.dying||m.state==='dying'||m.state==='idle'||m.state==='return')continue;
+    if(Math.abs(m.pos.y-P.pos.y)>4)continue;
     if(Math.hypot(m.pos.x-P.pos.x,m.pos.z-P.pos.z)<30)return 1; } return 0; }
 function musicState(mode){
   if(rec.override)return {s:rec.override,base:rec.override};
