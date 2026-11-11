@@ -771,6 +771,8 @@ function updateChain(dt){
   // ('cave') stands until the cave has been entered once; after that the chain takes the marker straight back
   const caveStep=/^cave/.test(qs||''), CB=G.caveBoss;
   if((G.cave&&G.cave.inside)||(caveStep&&qs==='cave'&&CB&&!CB.entered)){ foreignAt=-1; return; }
+  // the north island (northisle.js): nothing to feed out there, its own objective stands while you're across or crossing
+  if(G.northIsle&&(G.northIsle.inside||G.northIsle.crossing)){ foreignAt=-1; return; }
   if(caveStep)foreignAt=G.time-99;
   else if(myStep&&qs&&qs!==myStep&&qs!=='done'&&!/^loop-/.test(qs)){ if(foreignAt<0)foreignAt=G.time; if(G.time-foreignAt<20)return; }
   foreignAt=-1;

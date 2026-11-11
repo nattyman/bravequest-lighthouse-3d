@@ -85,12 +85,19 @@ function buildBoat(){
   const pts2=[V(.4,4.2,0),V(-1.2,2.4,0),V(-2.4,1.05,0)]; g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts2),8,.02,4,false),rope));
   g.position.set(MOOR.x,(G.world.seaLevel||0)-.3,MOOR.z); g.rotation.y=MOOR.yaw;
   G.scene.add(g); g.visible=false; boat=g;
-  G.addCollider({x:MOOR.x,z:MOOR.z,r:1.4,y0:-4,y1:2});
+  moorCol={x:MOOR.x,z:MOOR.z,r:1.4,y0:-4,y1:2}; G.addCollider(moorCol);
 }
+/* where she's moored: the south beach (home) or the north island's cove (northisle.js moves her there and back) */
+let moorCol=null;
+function moorAt(x,z,yaw){ if(!boat)return; boat.position.x=x; boat.position.z=z; boat.rotation.y=yaw;
+  if(moorCol){ G.removeCollider(moorCol); moorCol.x=x; moorCol.z=z; G.addCollider(moorCol); } }
+function moorHome(){ moorAt(MOOR.x,MOOR.z,MOOR.yaw); }
+const atHome=()=>!(G.northIsle&&G.northIsle.at==='north');
 
 /* ------------------------------------------------------------------ the quest */
 function setQuest(){
   if(!G.quest||!S.started)return;
+  if(S.built&&!atHome())return;   // over on the north island: northisle.js has the objective
   const n=count();
   if(S.built){ G.quest.set('boat:ready','Sail north','Your boat is waiting in the shallows by the wreck',boat?boat.position.clone().add(V(0,2,0)):null,'Your boat'); return; }
   if(!S.looked){ G.quest.set('boat','Your boat','Look her over, on the south beach where you washed up',WRECK.clone().setY(H(WRECK.x,WRECK.z)+1.5),'The wreck'); return; }
@@ -143,9 +150,9 @@ function applyBuilt(){
   if(boat)boat.visible=S.built;
 }
 function sailNorth(){
-  // the crossing (Heath's call: a short scripted sail through the fog) arrives with the north island itself
-  try{ G.ui.say('North, toward the green light. Not tonight. The north island is the next chapter of the story.','Rowan',{priority:'high',key:'boatNorth'}); }catch(e){}
-  try{ G.ui.toast('The north island','Coming in the next chapter'); }catch(e){}
+  // the crossing (Heath's call: a short scripted sail through the fog): northisle.js
+  if(G.northIsle&&G.northIsle.cross){ G.emit('boat:sail',{ready:true}); G.northIsle.cross('north'); return; }
+  try{ G.ui.say('North, toward the green light. Not tonight.','Rowan',{priority:'high',key:'boatNorth'}); }catch(e){}
   G.emit('boat:sail',{ready:false});
 }
 
@@ -179,19 +186,19 @@ G.system('boat',{order:48,modes:['play','paused','dead'],
       label:()=>!S.looked?'Look over the boat':count()<PARTS.length?'The boat · '+count()+' of '+PARTS.length+' parts':'Patch the boat',
       enabled:()=>isPlay()&&S.started&&!S.built&&!work,use:()=>{ if(S.looked&&count()>=PARTS.length)patch(); else lookOver(); }});
     G.interact.add({pos:()=>boat?V(boat.position.x,.4,boat.position.z):V(0,-999,0),radius:4.6,priority:4,label:'Sail north',   // from the waterline: she's moored a few steps out
-      enabled:()=>isPlay()&&S.built,use:sailNorth});
+      enabled:()=>isPlay()&&S.built&&atHome()&&!(G.northIsle&&G.northIsle.crossing),use:sailNorth});
     applyBuilt(); syncParts();
   },
   update(dt){
     for(let i=timers.length-1;i>=0;i--){ if(G.time>=timers[i].t){ const f=timers[i].fn; timers.splice(i,1); try{ f(); }catch(e){ console.error(e); } } }
     if(G.state.mode==='play')updateWork(dt||0);
     syncParts();
-    if(boat&&boat.visible){ const t=G.time||0; boat.position.y=(G.world.seaLevel||0)-.3+Math.sin(t*1.3)*.06; boat.rotation.z=Math.sin(t*1.1)*.035; boat.rotation.x=Math.sin(t*.8+1)*.025; }
+    if(boat&&boat.visible&&!(G.northIsle&&G.northIsle.crossing)){ const t=G.time||0; boat.position.y=(G.world.seaLevel||0)-.3+Math.sin(t*1.3)*.06; boat.rotation.z=Math.sin(t*1.1)*.035; boat.rotation.x=Math.sin(t*.8+1)*.025; }
   }
 });
 G.on('game:reset',()=>{ S.started=S.looked=S.built=false; S.parts={}; applyBuilt(); syncParts(); });
 
-G.boat={state:S,PARTS,get started(){ return S.started; },get built(){ return S.built; },count,get working(){ return !!work; },
+G.boat={state:S,PARTS,get mesh(){ return boat; },moorAt,moorHome,get started(){ return S.started; },get built(){ return S.built; },count,get working(){ return !!work; },
   debug:{start:()=>start(false),give:id=>{ const p=BY[id]; if(p)takePart(p); },look:lookOver,patch,build:()=>finish(true),sail:sailNorth,
     reset(){ S.started=S.looked=S.built=false; S.parts={}; work=null; applyBuilt(); syncParts(); }, wreckPos:WRECK, moor:MOOR}};
 })();

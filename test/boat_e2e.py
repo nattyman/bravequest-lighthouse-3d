@@ -4,7 +4,7 @@
 - "Look over the boat" at the wreck: Rowan names the four parts and where they are; the map pins them;
 - each part is a pickup at its place (real interact): toast, counted in the objective; the wreck shows the count;
 - with all four: "Patch the boat" takes ~3 s (the screen dims), then the broken hull is gone (mesh + colliders) and the
-  patched boat floats in the shallows; "Sail north" says plainly the north island is the next chapter;
+  patched boat floats in the shallows; "Sail north" starts the crossing (northisle_e2e.py covers the rest);
 - it all survives a save, a page reload and Continue.
 usage: python3 test/boat_e2e.py [url]   (default http://localhost:8800/dev.html?debug&headless)"""
 import asyncio, sys, json
@@ -42,8 +42,8 @@ STEPS=[
    " const dim=+getComputedStyle(document.getElementById('fade')).opacity, mid=G.boat.working&&!G.boat.built; let t=0; while(G.boat.working&&t<200){ G.step(1/30,1); t++; } G.step(1/30,40);"
    " const hc=G.world.wreck.hullColliders.every(c=>c._off); const bt=G.scene.getObjectByName('rowanBoat'); return {lab,mid,dim:dim>.3,secs:+(t/30).toFixed(1),built:G.boat.built,hull:G.world.wreck.hull.visible,hc,boat:bt.visible,afloat:bt.position.y<.2,step:G.quest.step,line:T.said(/She’ll float/)}; })()",
    lambda r: r['lab']=='Patch the boat' and r['mid'] and 2.5<=r['secs']<=3.6 and r['built'] and not r['hull'] and r['hc'] and r['boat'] and r['afloat'] and r['step']=='boat:ready' and r['line']),
- ("sailNorth", "(()=>{ T.calm(); const m=G.boat.debug.moor; T.near(m.x,m.z,3.4); G.step(1/30,2); const c=G.interact.pick(G.player.pos); const lab=c&&G.interact.label(c); if(c)c.use(); G.step(1/30,4); return {lab,next:T.said(/next chapter/)}; })()",
-   lambda r: r['lab']=='Sail north' and r['next']),
+ ("sailNorth", "(()=>{ T.calm(); const m=G.boat.debug.moor; T.near(m.x,m.z,3.4); G.step(1/30,2); const c=G.interact.pick(G.player.pos); const lab=c&&G.interact.label(c); if(c)c.use(); G.step(1/30,4); return {lab,crossing:!!(G.northIsle&&G.northIsle.crossing)}; })()",
+   lambda r: r['lab']=='Sail north' and r['crossing']),
  ("save", "(()=>{ T.calm(); G.flow.writeSave(); return !!localStorage.getItem(G.flow.keys.save); })()", lambda r: r),
 ]
 AFTER=[
