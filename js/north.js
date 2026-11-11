@@ -70,7 +70,7 @@ G.system('north',{order:47,modes:['play','paused','dead','title'],
   init(){ try{ build(); }catch(e){ console.error('north',e); } },
   update(dt){
     if(!N.built)return;
-    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside);
+    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside)||(G.northCave&&G.northCave.inside);
     const want=ready()&&!inside?1:0;
     N.vis=U.damp(N.vis,want,want?.35:2,dt||0);
     root.visible=N.vis>.005; if(!root.visible)return;

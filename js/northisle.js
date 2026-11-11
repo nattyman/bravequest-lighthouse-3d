@@ -33,6 +33,8 @@ const COVE_A=1.2;                               // the cove's bearing from the m
 function shoreR(a){ return 66+8*Math.sin(3*a+1.2)+5*Math.sin(5*a-.4)+(fbm(Math.cos(a)*1.3+7,Math.sin(a)*1.3+3,3)-.47)*14; }
 const angTo=(x,z)=>Math.atan2(z-C.z,x-C.x);
 const coveK=a=>Math.exp(-Math.pow(U.angDiff(a,COVE_A)/.34,2));
+const MOUTH_A=COVE_A+.55;                       // the sea cave (northcave.js), under the cliffs west of the cove
+const shelfK=a=>{ const d=U.angDiff(a,(COVE_A+MOUTH_A)/2); return 1-smooth(.3,.42,Math.abs(d)); };   // the shelf you walk along to it
 // where the cove's shoreline is, and "inland" from there
 const COVE_R=shoreR(COVE_A), COVE_DIR={x:Math.cos(COVE_A),z:Math.sin(COVE_A)};
 const coveAt=(din)=>({x:C.x+COVE_DIR.x*(COVE_R-din),z:C.z+COVE_DIR.z*(COVE_R-din)});
@@ -61,7 +63,7 @@ function inlandH(x,z,s){
 let _lx=NaN,_lz=NaN,_lh=0;
 function rawH(x,z){
   const a=angTo(x,z), d=Math.hypot(x-C.x,z-C.z), R=shoreR(a), din=R-d;
-  if(din<=0)return Math.max(-11,-.5+din*.32);
+  if(din<=0){ const sh=shelfK(a); return Math.max(-11,-.5+din*lerp(.32,.15,sh)); }
   const k=coveK(a), s=din/R;
   const cliff=-.5+2.6*din, cove=-.5+.13*Math.min(din,14)+.62*Math.max(0,din-14);
   return Math.min(lerp(cliff,cove,k),inlandH(x,z,s));
@@ -190,7 +192,7 @@ function buildWrecks(GE){
   // the nameboards (separate meshes: painted letters on a canvas texture)
   const boards=[
     {id:'margery',name:'MARGERY',port:'WICKHAM’S END',din:5,side:-.12,yaw:.6,paint:'#40606e',
-      lines:['The Margery. She was a Wickham’s End boat.','They said she went down in a storm, when I was a boy. Half the hamlet walked the beach for a week.','There wasn’t a storm. There was a light.']},
+      lines:['The Margery. My father’s boat.','They said she went down in a storm when I was small. Half the hamlet walked the beach for a week.','There wasn’t a storm. There was a light.']},
     {id:'swift',name:'SWIFT',port:'CARROW',din:9.5,side:.13,yaw:-.9,paint:'#6e3b33',
       lines:['The Swift, out of Carrow. That’s two days down the coast.','It isn’t only our boats. It’s anyone who comes this way in the dark.']}];
   for(const b of boards){ const p=at(b.din,b.side), y=isleH(p.x,p.z);
@@ -345,7 +347,8 @@ function setQuest(){
   if(!G.quest)return;
   if(S.at!=='north'){ if(G.boat&&G.boat.built)G.quest.set('boat:ready','Sail north',S.landed?'Your boat is in the shallows by the wreck. The north island is across the water':'Your boat is waiting in the shallows by the wreck',boat()?boat().position.clone().add(V(0,2,0)):null,'Your boat'); return; }
   if(!S.door)G.quest.set('north:tower','The north island','Find who keeps the green light',doorPos?doorPos.clone().setY(TOWER.base+1.5):null,'The wrecker’s tower');
-  else G.quest.set('north:door','The wrecker’s tower','Barred from inside. The next chapter starts here',doorPos?doorPos.clone().setY(TOWER.base+1.5):null,'The wrecker’s tower');
+  else if(G.northCave&&G.northCave.mouth)G.northCave.setQuest();
+  else G.quest.set('north:door','The wrecker’s tower','Barred from inside',doorPos?doorPos.clone().setY(TOWER.base+1.5):null,'The wrecker’s tower');
 }
 function readBoard(b){
   const first=!S.read[b.id]; S.read[b.id]=true; G.emit('north:board',{id:b.id});
@@ -357,7 +360,7 @@ function tryDoor(){
   const first=!S.door; S.door=true; G.emit('north:door',{first});
   try{ const A=G.audio; if(A&&A.ready&&A.S){ const t=A.context.currentTime; A.S.thud(t,{g:.22,dur:.2}); A.S.thud(t+.32,{g:.18,dur:.18}); } }catch(e){}
   if(first){ say('Barred. From the inside.','Rowan',{key:'door1'}); later(1.6,()=>say('Someone’s up there. Someone keeps that fire lit.','Rowan',{key:'door2'}));
-    later(3.4,()=>{ try{ G.ui.toast('The wrecker’s tower','Coming in the next chapter'); }catch(e){} }); }
+    later(3.4,()=>say('Wreckers always have a way up from the water. There’ll be another way in.','Rowan',{key:'door4'})); }
   else say('Still barred. Whoever’s inside isn’t coming down.','Rowan',{key:'door3'});
   setQuest();
 }
@@ -400,8 +403,8 @@ G.system('northIsle',{order:85,modes:['play','paused','dead','title'],
 });
 G.on('boat:built',()=>{ if(S.at==='north'&&G.boat&&G.boat.moorAt)G.boat.moorAt(NMOOR.x,NMOOR.z,NMOOR.yaw); });
 
-const API=G.northIsle={get inside(){ const P=G.player; return onIsland(P&&P.pos); },   // live (fog.js asks before this system runs)
-  centre:C,tower:TOWER,cove:{beach:BEACH,moor:NMOOR,dir:COVE_DIR},box:BOX,path:PATH,
+const API=G.northIsle={get inside(){ const P=G.player; return onIsland(P&&P.pos)||!!(G.northCave&&G.northCave.inside); },   // live (fog.js asks before this system runs)
+  centre:C,tower:TOWER,cove:{beach:BEACH,moor:NMOOR,dir:COVE_DIR,mouthA:MOUTH_A},shoreR,setQuest:()=>setQuest(),box:BOX,path:PATH,
   get at(){ return S.at; }, get landed(){ return S.landed; }, get crossing(){ return X.on; }, get boatPos(){ return X.on&&X.dir==='north'?X.boatPos:null; }, get crossPhase(){ return X.phase; },
   height:isleH, inBox, cross, state:S,
   debug:{ arrive:(d)=>arrive(d||'north',true), get doorPos(){ return doorPos; }, boards:BOARDS, get pile(){ return S._pile; }, X }};

@@ -55,8 +55,8 @@ STEPS=[
    lambda r: r['lab']=='Look over the crates' and r['said']),
  ("door", "(()=>{ T.calm(); let ev=null; G.on('north:door',e=>ev=e); const d=G.northIsle.debug.doorPos; T.near(d.x,d.z,.8,d.y); const lab=T.use(/door/); T.run(4); T.calm();"
    " return {lab,ev:!!ev,barred:T.said(/Barred\\. From the inside/),keeps:T.said(/keeps that fire lit/),step:G.quest.step,obj:document.getElementById('obj').textContent}; })()",
-   lambda r: r['lab']=='Try the door' and r['ev'] and r['barred'] and r['keeps'] and r['step']=='north:door' and 'tower' in r['obj']),
- ("objectiveStays", "(()=>{ T.run(26); return {step:G.quest.step}; })()", lambda r: r['step']=='north:door'),
+   lambda r: r['lab']=='Try the door' and r['ev'] and r['barred'] and r['keeps'] and r['step'] in ('north:door','north:cave') and r['obj']),
+ ("objectiveStays", "(()=>{ T.run(26); return {step:G.quest.step}; })()", lambda r: r['step'] in ('north:door','north:cave')),
  ("sailHome", "(()=>{ T.calm(); const b=G.northIsle.cove.beach; G.player.teleport(b.x,null,b.z,0); G.step(1/30,4); const m=G.northIsle.cove.moor, dir=G.northIsle.cove.dir;"
    " const x=m.x-dir.x*5.2, z=m.z-dir.z*5.2; G.player.teleport(x,null,z,0); G.step(1/30,4); const lab=T.use(/Sail home/); T.run(3.5); T.calm(); const P=G.player, w=G.boat.debug.wreckPos, mo=G.boat.debug.moor, bt=G.boat.mesh.position;"
    " return {lab,at:G.northIsle.at,inside:G.northIsle.inside,home:+Math.hypot(P.pos.x-w.x,P.pos.z-w.z).toFixed(1),boat:+Math.hypot(bt.x-mo.x,bt.z-mo.z).toFixed(1),ctl:P.inputEnabled,cp:G.state.checkpointName,line:T.said(/sail south/),"
