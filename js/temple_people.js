@@ -36,7 +36,7 @@ function roomOf(p){ const t=TP(); if(t&&t.room){ try{ return t.room(p); }catch(e
 const floorAt=(x,z,y)=>{ const f=G.floorAt(x,z,y); return isFinite(f)?f:y-1; };
 
 /* ---------------------------------------------------------------- state (persisted) */
-const S={v:1,met:false,freed:false,home:false,ending:false,carving:false,pages:{},wrenAsked:false,unlocked:false,hal:{},homeTalks:0,heardNorth:false,heardStay:false,said:{}};
+const S={v:1,met:false,freed:false,home:false,ending:false,carving:false,pages:{},wrenAsked:false,unlocked:false,hal:{},homeTalks:0,heardNorth:false,heardStay:false,heardLure:false,said:{}};
 function save(){ return JSON.parse(JSON.stringify(S)); }
 let loadedNow=false;
 function load(d){ if(!d)return; loadedNow=true; for(const k in S){ if(k in d)S[k]=d[k]; } S.pages=Object.assign({},d.pages||{}); S.hal=Object.assign({},d.hal||{}); S.said=Object.assign({},d.said||{});
@@ -425,7 +425,7 @@ function updateHome(dt){
 }
 const HOME_LINES=[
   ['The lamp’s steadier with two of us. Dad pretends he isn’t watching me trim it.','He is.'],
-  ['I sit up here at night and look north. I don’t know what for yet.','The fishermen say there’s nothing up there but weather.'],
+  ['I sit up here at night and watch that light to the north.','The fishermen used to say there was nothing up there but weather.'],
   ['You can stop looking at my hand. It doesn’t hurt.','It goes cold when the fog comes in. That’s all.'],
   ['Seven years, and you come home the one spring I wasn’t here. That’s very you, Tide.'],
   ['The moths come up the stair at dusk and sit on the glass with me. I think they’re keeping watch too.']
@@ -436,6 +436,8 @@ function talkHome(){
   const ch=[];
   if(!S.heardNorth)ch.push({id:'north',text:'That carving. The tower.',next:()=>{ S.heardNorth=true; return {lines:['Somebody cut it into that wall before there was a lighthouse here. Before there was a village.',
     'An island to the north, with a light on it. A light like the one under the floor.','I keep thinking: if ours was holding something off, what’s theirs been doing all this time?']}; }});
+  if(G.flag('northLight')&&!S.heardLure)ch.push({id:'lure',text:'That light to the north.',next:()=>{ S.heardLure=true; return {lines:['It comes on when ours does. Every night, the same minute.',
+    'Somebody up there is keeping it, Tide. Keeping it the way I keep this one.','I’ll watch it from here. You go and find out who.']}; }});
   if(!S.heardStay)ch.push({id:'stay',text:'Do you want me to stay?',next:()=>{ S.heardStay=true; return {lines:['You’re asking me that at the top of a lighthouse, Tide.','…Somebody has to carry the oil up all these stairs. Dad’s knees won’t.']}; }});
   ch.push(leave('Goodnight, Hes.'));
   G.talk.open({who:'hesper',name:'Hesper',title:'Keeper of the light',portrait:calmPortrait(),lines:HOME_LINES[n%HOME_LINES.length],choices:ch.slice(-3)});
@@ -555,6 +557,6 @@ G.on('ready',()=>{ hookHalloran(); hookWren(); registerPortraits(); if(S.unlocke
 G.templePeople={state:S,PAGES,pages:PAGES,HOME_LINES,get met(){ return S.met; },get freed(){ return S.freed; },get home(){ return S.home; },
   get hesper(){ return hs; },get atHome(){ return lh; },talk:()=>talkSanctum(),readPage,
   debug:{meet:()=>met(),talkWren,talkHome,talkEnding,reveal:revealCarving,unlock,goHome:goneHome,pageObjs,carving:()=>carving,lampSpot,halloranHook,
-    reset(){ for(const k of ['met','freed','home','ending','carving','wrenAsked','unlocked','heardNorth','heardStay'])S[k]=false; S.pages={}; S.hal={}; S.homeTalks=0; S.said={}; endingWait=false;
+    reset(){ for(const k of ['met','freed','home','ending','carving','wrenAsked','unlocked','heardNorth','heardStay','heardLure'])S[k]=false; S.pages={}; S.hal={}; S.homeTalks=0; S.said={}; endingWait=false;
       if(hs){ hs.leaving=null; hs.stood=false; hs.placed=false; hs.inkK=1; } syncHome(); }}};
 })();

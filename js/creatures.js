@@ -1004,7 +1004,12 @@ const HAL_POST=[
   'Those moths went through the dark up there and didn’t leave a scrap of it.',
   'There’s more of it out on the island. More of me, too, if you go looking.',
   'Mind the swarm when you come by, Tide. I’d like to stay as much myself as I’ve got left.',
-  'Still out there somewhere. She went on past that tree without a light, and the island doesn’t end at the tree. I’ve read her pages. She wasn’t done. Find her, Rowan. I can’t.'
+  'Still out there somewhere. She went on past that tree without a light, and the island doesn’t end at the tree. I’ve read her pages. She wasn’t done. Find her, Rowan. I can’t.',
+  // 5-8: the wrecker's light to the north (north.js; Story Bible, threads for the north island)
+  'Cold and green, and turning backwards? That’s not a keeper’s light. That’s a lure.',
+  'Wreckers. My grandfather’s time, on the north rocks. You hang a lamp where a ship thinks there’s harbour, and in the morning you pick the wreck clean.',
+  'If that’s what you steered for, Tide, somebody meant you to hit those rocks.',
+  'Go up on the gallery some night and look north. Then come down and tell me I’m wrong.'
 ];
 /* corruption stain: a toon material whose surface goes to ink where (aCor × uCreep + noise) passes a threshold,
    with a bruised, violet-lit creeping edge. aCor is a per-vertex 0..1 "how close to the source" value. */
@@ -1310,6 +1315,9 @@ const HAL_TALK={
     {id:'set',text:'She set it down on purpose.',say:[3]},
     {id:'go',text:'I’ll go.',say:[2],end:true}]},
   cured:{lines:()=>HAL_POST, open:s=>s.talks?[2]:[0], topics:[
+    // the card shows three replies at a time: the north light goes first, so it isn't hidden behind the old ones
+    {id:'north',text:'There’s a light out north.',needs:()=>!!G.flag('northLight'),say:[5,6,7]},
+    {id:'now',text:'What now?',needs:s=>!G.flag('northLight')&&!s.heard[8]&&!!(G.flag('gloamingDead')||(G.loop&&G.loop.active)),say:[8]},
     {id:'moths',text:'The moths did it.',say:[1]},
     {id:'over',text:'Is it over?',needs:s=>!s.heard[2],say:[2]},
     {id:'hesper',text:'And Hesper?',say:[4]},
