@@ -143,7 +143,14 @@ const STARTS=[
   {id:'north-cave-in',name:'Inside the sea cave',sub:'Just inside: the store, the ledger and the flooded way on',group:'The north island'},
   {id:'north-hoist',name:'The hoist',sub:'Ledger read, sluice drained · at the hoist up into the tower',group:'The north island'},
   {id:'north-father',name:'Rowan’s father',sub:'At the top of the hoist, the foot of the tower · he comes down the stair',group:'The north island'},
-  {id:'north-met',name:'After the meeting',sub:'He’s gone back up and barred the trapdoor · the end of the chapter so far',group:'The north island'},
+  {id:'north-met',name:'After the meeting',sub:'He’s gone back up and barred the trapdoor · the fire is about to say Rowan’s name',group:'The north island'},
+  {id:'north-trap',name:'The trapdoor, burned open',sub:'The fire said his name and burned the bar through · at the foot of the stair',group:'The north island'},
+  {id:'north-fire',name:'Into the fire room',sub:'First time up: his father at the pit, the fire says his name, the Wreck Giant climbs out',group:'The north island'},
+  {id:'north-fight',name:'The Wreck Giant',sub:'The fight running, the intro already seen · full hearts',group:'The north island'},
+  {id:'north-brink',name:'On the brink',sub:'The fight running at 2 hearts · the next blow brings his father in (the rescue)',group:'The north island'},
+  {id:'north-final',name:'The last of it',sub:'Not rescued · the giant in its last phase, nearly done · douse it and strike: the ending where he lives',group:'The north island'},
+  {id:'north-lived',name:'He lived',sub:'After the ending where his father lives · he keeps a true light now',group:'The north island'},
+  {id:'north-died',name:'He died',sub:'After the ending where his father dies · the fire is out',group:'The north island'},
   {id:'companions',name:'Companions',sub:'Loop running · Ember and Corvin with you · on the moor by the hollow log',group:'Companions',main:false},
   {id:'testsave',name:'Continue test save',sub:'',group:'Saves',test:true}
 ];
@@ -196,7 +203,8 @@ function templeEnter(id){
 /* the north island (boat.js / northisle.js / northcave.js): the chapter after the Vigil, so every earlier place is done (the cave,
    the Undercroft and the Vigil, their bosses down), the wrecker's light seen, then each step of the boat and the island done in
    order up to the chosen point */
-const NORTH_ORDER=['boat','north-sail','north-landing','north-cave','north-cave-in','north-hoist','north-father','north-met'];
+const NORTH_ORDER=['boat','north-sail','north-landing','north-cave','north-cave-in','north-hoist','north-father','north-met',
+  'north-trap','north-fire','north-fight','north-brink','north-final','north-lived','north-died'];   // 8+: the fire room (northfire.js, northfire_story.js)
 const NORTH_STEP={
   boat:['boat:patch','Patch your boat','You have everything. Back to the wreck'],
   'north-sail':['boat:ready','Sail north','Your boat is waiting in the shallows by the wreck']
@@ -206,6 +214,7 @@ function northSave(id){
   s.mods.lens={v:1,owned:true,range:20,said:['first']};
   s.mods.templeBoss={v:1,defeated:true,reward:'lens',said:[]};
   s.mods.undercroftBoss={v:1,defeated:true,ledger:true,pageRead:true,bossSeen:true,said:[]};
+  s.mods.undercroftPeople=Object.assign({},s.mods.undercroftPeople||{},{v:1,names:true,bossDead:true,discovered:true});   // the ledger's names long since given back (else its 'Speak their names' takes the HUD)
   s.mods.caveBoss={v:1,pages:[1,2,3],defeated:true,discovered:true,hal:false,entered:true,bossSeen:true,said:[]};
   s.mods.cavePuzzles={v:1,lit:CAVE_ORDER.slice(),open:['gallery','channel','arena'],prog:{},raft:{t:1,done:true},bossDead:true,said:{},jar:{owned:true,count:0,left:0,said:{}}};
   s.mods.cave={lit:CAVE_ORDER.slice(),gates:{channel:true,shortcut:true},wall:true};
@@ -223,7 +232,11 @@ function northSave(id){
     s.cp=s.pos.slice(); s.cpYaw=s.yaw; s.cpName='the north island';
     const m=G.northCave&&G.northCave.mouth; if(k>=3&&m){ s.pos=[m.x,G.world.height(m.x,m.z)+.2,m.z]; s.yaw=m.yaw; }
   }
-  if(k>=4)s.mods.northCave={v:1,entered:true,drained:k>=5,hoistTop:k>=6,read:k>=5?{ledger:true}:{},met:k>=7,prevCp:null};
+  if(k>=4)s.mods.northCave={v:1,entered:true,drained:k>=5,hoistTop:k>=6,read:k>=5?{ledger:true}:{},met:k>=7,open:k>=8,prevCp:null};
+  if(k>=9){ const out=k===13?'lived':k===14?'died':null;
+    s.mods.northFire={v:1,entered:k>=10,done:!!out,outcome:out,fell:null};
+    s.mods.northFireStory={v:1,introSeen:k>=10,attempt:0,keeperTalks:0};
+    if(out)s.flags.giantDead=true; }
   const st=NORTH_STEP[id]; if(st){ s.step=st[0]; s.objective=st[1]; s.sub=st[2]; s.target=null; s.targetName=''; }
   return s;
 }
@@ -237,6 +250,14 @@ function northEnter(id){
       const D=NC.debug, p=D.toWorld(D.SHAFT.x,D.TOP+.05,D.SHAFT.z); G.player.teleport(p.x,p.y,p.z,PI/2); if(G.player.aimCamera)G.player.aimCamera(PI/2,.55); }
     if(k===6)NC.debug.meet();
     NC.setQuest(); }
+  // the fire room: straight in at the stair's head (the story arms the fight itself: the intro the first time, a short rise after)
+  const NF=G.northFire;
+  if(k>=9&&NF){ if(NC&&NC.inside){ NC.debug.S.trans=null; } NF.enter({instant:true});
+    if(k===11||k===12){ const off=G.on('northFire:fightStart',()=>{ try{ off&&off(); }catch(e){}
+        const P=G.player, g=NF.giant;
+        if(k===11&&P)P.hp=Math.min(P.maxHp,4);                        // 2 hearts: whatever lands next brings his father in
+        if(k===12&&g){ g.setPhase(3); g.setHp(Math.max(4,g.maxHp*.05)); }   // its last phase, nearly done
+      }); } }
 }
 function caveSwarmAndEnter(room){
   setTide('low');
@@ -257,7 +278,8 @@ function progressFor(id){
   if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
   if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
   if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }
-  if(NORTH_ORDER.includes(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; o.hearts.answer=1; o.marks.answer=2; }   // after the Vigil: the Answer down too   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
+  if(NORTH_ORDER.includes(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; o.hearts.answer=1; o.marks.answer=2;
+    if(id==='north-lived'||id==='north-died'){ o.hearts.giant=1; o.marks.giant=2; } }   // after the Vigil: the Answer down too   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
   return o;
 }
 function runStart(id){
@@ -350,7 +372,8 @@ const SPOTS=[
 DT.teleports=SPOTS;
 /* a home-island teleport from the north island: out of the sea cave, then sail home (instantly), so the boat comes too */
 function leaveNorth(){
-  const NC=G.northCave, NI=G.northIsle;
+  const NC=G.northCave, NI=G.northIsle, NF=G.northFire;
+  if(NF&&NF.inside){ try{ if(NF.fighting&&NF.giant)NF.giant.reset(); if(NF.debug&&NF.debug.S)NF.debug.S.trans=null; NF.exit({instant:true}); }catch(e){ console.error(e); } }
   if(NC&&NC.inside){ NC.debug.S.trans=null; NC.exit({instant:true}); }
   if(NI&&NI.at==='north'&&!NI.crossing)NI.cross('home',{instant:true});
 }

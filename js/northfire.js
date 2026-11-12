@@ -33,7 +33,7 @@ const O=V(800,60,800);                       // free: cave (0,60,800), Undercrof
 const R=12.5, PIT_R=3.4, H=15;
 const toWorld=(x,y,z)=>V(O.x+x,O.y+y,O.z+z);
 const pol=(a,r)=>({x:Math.sin(a)*r,z:Math.cos(a)*r});          // a = 0: +z, the door side; a = π: the north wall
-const DOOR={x:0,y:0,z:R-1.8,yaw:PI};
+const DOOR={x:0,y:0,z:R-3.6,yaw:PI};   // a step off the hatch toward the pit: room behind him for the camera
 const inBoxW=(x,z)=>Math.abs(x-O.x)<R+3&&Math.abs(z-O.z)<R+3;
 const INTERIOR={id:'northFire',contains:(x,z,y)=>inBoxW(x,z)&&(y==null||y>O.y-20)};
 const pitY=r=>-1.1*(1-smooth(PIT_R-.7,PIT_R+.1,r));             // the giant stands lower in the pit
@@ -92,12 +92,12 @@ G.cameraConstrainers.push((cam,target)=>{
 
 /* ================================================================ 4. THE ROOM */
 const root=new THREE.Group(); root.name='northFire'; root.position.copy(O); root.visible=false;
-let fireG=null, fireCones=[], fireMats=[], fireLight=null, pitGlow=null, pitGlowMat=null, smoke=[];
+let fireG=null, fireCones=[], fireMats=[], tongues=[], fireLight=null, pitGlow=null, pitGlowMat=null, smoke=[];
 const tanks=[]; let great=null;
 const FIRE={lure:{a:'#2fcf7a',b:'#9ff5c8',h:1.0,L:'#6fe8a8',I:2.6,glow:'#1f8a55'},
-  rage:{a:'#ff7a2a',b:'#5fe8a0',h:1.35,L:'#ff9a4a',I:3.4,glow:'#a8401a'},
+  rage:{a:'#ff7a2a',b:'#5fe8a0',h:1.35,L:'#ff9a4a',I:2.2,glow:'#a8401a'},
   embers:{a:'#a8341a',b:'#ff7a3a',h:.18,L:'#ff6a3a',I:.7,glow:'#5a1a0c'},
-  true:{a:'#ffcf6a',b:'#fff2c8',h:1.05,L:'#ffd27a',I:3.0,glow:'#a8762a'},
+  true:{a:'#b85e14',b:'#e8902a',h:1.0,L:'#ffb04a',I:2.6,glow:'#7a4a14'},   // gold, not white: the cones add up, so the colours sit low
   out:{a:'#201510',b:'#201510',h:.02,L:'#ff6a3a',I:.08,glow:'#140a08'}};
 const fireNow={h:1,I:2.6,a:col('#2fcf7a'),b:col('#9ff5c8'),L:col('#6fe8a8'),glow:col('#1f8a55')};
 function stoneCol(c,x,y,z){ const dk=col('#3b3a40'), lt=col('#6e6c72'), soot=col('#17151a');
@@ -120,7 +120,10 @@ function buildRoom(){
   // the fire: cones of light (additive), a light, a few sprites
   fireG=new THREE.Group(); fireG.position.y=-1.2; root.add(fireG);
   for(let k=0;k<5;k++){ const m=new THREE.MeshBasicMaterial({color:col('#2fcf7a'),transparent:true,opacity:.7,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
-    const c=new THREE.Mesh(new THREE.ConeGeometry(2.4-k*.35,4+k*.9,10,1,true),m); c.position.set(Math.sin(k*2.1)*.5,(4+k*.9)/2,Math.cos(k*2.1)*.5); c.rotation.y=k*1.3; fireG.add(c); fireCones.push(c); fireMats.push(m); }
+    const c=new THREE.Mesh(new THREE.ConeGeometry(2.0-k*.3,2.4+k*.6,10,1,true),m); c.position.set(Math.sin(k*2.1)*.6,(2.4+k*.6)/2,Math.cos(k*2.1)*.6); c.rotation.y=k*1.3; fireG.add(c); fireCones.push(c); fireMats.push(m); }
+  // tongues of flame: sprites that lick up and fade, over the cones
+  for(let k=0;k<14;k++){ const m=new THREE.SpriteMaterial({map:G.tex.flame,color:col('#2fcf7a'),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+    const sp=new THREE.Sprite(m); fireG.add(sp); tongues.push({sp,m,ph:k/14,x:(rnd()-.5)*2.4,z:(rnd()-.5)*2.4,sp0:.7+rnd()*.5}); }
   fireLight=new THREE.PointLight(col('#6fe8a8'),2.6,34,1.4); fireLight.position.y=2.2; root.add(fireLight);
   // the roof: a planked ring with the smoke hole, and the iron cage of the fire-basket above it
   const roof=new THREE.Mesh(new THREE.RingGeometry(2.9,R+.2,48,1),G.toon('#2a2220',{side:THREE.DoubleSide})); roof.rotation.x=PI/2; roof.position.y=H; root.add(roof);
@@ -167,10 +170,10 @@ function buildTank(i,a,wood,wood2,iron){
   const cl=new THREE.Mesh(new THREE.CylinderGeometry(.03,.03,6.6,4),iron); cl.position.y=1.2+3.3; chain.add(cl);
   const handle=new THREE.Mesh(new THREE.TorusGeometry(.15,.035,5,12),iron); handle.position.y=1.15; chain.add(handle);
   // the pour: a column of water from the chute's lip to the floor
-  const pm=new THREE.MeshBasicMaterial({color:col('#b8dcec'),transparent:true,opacity:0,depthWrite:false});
+  const pm=new THREE.MeshBasicMaterial({color:col('#8fbcd2'),transparent:true,opacity:0,depthWrite:false});
   const pour=new THREE.Mesh(new THREE.CylinderGeometry(.35,.7,7.6,12,1,true),pm); pour.position.set(C.x,3.8,C.z); pour.visible=false; root.add(pour);
   // the circle it lands in, marked faintly on the floor (scrubbed clean by twenty years of it)
-  const mm=new THREE.MeshBasicMaterial({map:ringTex(),color:col('#7fb6d0'),transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide});
+  const mm=new THREE.MeshBasicMaterial({map:ringTex(),color:col('#5f8fa8'),transparent:true,opacity:.18,depthWrite:false,side:THREE.DoubleSide});
   const mark=new THREE.Mesh(new THREE.PlaneGeometry(2*T.tank.circleR,2*T.tank.circleR),mm); mark.rotation.x=-PI/2; mark.position.set(C.x,.025,C.z); mark.renderOrder=1; root.add(mark);
   return {i,a,level:1,pull:null,g,wtop,chain,handle,pour,pm,mark,mm,
     chainPos:toWorld(K.x,1.2,K.z), circlePos:toWorld(C.x,0,C.z), circleR:T.tank.circleR, lc:C};
@@ -205,11 +208,11 @@ function buildDecals(){
   for(let i=0;i<12;i++){ const m=new THREE.Mesh(new THREE.PlaneGeometry(2,2),new THREE.MeshBasicMaterial({map:ringTex(),color:col('#ff8a3a'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide}));
     m.rotation.x=-PI/2; m.visible=false; m.renderOrder=2; root.add(m); decals.push({m,t:9,life:1,lead:1}); }
   const cg=new THREE.CircleGeometry(1,30,-PI/2-T.sweep.arc/2,T.sweep.arc); cg.rotateX(-PI/2);
-  cone={m:new THREE.Mesh(cg,new THREE.MeshBasicMaterial({map:ringTex(),color:col('#ff8a3a'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})),t:9,life:1,lead:1};
+  cone={m:new THREE.Mesh(cg,new THREE.MeshBasicMaterial({map:ringTex(),color:col('#ff4a10'),transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide})),t:9,life:1,lead:1};
   cone.m.visible=false; cone.m.renderOrder=2; root.add(cone.m);
 }
 function decal(x,z,r,lead,o){ o=o||{}; const d=decals.find(q=>q.t>=q.life)||decals[0];
-  d.t=0; d.lead=lead; d.life=lead+(o.hold||.3); d.m.position.set(x,(o.y||0)+.06,z); d.m.scale.set(r,r,1); d.m.material.color.set(o.color||'#ff8a3a'); d.m.visible=true; return d; }
+  d.t=0; d.lead=lead; d.life=lead+(o.hold||.3); d.m.position.set(x,(o.y||0)+.06,z); d.m.scale.set(r,r,1); d.m.material.color.set(o.color||'#ff4a10'); d.m.visible=true; return d; }
 function coneDecal(x,z,r,heading,lead){ cone.t=0; cone.lead=lead; cone.life=lead+.3; cone.m.position.set(x,.06,z); cone.m.scale.set(r,1,r); cone.m.rotation.y=heading; cone.m.visible=true; }
 function updateDecals(dt){
   for(const d of [...decals,cone]){ if(d.t>=d.life){ if(d.m.visible){ d.m.visible=false; } continue; } d.t+=dt;
@@ -239,8 +242,9 @@ const GI={g:null,hips:null,torso:null,head:null,legs:[],arms:[],core:null,coreMa
 const debris=[];
 function buildGiant(){
   const GE=G.world.geo, tex=G.world.geo.tex();
-  GI.rockMat=G.toon('#4a4040',{emissive:'#3a1206'}); GI.woodMat=G.toon('#3a2a20',{map:tex&&tex.wood,emissive:'#200800'});
-  GI.ironMat=G.toon('#2c2a2e'); GI.figMat=G.toon('#b9a88c',{map:tex&&tex.wood}); GI.seamMat=new THREE.MeshBasicMaterial({color:col('#ff7a2a')});
+  const LT=lavaTex();
+  GI.rockMat=G.toon('#ffffff',{map:LT.map,emissive:'#ff7a2a',emissiveMap:LT.glow}); GI.woodMat=G.toon('#3a2a20',{map:LT.wood,emissive:'#ff6a20',emissiveMap:LT.woodGlow});
+  GI.ironMat=G.toon('#2c2a2e'); GI.figMat=G.toon('#b9a88c',{map:tex&&tex.wood}); GI.seamMat=new THREE.MeshBasicMaterial({color:col('#ffffff'),map:LT.magma});
   GI.eyeMat=new THREE.MeshBasicMaterial({color:col('#ffd07a')});
   const g=new THREE.Group(); g.name='wreckGiant'; GI.g=g; root.add(g);
   const piece=(parent,geo,mat,x,y,z,o)=>{ o=o||{}; const m=new THREE.Mesh(geo,mat); m.position.set(x,y,z); if(o.s)m.scale.set(o.s[0],o.s[1],o.s[2]); if(o.r)m.rotation.set(o.r[0],o.r[1],o.r[2]);
@@ -251,9 +255,8 @@ function buildGiant(){
   const plank=(parent,w,h,d,x,y,z,r,arm)=>piece(parent,new THREE.BoxGeometry(w,h,d),GI.woodMat,x,y,z,{r,armour:arm,rad:Math.max(w,h,d)*.4});
   const hips=new THREE.Group(); hips.position.y=3.0; g.add(hips); GI.hips=hips;
   piece(hips,rock(.95,1),GI.rockMat,0,0,0,{s:[1.3,.8,1],rad:.9});
-  seam(hips,.55,0,-.1,.5,[1.6,.5,.6]);
   for(const s of [-1,1]){ const hipJ=new THREE.Group(); hipJ.position.set(s*.8,-.2,0); hips.add(hipJ);
-    piece(hipJ,rock(.62,2+s),GI.rockMat,0,-.75,0,{s:[1,1.5,1],rad:.7}); seam(hipJ,.32,0,-1.4,.25);
+    piece(hipJ,rock(.62,2+s),GI.rockMat,0,-.75,0,{s:[1,1.5,1],rad:.7});
     const knee=new THREE.Group(); knee.position.y=-1.45; hipJ.add(knee);
     piece(knee,rock(.55,4+s),GI.rockMat,0,-.6,0,{s:[1,1.35,1],rad:.6}); piece(knee,rock(.6,6+s,.2),GI.rockMat,0,-1.15,.25,{s:[1.1,.5,1.4],rad:.6});
     plank(hipJ,.34,1.5,.2,0,-.75,.62,[.1,0,s*.08],1); plank(hipJ,.3,1.2,.18,s*.45,-.6,.2,[0,s*.6,s*.1],1);
@@ -261,12 +264,11 @@ function buildGiant(){
   const torso=new THREE.Group(); torso.position.y=.3; hips.add(torso); GI.torso=torso;
   piece(torso,rock(.9,8),GI.rockMat,0,.7,0,{s:[1.25,.9,1],rad:.9});
   piece(torso,rock(1.35,9),GI.rockMat,0,2.0,-.05,{s:[1.35,1,1],rad:1.3});
-  seam(torso,.45,-.6,1.2,.8,[1,.35,.4]); seam(torso,.4,.7,2.6,.85,[1,.3,.4]); seam(torso,.35,.2,.9,-.85,[1,.3,.3]);
   // the core: a molten heart showing through a split in the chest
-  GI.coreMat=new THREE.MeshBasicMaterial({color:col('#ffb46a')}); GI.core=piece(torso,new THREE.SphereGeometry(.5,14,10),GI.coreMat,0,1.85,.95,{seam:true,rad:.5});
+  GI.coreMat=new THREE.MeshBasicMaterial({color:col('#ffffff'),map:_lava.magma}); GI.core=piece(torso,new THREE.SphereGeometry(.46,14,10),GI.coreMat,0,1.85,.82,{seam:true,rad:.5,s:[1,1.25,.8]});
   GI.haloMat=new THREE.SpriteMaterial({map:G.tex.soft,color:col('#ff7a2a'),transparent:true,opacity:.7,blending:THREE.AdditiveBlending,depthWrite:false});
   GI.halo=new THREE.Sprite(GI.haloMat); GI.halo.position.set(0,1.85,1.1); GI.halo.scale.setScalar(2.6); torso.add(GI.halo);
-  GI.coreLight=new THREE.PointLight(col('#ff8a3a'),2,16,1.5); GI.coreLight.position.set(0,1.9,1.6); torso.add(GI.coreLight);
+  GI.coreLight=new THREE.PointLight(col('#ff8a3a'),1,9,2); GI.coreLight.position.set(0,1.9,2.4); torso.add(GI.coreLight);
   // armour, first layer (falls at 2/3): planks across the chest, an anchor chain from shoulder to hip, stone on the shoulders
   for(let k=0;k<3;k++)plank(torso,2.9,.28,.22,0,1.45+k*.42,1.08-k*.06,[.08,0,(k-1)*.12],0);
   for(let k=0;k<10;k++){ const t=k/9, x=lerp(-1.4,1.2,t), y=lerp(3.0,.6,t), z=1.05+Math.sin(t*PI)*.25;
@@ -283,16 +285,29 @@ function buildGiant(){
   for(let k=0;k<5;k++){ const a=(k-2)*.38; plank(head,.12,1.2+(k%2)*.4,.1,Math.sin(a)*.5,1.2,-.25+Math.cos(a)*.05,[-.25,0,-a*.9],1); }   // a crown of broken ribs
   // arms
   for(const s of [-1,1]){ const sh=new THREE.Group(); sh.position.set(s*1.75,2.45,0); torso.add(sh);
-    piece(sh,rock(.7,20+s),GI.rockMat,0,0,0,{rad:.7}); seam(sh,.3,0,-.4,.35);
+    piece(sh,rock(.7,20+s),GI.rockMat,0,0,0,{rad:.7});
     piece(sh,rock(.5,22+s),GI.rockMat,0,-.85,0,{s:[1,1.6,1],rad:.55});
     piece(sh,rock(.75,24+s,.3),GI.rockMat,s*.1,.45,0,{s:[1.2,.7,1.1],armour:0,rad:.7});
-    const el=new THREE.Group(); el.position.y=-1.7; sh.add(el); seam(el,.3,0,0,.2);
+    const el=new THREE.Group(); el.position.y=-1.7; sh.add(el);
     piece(el,rock(.55,26+s),GI.rockMat,0,-.7,0,{s:[1.05,1.5,1.05],rad:.6});
     const fist=piece(el,rock(.75,28+s,.32),GI.rockMat,0,-1.6,.1,{rad:.75});
     piece(el,rock(.45,30+s,.3),GI.rockMat,s*.35,-.6,.2,{s:[.7,1.4,.7],armour:1,rad:.45});
     GI.arms.push({s,sh,el,fist}); }
   g.visible=false;
 }
+/* basalt with cracks of fire in it: the map is the rock, the emissive map is only the cracks (so they glow whatever the light) */
+let _lava=null;
+function lavaTex(){ if(_lava)return _lava;
+  const r=U.rng(91), cracks=[]; for(let k=0;k<26;k++){ const pts=[]; let x=r()*256, y=r()*256, a=r()*TAU; for(let j=0;j<7;j++){ pts.push([x,y]); a+=(r()-.5)*1.4; x+=Math.cos(a)*(10+r()*16); y+=Math.sin(a)*(10+r()*16); } cracks.push({pts,w:1.5+r()*3.5}); }
+  const draw=(g,col_,glow)=>{ g.lineCap='round'; g.lineJoin='round'; for(const c of cracks){ g.strokeStyle=col_; g.lineWidth=c.w*(glow?2.2:1); g.beginPath(); c.pts.forEach(([x,y],i)=>i?g.lineTo(x,y):g.moveTo(x,y)); g.stroke(); } };
+  const map=G.canvasTex(256,(g,s)=>{ g.fillStyle='#2b2626'; g.fillRect(0,0,s,s); for(let k=0;k<900;k++){ const v=20+r()*40|0; g.fillStyle=`rgba(${v+10},${v},${v},.5)`; g.fillRect(r()*s,r()*s,2+r()*5,2+r()*5); } draw(g,'#141010',false); draw(g,'#5a4a46',false); });
+  const glow=G.canvasTex(256,(g,s)=>{ g.fillStyle='#000'; g.fillRect(0,0,s,s); g.filter='blur(2px)'; draw(g,'rgba(255,120,40,.7)',true); g.filter='none'; draw(g,'#ffd090',false); });
+  const wood=G.canvasTex(128,(g,s)=>{ g.fillStyle='#2a1c14'; g.fillRect(0,0,s,s); for(let y=0;y<s;y+=3){ g.fillStyle=`rgba(${60+r()*30|0},${38+r()*20|0},${24+r()*12|0},.6)`; g.fillRect(0,y,s,1+r()*2); } g.fillStyle='rgba(10,6,4,.6)'; for(let k=0;k<30;k++)g.fillRect(r()*s,r()*s,4+r()*14,2+r()*4); });
+  const woodGlow=G.canvasTex(128,(g,s)=>{ g.fillStyle='#000'; g.fillRect(0,0,s,s); g.fillStyle='rgba(255,110,30,.9)'; for(let k=0;k<14;k++)g.fillRect(r()*s,r()*s,3+r()*10,1+r()*2); g.fillStyle='#ff9a40'; g.fillRect(0,0,6,s); g.fillRect(s-6,0,6,s); });
+  const magma=G.canvasTex(128,(g,s)=>{ g.fillStyle='#ff6a10'; g.fillRect(0,0,s,s); for(let k=0;k<220;k++){ const x=r()*s, y=r()*s, rr=3+r()*12, gr=g.createRadialGradient(x,y,0,x,y,rr);
+      const hot=r()<.5; gr.addColorStop(0,hot?'rgba(255,240,170,.9)':'rgba(120,20,0,.7)'); gr.addColorStop(1,hot?'rgba(255,200,80,0)':'rgba(120,20,0,0)'); g.fillStyle=gr; g.fillRect(x-rr,y-rr,rr*2,rr*2); } });
+  for(const t of [map,glow,wood,woodGlow,magma]){ t.wrapS=t.wrapT=THREE.RepeatWrapping; }
+  return (_lava={map,glow,wood,woodGlow,magma}); }
 /* the hurtbox */
 const HB={team:'enemy',pos:V(),radius:1.5,height:6.2,targetable:true,corrupt:false,name:'The Wreck Giant',lockOffset:3,
   alive:()=>S.inside&&(B.state==='fight'||B.state==='shed'),hit:info=>hitGiant(info)};
@@ -341,13 +356,15 @@ function startShed(n){ if(n<=B.phase)return; const from=B.phase; B.phase=n; B.at
   B.sTarget=T.scale[n-1]; sfx('roar'); try{ G.ui.shake&&G.ui.shake(.5); }catch(e){}
   for(let k=from-1;k<n-1;k++)for(const m of GI.armour[k])if(m.parent!==root)letGo(m,{speed:5,up:4});
   G.emit('northFire:phase',{n});
-  if(!B.said['shed'+n]){ B.said['shed'+n]=1; say(n===2?'It tears the burning planks off its own chest and throws them aside. Lighter now. Quicker.':'The last of its armour falls away. What’s left is rock and fire, and that heart, wide open.',null,{key:'nfShed'+n}); } }
+  if(!B.said['shed'+n]&&!quiet()){ B.said['shed'+n]=1; say(n===2?'It tears the burning planks off its own chest and throws them aside. Lighter now. Quicker.':'The last of its armour falls away. What’s left is rock and fire, and that heart, wide open.',null,{key:'nfShed'+n}); } }
+/* a scene is talking (a camera shot, or the story holding the giant): the fight's own narration keeps quiet */
+const quiet=()=>!!((G.cine&&G.cine.on)||B.hold);
 function douse(sec,o){ o=o||{}; if(!(B.state==='fight'||B.state==='shed'||B.state==='rising'))return false;
   B.doused=Math.max(B.doused,sec||T.douse); B.douseBy=o.by||null; B.atk=null; clearDecals(); if(B.state==='shed'){ B.state='fight'; B.shed=null; }
   const p=giantW(); steam(p.x-O.x,0,p.z-O.z,o.big?40:18,{r:o.big?5:2,h:o.big?6:4}); sfx('hiss',{g:o.big?.5:.32,dur:o.big?2.2:1.3}); try{ G.ui.shake&&G.ui.shake(.25); }catch(e){}
   if(o.big)bigPour();
   G.emit('northFire:douse',{by:o.by||null,big:!!o.big});
-  if(!B.said.douse){ B.said.douse=1; say('Seawater hits it like a slap. It goes down on one knee in a roar of steam.',null,{key:'nfDouse'}); }
+  if(!B.said.douse&&!o.big&&o.by!=='tobias'&&!quiet()){ B.said.douse=1; say('Seawater hits it like a slap. It goes down on one knee in a roar of steam.',null,{key:'nfDouse'}); }
   return true; }
 function goDown(){ B.state='down'; B.atk=null; B.doused=0; clearDecals(); B.hp=0; G.ui.bossBar('The Wreck Giant',0); music(false); sfx('roar');
   try{ G.ui.shake&&G.ui.shake(.6); }catch(e){}
@@ -364,8 +381,8 @@ function updateCrumble(dt){ B.crumbleT+=dt; const t=B.crumbleT, c=GI.g.position;
     steam(c.x,0,c.z,24,{r:2.5,h:4}); embers(c.x,1,c.z,30,{r:1.5,speed:4,up:5}); setFire(S.fire==='rage'?'embers':S.fire);
     S.fell=[+c.x.toFixed(2),+c.z.toFixed(2)]; G.emit('northFire:crumbled',{pos:toWorld(c.x,0,c.z)}); }
   // the seams and the core go dark as it cools
-  const k=smooth(.5,3,t); GI.seamMat.color.set('#ff7a2a').lerp(col('#2a2224'),k); GI.coreMat.color.set('#ffb46a').lerp(col('#2a2224'),k); GI.haloMat.opacity=.7*(1-k); GI.coreLight.intensity=2*(1-k);
-  GI.rockMat.emissive.set('#3a1206').multiplyScalar(1-k); GI.woodMat.emissive.set('#200800').multiplyScalar(1-k);
+  const k=smooth(.5,3,t); GI.seamMat.color.set('#e8e0d8').lerp(col('#1e1a1c'),k); GI.coreMat.color.set('#ffffff').lerp(col('#1e1a1c'),k); GI.haloMat.opacity=.7*(1-k); GI.coreLight.intensity=1*(1-k);
+  GI.rockMat.emissive.set('#ff7a2a').multiplyScalar(1-k); GI.woodMat.emissive.set('#ff6a20').multiplyScalar(1-k);
   if(t>3.2){ B.state='dead'; } }
 function dropHeld(o){ try{ const w=new THREE.Vector3(); o.getWorldPosition(w); const p=o.parent; if(p){ const l=p.worldToLocal(w.clone()); o.position.set(l.x,p===root?0:l.y,l.z); } else o.position.set(w.x,O.y,w.z); }catch(e){} }
 
@@ -429,14 +446,14 @@ function pullTank(i,by){ const t=tanks[i]; if(!t||t.level<.999||t.pull)return fa
   if(by!=='tobias'&&!B.said.pull){ B.said.pull=1; } return true; }
 function updateTanks(dt){ for(const t of tanks){
   if(t.pull){ const p=t.pull; p.t+=dt; const on=p.t>=0&&p.t<=T.tank.pour;
-    t.pour.visible=p.t>=0&&p.t<=T.tank.pour+.3; t.pm.opacity=on?.55:Math.max(0,.55*(1-(p.t-T.tank.pour)/.3));
+    t.pour.visible=p.t>=0&&p.t<=T.tank.pour+.3; t.pm.opacity=on?.38:Math.max(0,.38*(1-(p.t-T.tank.pour)/.3));
     t.handle.position.y=1.15-.45*Math.max(0,1-Math.abs(p.t+.2)*2.5);
     if(on){ const c=t.lc; if(rnd()<dt*25)spawn(c.x+(rnd()-.5)*1.5,.15,c.z+(rnd()-.5)*1.5,{vx:(rnd()-.5)*3,vy:2+rnd()*2,vz:(rnd()-.5)*3,g:-9,size:.25,life:.5,color:'#cfe6f0',op:.6,add:false});
       if(p.t<.05)clearPools(c.x,c.z,t.circleR);
       if(!p.hit&&(B.state==='fight'||B.state==='shed'||B.state==='rising')&&Math.hypot(B.x-c.x,B.z-c.z)<=t.circleR+.6*B.scale){ p.hit=true; douse(T.douse,{by:p.by}); } }
     if(p.t>T.tank.pour+.35){ t.pull=null; t.pour.visible=false; if(!p.hit&&p.by==='rowan'&&fighting()&&!B.said.miss){ B.said.miss=1; say('The water hits empty floor. It has to be standing under the spout.','Rowan',{key:'nfMiss'}); } } }
   else t.level=Math.min(1,t.level+dt/T.tank.refill);
-  t.wtop.position.y=.3+1.7*t.level; t.mm.opacity=.1+.22*(t.level>=.999?1:0)+.05*Math.sin(G.time*3)*(t.level>=.999?1:0); } }
+  t.wtop.position.y=.3+1.7*t.level; t.mm.opacity=.05+.09*(t.level>=.999?1:0)+.03*Math.sin(G.time*3)*(t.level>=.999?1:0); } }
 /* the great cistern tips over the pit: a wall of water onto the giant, wherever it is */
 const bigCol={m:null,t:9};
 function bigPour(){ if(!bigCol.m){ bigCol.m=new THREE.Mesh(new THREE.CylinderGeometry(1.6,2.6,H-2,16,1,true),new THREE.MeshBasicMaterial({color:col('#b8dcec'),transparent:true,opacity:0,depthWrite:false})); root.add(bigCol.m); }
@@ -515,13 +532,14 @@ function pose(dt){
   // the glow: molten when hot, grey-dark when doused, white-hot when down
   const cold=B.doused>0, hot=B.state==='down'?1:0;
   if(B.state!=='dying'&&B.state!=='dead'){
-    const sc2=cold?'#3e3a40':(hot?'#fff0c8':'#ff7a2a'); GI.seamMat.color.lerp(_c.set(sc2),1-Math.exp(-6*dt));
-    GI.coreMat.color.lerp(_c.set(cold?'#6a4a3a':(hot?'#ffffff':'#ffb46a')),1-Math.exp(-6*dt));
+    const sc2=cold?'#3a3438':(hot?'#ffffff':'#e8e0d8'); GI.seamMat.color.lerp(_c.set(sc2),1-Math.exp(-6*dt));
+    GI.coreMat.color.lerp(_c.set(cold?'#7a4a38':'#ffffff'),1-Math.exp(-6*dt));
     const pulse=hot?.6+.4*Math.sin(t*9):.85+.15*Math.sin(t*3);
     GI.haloMat.opacity=(cold?.15:.55+.25*(ph-1)/2+hot*.4)*pulse; GI.halo.scale.setScalar(2.4+(ph-1)*.6+hot*2.5);
-    GI.coreLight.intensity=(cold?.4:1.8+hot*2.5)*pulse;
-    GI.rockMat.emissive.lerp(_c.set(cold?'#000000':'#3a1206'),1-Math.exp(-5*dt)); if(B.flash>0)GI.rockMat.emissive.lerp(_c.set('#ff7a3a'),B.flash*.6);
-    GI.rockMat.color.lerp(_c.set(cold?'#6a6a72':'#4a4040'),1-Math.exp(-5*dt));
+    GI.coreLight.intensity=(cold?.2:.8+hot*1.6)*pulse;
+    const em=cold?'#2a2a30':(hot?'#ffe0b0':'#ff7a2a'); GI.rockMat.emissive.lerp(_c.set(em),1-Math.exp(-5*dt)); GI.woodMat.emissive.lerp(_c.set(cold?'#000000':'#ff6a20'),1-Math.exp(-5*dt));
+    if(B.flash>0)GI.rockMat.emissive.lerp(_c.set('#ffd0a0'),B.flash*.5);
+    GI.rockMat.color.lerp(_c.set(cold?'#9a9aa4':'#ffffff'),1-Math.exp(-5*dt));
   }
   // what it's holding (clutch): kept at its chest
   if(B.clutch&&B.clutch.obj){ const o=B.clutch.obj; GI.core.getWorldPosition(_w); _w.y-=1.0*B.scale; const fw={x:Math.sin(B.heading),z:Math.cos(B.heading)}; _w.x+=fw.x*.6*B.scale; _w.z+=fw.z*.6*B.scale;
@@ -545,7 +563,9 @@ function updateFire(dt){
   const kk=1-Math.exp(-1.6*dt); fireNow.a.lerp(_c.set(F.a),kk); fireNow.b.lerp(_c.set(F.b),kk); fireNow.L.lerp(_c.set(F.L),kk); fireNow.glow.lerp(_c.set(F.glow),kk);
   const fl=.85+.15*Math.sin(t*8.3)*Math.sin(t*3.1), still=S.fire==='true'?.5:1;
   for(let i=0;i<fireCones.length;i++){ const c=fireCones[i], m=fireMats[i]; c.scale.set(1+.08*Math.sin(t*5+i),Math.max(.01,fireNow.h*(1+(fl-1)*still)*(1+.12*Math.sin(t*6.3+i*1.7))),1+.08*Math.cos(t*4+i));
-    c.rotation.y+=dt*(.4+i*.15)*(i%2?1:-1); m.color.copy(i<2?fireNow.a:fireNow.b); m.opacity=Math.min(.75,fireNow.h)*(.45+.12*i); c.visible=fireNow.h>.03; }
+    c.rotation.y+=dt*(.4+i*.15)*(i%2?1:-1); m.color.copy(i<2?fireNow.a:fireNow.b); m.opacity=Math.min(.6,fireNow.h)*(.08+.035*i); c.visible=fireNow.h>.35; }
+  for(const q of tongues){ q.ph=(q.ph+dt*q.sp0*.8)%1; const k=q.ph, hh=fireNow.h; q.sp.position.set(q.x*(1-k*.6),.6+k*4.2*hh,q.z*(1-k*.6)); q.sp.scale.set((1.6-k)*1.3*Math.max(.3,hh),(2.2-k)*1.6*hh,1);
+    q.m.color.copy(k<.4?fireNow.b:fireNow.a); q.m.opacity=hh>.05?Math.sin(k*PI)*.55*Math.min(1,hh):0; q.sp.visible=hh>.03; }
   fireLight.color.copy(fireNow.L); fireLight.intensity=fireNow.I*fl; pitGlowMat.color.copy(fireNow.glow);
   if(fireNow.h>.1&&rnd()<dt*12)embers((rnd()-.5)*3,-.5,(rnd()-.5)*3,1,{speed:.6,up:5*fireNow.h,color:'#'+fireNow.b.getHexString()});
   if(S.fire==='out'&&rnd()<dt*4)steam((rnd()-.5)*2,-.5,(rnd()-.5)*2,1,{r:.5,h:.5});
@@ -572,7 +592,7 @@ function doTeleport(dir){
     const d=toWorld(DOOR.x,DOOR.y,DOOR.z); setInside(true); P.teleport(d.x,d.y,d.z,DOOR.yaw); if(P.aimCamera)P.aimCamera(DOOR.yaw,.32);
     setCp(); G.atmo.dark=G.atmo.darkTarget=1;
     G.emit('northFire:enter',{first});
-    if(!G.northFireStory&&!S.done)later(1.5,()=>{ if(S.inside&&B.state==='dormant')rise({short:!first}); }); }
+  }
   else { const d=doorOut(); setInside(false); P.teleport(d.x,d.y,d.z,d.yaw); if(P.aimCamera)P.aimCamera(d.yaw,.3);
     try{ G.state.checkpoint.set(d.x,d.y,d.z); G.state.checkpointYaw=d.yaw; G.state.checkpointName='the north island'; }catch(e){}
     try{ if(G.northCave&&G.northCave.state)G.northCave.state.prevCp=null; }catch(e){}
@@ -602,7 +622,7 @@ function resetFight(why){
   if(!S.done)setFire('lure');
   if(why)G.emit('northFire:reset',{why});
 }
-function resetGlow(){ if(!GI.seamMat)return; GI.seamMat.color.set('#ff7a2a'); GI.coreMat.color.set('#ffb46a'); GI.haloMat.opacity=.7; GI.coreLight.intensity=2; GI.rockMat.emissive.set('#3a1206'); GI.rockMat.color.set('#4a4040'); GI.woodMat.emissive.set('#200800'); }
+function resetGlow(){ if(!GI.seamMat)return; GI.seamMat.color.set('#e8e0d8'); GI.coreMat.color.set('#ffffff'); GI.haloMat.opacity=.7; GI.coreLight.intensity=1; GI.rockMat.emissive.set('#ff7a2a'); GI.rockMat.color.set('#ffffff'); GI.woodMat.emissive.set('#ff6a20'); }
 function finish(outcome){ if(S.done)return; S.done=true; S.outcome=outcome==='died'?'died':'lived';
   if(B.state!=='dead'&&B.state!=='dying'){ if(B.state!=='dormant'){ crumble(); } }
   G.ui.bossBar(null); music(false); G.emit('northFire:finish',{outcome:S.outcome});
@@ -622,7 +642,7 @@ G.on('game:reset',()=>{ S.entered=false; S.done=false; S.outcome=null; S.fell=nu
 G.on('player:dead',()=>{ if(!S.inside||S.done)return; if(B.state==='dormant'||B.state==='dead')return; B.atk=null; clearDecals(); setCp(); B.diedHere=true; });
 G.on('player:respawn',()=>{ if(!B.diedHere)return; B.diedHere=false; resetFight('death');
   later(.02,()=>{ const P=G.player; if(!P||!P.teleport)return; const d=toWorld(DOOR.x,DOOR.y,DOOR.z); if(Math.hypot(P.pos.x-d.x,P.pos.z-d.z)>2.5)P.teleport(d.x,d.y,d.z,DOOR.yaw); });
-  if(!G.northFireStory)later(1.5,()=>{ if(S.inside&&B.state==='dormant'&&!S.done)rise({short:true}); }); });
+  });
 
 /* ================================================================ 10. WIRING */
 G.system('northFire',{order:87,modes:['play','paused','dead','title'],
@@ -650,6 +670,8 @@ G.system('northFire',{order:87,modes:['play','paused','dead','title'],
       G.lights.hemi.color.lerp(HEMI_SKY,.75); G.lights.hemi.groundColor.lerp(HEMI_GND,.75); }
     if(m==='paused'||m==='title')return;
     updateFire(dt); updateFx(dt); updateDecals(dt); updateDebris(dt); updateBig(dt);
+    // no story module: the fight arms itself a moment after you're in the room (entry, a respawn, a load mid-fight)
+    if(m==='play'&&!G.northFireStory&&!S.done&&B.state==='dormant'&&!S.trans){ B.idle=(B.idle||0)+dt; if(B.idle>1.5){ B.idle=0; rise({short:!B.first}); } } else B.idle=0;
     if(m==='play'){ updateTanks(dt);
       if(B.state==='dying')updateCrumble(dt); else updateGiant(dt);
       if(!cineOn()){ updateProjs(dt); updatePools(dt,P&&P.pos?{x:P.pos.x-O.x,y:P.pos.y-O.y,z:P.pos.z-O.z}:null); }

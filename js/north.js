@@ -22,7 +22,7 @@ const LOOK_COS=Math.cos(.45), LOOK_T=.7;
 const CORE=U.col(COL).multiplyScalar(2.2);   // far off it burns white-hot at the heart; up close it's plainly green
 const N={vis:0,look:0,yaw:0,built:false,force:null,warm:0,mode:null};
 /* after the fire room (northfire.js): 'lived' → his father keeps it as a true light (warm gold, turning our way); 'died' → out */
-const WARM='#ffd27a', WARM_CORE=U.col(WARM).multiplyScalar(2.2), GREEN=U.col(COL), WARMC=U.col(WARM), TURN_TRUE=.38;
+const WARM='#ffd27a', WARM_CORE=U.col(WARM).multiplyScalar(2.2), GREEN=U.col(COL), WARMC=U.col('#ffa23a'), TURN_TRUE=.38;
 const outcome=()=>{ if(N.mode)return N.mode; try{ const F=G.northFire; return (F&&F.state&&F.state.outcome)||null; }catch(e){ return null; } };
 const seen=()=>!!(G.flag&&G.flag('northLight'));
 let root, core, halo, beam, beamMat, coreMat, haloMat;
