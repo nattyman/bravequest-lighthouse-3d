@@ -87,12 +87,15 @@ jobs:
       - name: Build dev.html and serve
         run: |
           python test/build_dev.py
-          (python -m http.server 8991 >/dev/null 2>&1 &)
-          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:8991/dev.html && break; sleep 1; done
+          # a free port of its own: several runners can share the AWS machine, and each job serves the game
+          PORT=$(python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          (python -m http.server $PORT >/dev/null 2>&1 &)
+          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:$PORT/dev.html && break; sleep 1; done
       - name: Run ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/claude-0
-          python -u test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
+          python -u test/${{ matrix.suite }}.py "http://localhost:$PORT/dev.html${{ matrix.q }}" 2>&1 | tee result.log
           test ${PIPESTATUS[0]} -eq 0
         shell: bash
       - name: Failed checks
