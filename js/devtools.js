@@ -136,6 +136,14 @@ const STARTS=[
   {id:'temple',name:'The Vigil',sub:'Wren saved, the door’s roots eaten · at the foot of the Stair of Watchers, nothing lit, 40 moths',group:'The Vigil'},
   {id:'temple-well',name:'The Moth Well',sub:'Lens owned, mirrors set, sun-disc door open · at the rim of the well, 40 moths',group:'The Vigil'},
   {id:'temple-boss',name:'Before the Answer',sub:'Lens and Glass, the well’s seals eaten · at the sanctum door',group:'The Vigil'},
+  {id:'boat',name:'Rowan’s boat',sub:'The green light seen, the boat looked over, all four parts gathered · at the wreck: patch her',group:'The north island'},
+  {id:'north-sail',name:'Sail north',sub:'The boat patched and moored off the south beach · the crossing',group:'The north island'},
+  {id:'north-landing',name:'The north beach',sub:'Just landed in the cove · the wrecks, and the tower up the path',group:'The north island'},
+  {id:'north-cave',name:'The sea cave, low tide',sub:'The tower door tried and barred · at the cave mouth under the cliffs',group:'The north island'},
+  {id:'north-cave-in',name:'Inside the sea cave',sub:'Just inside: the store, the ledger and the flooded way on',group:'The north island'},
+  {id:'north-hoist',name:'The hoist',sub:'Ledger read, sluice drained · at the hoist up into the tower',group:'The north island'},
+  {id:'north-father',name:'Rowan’s father',sub:'At the top of the hoist, the foot of the tower · he comes down the stair',group:'The north island'},
+  {id:'north-met',name:'After the meeting',sub:'He’s gone back up and barred the trapdoor · the end of the chapter so far',group:'The north island'},
   {id:'companions',name:'Companions',sub:'Loop running · Ember and Corvin with you · on the moor by the hollow log',group:'Companions',main:false},
   {id:'testsave',name:'Continue test save',sub:'',group:'Saves',test:true}
 ];
@@ -185,6 +193,51 @@ function templeEnter(id){
     if(room==='sanctum'){ const a=G.temple.rooms.well.anchors.door; G.player.teleport(a.x,a.y,a.z+1.2,PI); } }
   giveSwarm(40); setTimeout(()=>{ giveSwarm(40); render(); },60);
 }
+/* the north island (boat.js / northisle.js / northcave.js): the chapter after the Vigil, so every earlier place is done (the cave,
+   the Undercroft and the Vigil, their bosses down), the wrecker's light seen, then each step of the boat and the island done in
+   order up to the chosen point */
+const NORTH_ORDER=['boat','north-sail','north-landing','north-cave','north-cave-in','north-hoist','north-father','north-met'];
+const NORTH_STEP={
+  boat:['boat:patch','Patch your boat','You have everything. Back to the wreck'],
+  'north-sail':['boat:ready','Sail north','Your boat is waiting in the shallows by the wreck']
+};   // on the island, northisle.js / northcave.js set their own objective (northEnter)
+function northSave(id){
+  const k=NORTH_ORDER.indexOf(id), s=templeSave('temple-boss');
+  s.mods.lens={v:1,owned:true,range:20,said:['first']};
+  s.mods.templeBoss={v:1,defeated:true,reward:'lens',said:[]};
+  s.mods.undercroftBoss={v:1,defeated:true,ledger:true,pageRead:true,bossSeen:true,said:[]};
+  s.mods.caveBoss={v:1,pages:[1,2,3],defeated:true,discovered:true,hal:false,entered:true,bossSeen:true,said:[]};
+  s.mods.cavePuzzles={v:1,lit:CAVE_ORDER.slice(),open:['gallery','channel','arena'],prog:{},raft:{t:1,done:true},bossDead:true,said:{},jar:{owned:true,count:0,left:0,said:{}}};
+  s.mods.cave={lit:CAVE_ORDER.slice(),gates:{channel:true,shortcut:true},wall:true};
+  s.mods.alchemy.known=Object.keys((G.alchemy&&G.alchemy.recipes)||{}).length?Object.keys(G.alchemy.recipes):s.mods.alchemy.known;
+  Object.assign(s.flags,{undertowDead:true,northLight:true});
+  s.mods.boat={v:1,started:true,looked:true,parts:{planks:true,rope:true,sail:true,pitch:true},built:k>=1};
+  const BT=G.boat&&G.boat.debug, W=BT?BT.wreckPos:V(80.4,0,67.4), M=BT?BT.moor:{x:77.6,z:76.2};
+  const NI=G.northIsle, B=NI?NI.cove.beach:{x:150,z:-640}, by=NI?NI.height(B.x,B.z):1;
+  if(k<=1){ // the south beach: at the wreck, or a few steps up the sand from the moored boat
+    const dx=W.x-M.x, dz=W.z-M.z, L=Math.hypot(dx,dz)||1, x=k===0?W.x-1.6:M.x+dx/L*3.6, z=k===0?W.z+1.4:M.z+dz/L*3.6;
+    s.pos=[x,G.world.height(x,z)+.2,z]; s.yaw=k===0?Math.atan2(W.x-x,W.z-z):Math.atan2(M.x-x,M.z-z);
+  }else{
+    s.mods.northIsle={v:1,at:'north',landed:true,read:{},door:k>=3};
+    const cb=NI&&NI.cove.dir; s.pos=[B.x,by,B.z]; s.yaw=cb?Math.atan2(-cb.x,-cb.z):PI;
+    s.cp=s.pos.slice(); s.cpYaw=s.yaw; s.cpName='the north island';
+    const m=G.northCave&&G.northCave.mouth; if(k>=3&&m){ s.pos=[m.x,G.world.height(m.x,m.z)+.2,m.z]; s.yaw=m.yaw; }
+  }
+  if(k>=4)s.mods.northCave={v:1,entered:true,drained:k>=5,hoistTop:k>=6,read:k>=5?{ledger:true}:{},met:k>=7,prevCp:null};
+  const st=NORTH_STEP[id]; if(st){ s.step=st[0]; s.objective=st[1]; s.sub=st[2]; s.target=null; s.targetName=''; }
+  return s;
+}
+function northEnter(id){
+  const k=NORTH_ORDER.indexOf(id), NC=G.northCave;
+  if(k>=3)setTide('low');
+  if(G.northIsle&&k>=2)G.northIsle.setQuest();
+  if(k>=4&&NC){ const S=NC.debug.S; S.trans=null; NC.enter({instant:true,at:k>=6?'foot':'mouth'});
+    if(k===5){ const D=NC.debug, p=D.toWorld(D.SHAFT.x,1.3,D.SHAFT.z+1.3); G.player.teleport(p.x,p.y,p.z,PI); if(G.player.aimCamera)G.player.aimCamera(PI,.3); }
+    if(k>=6){ // on the hoist platform where the ride ends, facing the stair he comes down (the foot spawn sits by the wall, camera in the stone)
+      const D=NC.debug, p=D.toWorld(D.SHAFT.x,D.TOP+.05,D.SHAFT.z); G.player.teleport(p.x,p.y,p.z,PI/2); if(G.player.aimCamera)G.player.aimCamera(PI/2,.55); }
+    if(k===6)NC.debug.meet();
+    NC.setQuest(); }
+}
 function caveSwarmAndEnter(room){
   setTide('low');
   giveSwarm(60);
@@ -197,13 +250,14 @@ function caveSwarmAndEnter(room){
    and the west tip. 'late' keeps progression.js's lateGame() (everything). */
 const ROUTE_ACT1=['needle','outcrop','attic','hounds'], ROUTE_LOOP=ROUTE_ACT1.concat(['stones','spire','roots','west']);
 function progressFor(id){
-  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id)||/^temple/.test(id))?ROUTE_LOOP:null;
+  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id)||/^temple/.test(id)||NORTH_ORDER.includes(id))?ROUTE_LOOP:null;
   if(!shards)return null;
   const o={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};
   for(const k of shards)o.shards[k]=1;
   if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
   if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
-  if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
+  if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }
+  if(NORTH_ORDER.includes(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; o.hearts.answer=1; o.marks.answer=2; }   // after the Vigil: the Answer down too   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
   return o;
 }
 function runStart(id){
@@ -261,6 +315,7 @@ function runStart0(id){
   if(/^cave:/.test(id)){ const room=id.slice(5); F.begin(caveSave(room)); caveSwarmAndEnter(room); return; }
   if(/^undercroft/.test(id)){ F.begin(undercroftSave(id)); undercroftEnter(id); return; }
   if(/^temple/.test(id)){ F.begin(templeSave(id)); templeEnter(id); return; }
+  if(NORTH_ORDER.includes(id)){ F.begin(northSave(id)); northEnter(id); return; }
   if(id==='companions'){ // companions.js: both earned (a fox and the raven freed), standing by the hollow log on the moor
     const s=loopSave({lantern:true}); const N=(G.creatures&&G.creatures.negatives)||[];
     s.freed=N.map((n,i)=>(n.kind==='raven'||(n.kind==='fox'&&i===N.findIndex(m=>m.kind==='fox')))?i:-1).filter(i=>i>=0);
@@ -293,12 +348,19 @@ const SPOTS=[
   {id:'vigil',name:'The Vigil’s door',at:()=>{ const d=LM().vigilDoor; return d&&[d.x+2,null,d.z,-PI/2]; }}
 ];
 DT.teleports=SPOTS;
+/* a home-island teleport from the north island: out of the sea cave, then sail home (instantly), so the boat comes too */
+function leaveNorth(){
+  const NC=G.northCave, NI=G.northIsle;
+  if(NC&&NC.inside){ NC.debug.S.trans=null; NC.exit({instant:true}); }
+  if(NI&&NI.at==='north'&&!NI.crossing)NI.cross('home',{instant:true});
+}
 function teleport(id){
   const P=G.player; testMode();
   { const s=SPOTS.find(x=>x.id===id); if(s&&s.go){ const r=s.go(); if(!r)return 'That place isn’t built.';
       if(Array.isArray(r)){ if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
         if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
         if(G.temple&&G.temple.inside){ const S=G.temple._debug&&G.temple._debug.S; if(S)S.trans=null; G.temple.exit({instant:true}); }
+        leaveNorth();
         teleportWithSwarm(r[0],r[1],r[2],r[3]); closePanel(); return 'Teleported to '+s.name; }
       if(!(G.loop&&G.loop.active))return 'That one opens with the core loop — use a start point.';
       if(r.cave&&G.cave){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.enter(r.cave,{instant:true}); }
@@ -317,6 +379,7 @@ function teleport(id){
   if(G.cave&&G.cave.inside){ const S=G.cave._debug&&G.cave._debug.S; if(S)S.trans=null; G.cave.exit({instant:true}); }
   if(G.undercroft&&G.undercroft.inside){ const S=G.undercroft._debug&&G.undercroft._debug.S; if(S)S.trans=null; G.undercroft.exit({instant:true}); }
   if(G.temple&&G.temple.inside){ const S=G.temple._debug&&G.temple._debug.S; if(S)S.trans=null; G.temple.exit({instant:true}); }
+  leaveNorth();
   if(id==='mouthOut')setTide('low');
   teleportWithSwarm(a[0],a[1],a[2],a[3]); closePanel(); return 'Teleported to '+s.name;
 }
