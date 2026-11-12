@@ -204,6 +204,17 @@ function buildWrecks(GE){
     const g=new THREE.Group(); g.add(back); back.rotation.x=-.95; back.position.y=.3; g.position.set(p.x,y,p.z); g.rotation.y=b.yaw; back.castShadow=true; G.outline&&G.outline(back,{thickness:.02}); root.add(g);
     b.pos=V(p.x,y+.4,p.z); BOARDS.push(b); }
 }
+/* the fire-basket follows what happened in the fire room (northfire.js): the green lure; his father's true light, warm
+   gold ('lived'); or nothing ('died') */
+let fireMode='unset';
+const fireOutcome=()=>{ try{ const F=G.northFire; return (F&&F.state&&F.state.outcome)||null; }catch(e){ return null; } };
+function setFireLook(oc){ fireMode=oc; if(!fireMat)return;
+  fireMat.color.copy(col(oc==='lived'?'#ffc45e':'#2fcf7a')); if(fireLight)fireLight.color.copy(col(oc==='lived'?'#ffd27a':'#6fe8a8'));
+  if(towerFire)towerFire.visible=oc!=='died'; }
+/** standing outside the tower door, facing away from it (northfire.js: going back down after the fire room) */
+function doorOut(){ if(!doorPos)return null; const T=TOWER, dx=doorPos.x-T.x, dz=doorPos.z-T.z, L=Math.hypot(dx,dz)||1, x=T.x+dx/L*6.2, z=T.z+dz/L*6.2;
+  let y=isleH(x,z); try{ const f=G.floorAt(x,z,y+2); if(isFinite(f)&&Math.abs(f-y)<2)y=f; }catch(e){}
+  return {x,y,z,yaw:Math.atan2(dx,dz)}; }
 /* the wrecker's tower: dark stone, leaning a little, an iron fire-basket on top; opened crates at its foot; a barred door */
 let doorPos=null;
 function buildTower(GE){
@@ -396,16 +407,17 @@ G.system('northIsle',{order:85,modes:['play','paused','dead','title'],
     if(G.state.mode==='play'||G.state.mode==='dead')updateCrossing(dt||0);
     // only draw the island when you could possibly see it (it's 700 m out, past the fog)
     if(root){ const cam=G.camera.position; root.visible=Math.hypot(cam.x-C.x,cam.z-C.z)<380;
-      if(root.visible){ const t=G.time||0; if(towerFire){ const fl=.8+.2*Math.sin(t*9.1)*Math.sin(t*3.7); towerFire.scale.set(1,fl*1.1,1); towerFire.rotation.y=t*.7; fireMat.opacity=.55+.3*fl; }
-        if(fireLight)fireLight.intensity=1.5*(.8+.2*Math.sin(t*7.3)); if(foamMat)foamMat.opacity=.42+.12*Math.sin(t*1.1); if(foam&&foam.material.map)foam.material.map.offset.x=t*.01; } }
+      if(root.visible){ const t=G.time||0, oc=fireOutcome(); if(oc!==fireMode)setFireLook(oc);
+        if(towerFire&&oc!=='died'){ const fl=.8+.2*Math.sin(t*9.1)*Math.sin(t*3.7); towerFire.scale.set(1,fl*1.1,1); towerFire.rotation.y=t*.7; fireMat.opacity=.55+.3*fl; }
+        if(fireLight)fireLight.intensity=oc==='died'?0:1.5*(.8+.2*Math.sin(t*7.3)); if(foamMat)foamMat.opacity=.42+.12*Math.sin(t*1.1); if(foam&&foam.material.map)foam.material.map.offset.x=t*.01; } }
     if(inside&&!S.seenTower&&P&&Math.hypot(P.pos.x-TOWER.x,P.pos.z-TOWER.z)<40){ S.seenTower=true; say('A tower. No keeper’s tower: no lens, no glass. Just a fire in a cage.','Rowan',{key:'tower1'}); }
   }
 });
 G.on('boat:built',()=>{ if(S.at==='north'&&G.boat&&G.boat.moorAt)G.boat.moorAt(NMOOR.x,NMOOR.z,NMOOR.yaw); });
 
-const API=G.northIsle={get inside(){ const P=G.player; return onIsland(P&&P.pos)||!!(G.northCave&&G.northCave.inside); },   // live (fog.js asks before this system runs)
+const API=G.northIsle={get inside(){ const P=G.player; return onIsland(P&&P.pos)||!!(G.northCave&&G.northCave.inside)||!!(G.northFire&&G.northFire.inside); },   // live (fog.js asks before this system runs)
   centre:C,tower:TOWER,cove:{beach:BEACH,moor:NMOOR,dir:COVE_DIR,mouthA:MOUTH_A},shoreR,setQuest:()=>setQuest(),box:BOX,path:PATH,
   get at(){ return S.at; }, get landed(){ return S.landed; }, get crossing(){ return X.on; }, get boatPos(){ return X.on&&X.dir==='north'?X.boatPos:null; }, get crossPhase(){ return X.phase; },
-  height:isleH, inBox, cross, state:S,
+  height:isleH, inBox, cross, state:S, doorOut, get fireLook(){ return fireMode==='unset'?null:(fireMode||'lure'); },
   debug:{ arrive:(d)=>arrive(d||'north',true), get doorPos(){ return doorPos; }, boards:BOARDS, get pile(){ return S._pile; }, X }};
 })();

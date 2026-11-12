@@ -20,7 +20,10 @@ const COL='#52e89a';        // cold sea-glass green, nothing like our amber or t
 const TURN=-.34;            // rad/s: ours turns +.42
 const LOOK_COS=Math.cos(.45), LOOK_T=.7;
 const CORE=U.col(COL).multiplyScalar(2.2);   // far off it burns white-hot at the heart; up close it's plainly green
-const N={vis:0,look:0,yaw:0,built:false,force:null};
+const N={vis:0,look:0,yaw:0,built:false,force:null,warm:0,mode:null};
+/* after the fire room (northfire.js): 'lived' → his father keeps it as a true light (warm gold, turning our way); 'died' → out */
+const WARM='#ffd27a', WARM_CORE=U.col(WARM).multiplyScalar(2.2), GREEN=U.col(COL), WARMC=U.col(WARM), TURN_TRUE=.38;
+const outcome=()=>{ if(N.mode)return N.mode; try{ const F=G.northFire; return (F&&F.state&&F.state.outcome)||null; }catch(e){ return null; } };
 const seen=()=>!!(G.flag&&G.flag('northLight'));
 let root, core, halo, beam, beamMat, coreMat, haloMat;
 
@@ -70,16 +73,19 @@ G.system('north',{order:47,modes:['play','paused','dead','title'],
   init(){ try{ build(); }catch(e){ console.error('north',e); } },
   update(dt){
     if(!N.built)return;
-    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside)||(G.northCave&&G.northCave.inside);
-    const want=ready()&&!inside?1:0;
+    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside)||(G.northCave&&G.northCave.inside)||(G.northFire&&G.northFire.inside);
+    const oc=outcome();
+    const want=ready()&&!inside&&oc!=='died'?1:0;
+    N.warm=oc==='lived'?(N.vis<.02?1:U.damp(N.warm,1,.6,dt||0)):0;
     N.vis=U.damp(N.vis,want,want?.35:2,dt||0);
     root.visible=N.vis>.005; if(!root.visible)return;
-    if(G.state.mode!=='paused')N.yaw=(N.yaw+TURN*(dt||0))%TAU;
+    if(G.state.mode!=='paused')N.yaw=(N.yaw+(N.warm>.5?TURN_TRUE:TURN)*(dt||0))%TAU;
+    if(N.warm!==N._w){ N._w=N.warm; haloMat.color.copy(GREEN).lerp(WARMC,N.warm); beamMat.color.copy(haloMat.color); }
     beam.rotation.y=N.yaw;
     const sw=sweep(), t=G.time||0, fl=.86+.14*Math.sin(t*7.3)*Math.sin(t*2.1);   // a guttering, oily flame
     // sized for 700 m off; up close (the crossing, the island itself) it shrinks with distance so it stays a fire, not a sun
     const cd=G.camera.position.distanceTo(POS), near=U.clamp(cd/700,.035,1);
-    coreMat.opacity=N.vis*(.7+.3*sw)*fl*(near<1?.6+.4*near:1); core.scale.setScalar((30+40*sw)*near); coreMat.color.copy(CORE).multiplyScalar(.4+.6*near);
+    coreMat.opacity=N.vis*(.7+.3*sw)*fl*(near<1?.6+.4*near:1); core.scale.setScalar((30+40*sw)*near); coreMat.color.copy(CORE).lerp(WARM_CORE,N.warm).multiplyScalar(.4+.6*near);
     haloMat.opacity=N.vis*(.28+.5*sw)*(near<1?.55+.45*near:1); halo.scale.setScalar((110+170*sw)*near);
     beamMat.opacity=N.vis*.08;
     // Rowan knows it: from up on the headland or the tower, facing it for a moment
@@ -92,5 +98,6 @@ G.system('north',{order:47,modes:['play','paused','dead','title'],
 });
 
 G.north={pos:POS, get visible(){ return N.vis>.5; }, get seen(){ return seen(); }, get vis(){ return N.vis; }, sweep:()=>N.built?sweep():0, TURN,
-  debug:{ show(on){ N.force=on==null?null:!!on; }, see, get look(){ return N.look; }, get yaw(){ return N.yaw; }, set yaw(v){ N.yaw=v; }, onGallery } };
+  get mode(){ return outcome()||'lure'; },
+  debug:{ show(on){ N.force=on==null?null:!!on; }, setMode(m){ N.mode=m==null||m==='lure'?null:m; }, get warm(){ return N.warm; }, see, get look(){ return N.look; }, get yaw(){ return N.yaw; }, set yaw(v){ N.yaw=v; }, onGallery } };
 })();
