@@ -50,7 +50,7 @@ const S={v:1,entered:false,done:false,outcome:null,fell:null,inside:false,trans:
 const B={state:'dormant',phase:1,hp:T.hp,x:0,z:0,y:-8,heading:0,scale:1,sTarget:1,doused:0,douseBy:null,atk:null,cool:2,under:0,
   walk:0,walkK:0,rise:0,riseDur:4,flash:0,shed:null,script:null,hold:false,first:true,said:{},nAtk:0,crumbleT:-1,clutch:null,diedHere:false};
 const timers=[]; const later=(s,fn)=>timers.push({t:G.time+s,fn});
-const say=(t,who,o)=>{ try{ G.ui.say(t,who||null,Object.assign({priority:'high'},o||{})); }catch(e){} };
+const say=(t,who,o)=>{ try{ G.ui.say(t,who||null,Object.assign({priority:'high',group:'nf'},o||{})); }catch(e){} };   // group 'nf': the story's scenes supersede it (hud.js)
 const toast=(a,b)=>{ try{ G.ui.toast&&G.ui.toast(a,b); }catch(e){} };
 const isPlay=()=>G.state.mode==='play';
 const cineOn=()=>!!(G.cine&&G.cine.on);
@@ -97,9 +97,9 @@ const tanks=[]; let great=null;
 const FIRE={lure:{a:'#2fcf7a',b:'#9ff5c8',h:1.0,L:'#6fe8a8',I:2.6,glow:'#1f8a55'},
   rage:{a:'#ff7a2a',b:'#5fe8a0',h:1.35,L:'#ff9a4a',I:2.2,glow:'#a8401a'},
   embers:{a:'#a8341a',b:'#ff7a3a',h:.18,L:'#ff6a3a',I:.7,glow:'#5a1a0c'},
-  true:{a:'#b85e14',b:'#e8902a',h:1.0,L:'#ffb04a',I:2.6,glow:'#7a4a14'},   // gold, not white: the cones add up, so the colours sit low
+  true:{a:'#a4520a',b:'#c88418',h:1.0,L:'#ffb04a',I:2.6,glow:'#7a4a14',o:.5},   // gold, not white: the cones and tongues add up (and bloom), so the colours sit low and saturated, and thinner (o)
   out:{a:'#201510',b:'#201510',h:.02,L:'#ff6a3a',I:.08,glow:'#140a08'}};
-const fireNow={h:1,I:2.6,a:col('#2fcf7a'),b:col('#9ff5c8'),L:col('#6fe8a8'),glow:col('#1f8a55')};
+const fireNow={h:1,I:2.6,o:1,a:col('#2fcf7a'),b:col('#9ff5c8'),L:col('#6fe8a8'),glow:col('#1f8a55')};
 function stoneCol(c,x,y,z){ const dk=col('#3b3a40'), lt=col('#6e6c72'), soot=col('#17151a');
   c.copy(dk).lerp(lt,.25+.5*vnoise(x*.6+y*.2,z*.6-y*.3)).lerp(soot,smooth(5,H,y)*.75); }
 function buildRoom(){
@@ -559,13 +559,13 @@ function clutch(obj){ B.script={kind:'clutch',t:0}; B.clutch={obj}; sfx('crack')
 function setFire(mode){ if(!FIRE[mode])return; S.fire=mode; }
 function updateFire(dt){
   const F=FIRE[S.fire]||FIRE.lure, t=G.time||0;
-  fireNow.h=damp(fireNow.h,F.h,1.6,dt); fireNow.I=damp(fireNow.I,F.I,1.6,dt);
+  fireNow.h=damp(fireNow.h,F.h,1.6,dt); fireNow.I=damp(fireNow.I,F.I,1.6,dt); fireNow.o=damp(fireNow.o,F.o||1,1.6,dt);
   const kk=1-Math.exp(-1.6*dt); fireNow.a.lerp(_c.set(F.a),kk); fireNow.b.lerp(_c.set(F.b),kk); fireNow.L.lerp(_c.set(F.L),kk); fireNow.glow.lerp(_c.set(F.glow),kk);
   const fl=.85+.15*Math.sin(t*8.3)*Math.sin(t*3.1), still=S.fire==='true'?.5:1;
   for(let i=0;i<fireCones.length;i++){ const c=fireCones[i], m=fireMats[i]; c.scale.set(1+.08*Math.sin(t*5+i),Math.max(.01,fireNow.h*(1+(fl-1)*still)*(1+.12*Math.sin(t*6.3+i*1.7))),1+.08*Math.cos(t*4+i));
-    c.rotation.y+=dt*(.4+i*.15)*(i%2?1:-1); m.color.copy(i<2?fireNow.a:fireNow.b); m.opacity=Math.min(.6,fireNow.h)*(.08+.035*i); c.visible=fireNow.h>.35; }
+    c.rotation.y+=dt*(.4+i*.15)*(i%2?1:-1); m.color.copy(i<2?fireNow.a:fireNow.b); m.opacity=Math.min(.6,fireNow.h)*(.08+.035*i)*fireNow.o; c.visible=fireNow.h>.35; }
   for(const q of tongues){ q.ph=(q.ph+dt*q.sp0*.8)%1; const k=q.ph, hh=fireNow.h; q.sp.position.set(q.x*(1-k*.6),.6+k*4.2*hh,q.z*(1-k*.6)); q.sp.scale.set((1.6-k)*1.3*Math.max(.3,hh),(2.2-k)*1.6*hh,1);
-    q.m.color.copy(k<.4?fireNow.b:fireNow.a); q.m.opacity=hh>.05?Math.sin(k*PI)*.55*Math.min(1,hh):0; q.sp.visible=hh>.03; }
+    q.m.color.copy(k<.4?fireNow.b:fireNow.a); q.m.opacity=hh>.05?Math.sin(k*PI)*.55*Math.min(1,hh)*fireNow.o:0; q.sp.visible=hh>.03; }
   fireLight.color.copy(fireNow.L); fireLight.intensity=fireNow.I*fl; pitGlowMat.color.copy(fireNow.glow);
   if(fireNow.h>.1&&rnd()<dt*12)embers((rnd()-.5)*3,-.5,(rnd()-.5)*3,1,{speed:.6,up:5*fireNow.h,color:'#'+fireNow.b.getHexString()});
   if(S.fire==='out'&&rnd()<dt*4)steam((rnd()-.5)*2,-.5,(rnd()-.5)*2,1,{r:.5,h:.5});
@@ -609,7 +609,7 @@ function setInside(v){ if(v===S.inside)return; S.inside=v; API.inside=v;
   G.interior=v?INTERIOR:(G.interior===INTERIOR?null:G.interior); root.visible=v;
   if(v){ if(!(G.northCave&&G.northCave.inside))hideOutside(true); } else hideOutside(false);
   if(G.renderer&&G.renderer.shadowMap){ G.renderer.shadowMap.autoUpdate=!v; if(!v)G.renderer.shadowMap.needsUpdate=true; }
-  if(!v){ if(fighting()||B.state==='down')resetFight('left'); }
+  if(!v){ if(fighting()||B.state==='down')resetFight('left'); try{ G.ui.dropCaptions&&G.ui.dropCaptions('nf'); }catch(e){} }   // the room's lines stay in the room
 }
 
 /* ================================================================ 9. RESET, FINISH, SAVE */
@@ -649,8 +649,10 @@ G.system('northFire',{order:87,modes:['play','paused','dead','title'],
   init(){
     build(); root.visible=false;
     const IA=G.interact, ins=()=>isPlay()&&S.inside&&!S.trans&&!cineOn();
+    // the cisterns are for the fight only: not before it, not in a scene, never once it's over
+    const tankOn=()=>ins()&&!S.done&&fighting()&&!(G.northFireStory&&G.northFireStory.scene);
     for(const t of tanks)IA.add({pos:()=>t.chainPos,radius:1.8,priority:7,label:()=>t.level>=.999&&!t.pull?'Pull the chain':'The cistern is filling',
-      enabled:ins,use:()=>{ if(!pullTank(t.i,'rowan'))say('Still filling. Somewhere above, water trickles in.',null,{key:'nfFill'}); }});
+      enabled:tankOn,use:()=>{ if(!pullTank(t.i,'rowan'))say('Still filling. Somewhere above, water trickles in.',null,{key:'nfFill'}); }});
     IA.add({pos:()=>toWorld(DOOR.x,.3,R-1.0),radius:1.7,priority:6,label:'Go down the stair',enabled:()=>ins()&&!fighting()&&B.state!=='down'&&B.state!=='dying'&&(S.done||B.state==='dormant'),use:()=>startTrans('out')});
   },
   update(dt){

@@ -74,6 +74,10 @@ DIED_AFTER=[
 LIVED=[
  ("start in the last phase","(()=>{ G.devtools.start('north-final'); const ok=T.settle(14,()=>G.northFire.giant.state==='fight'&&G.northFire.giant.phase===3); return {ok,s:T.st()}; })()",
    lambda r:r['ok'] and not r['s']['rescued'] and r['s']['ghp']<=8.01),
+ ("the ending starts: no fight objective, no cistern prompts, the fight's lines gone","(()=>{ const g=G.northFire.giant, D=G.northFire.debug; G.ui.say('A stale fight line.',null,{group:'nf',key:'nfStale'});"
+   " g.douse(6.5); for(let i=0;i<6&&g.hp>0;i++)D.hit(4); T.run(1); const c=G.ui.captions(), tk=G.interact.list.filter(o=>/chain|cistern/.test(G.interact.label(o)||''));"
+   " return {g:g.state,step:G.quest.step,obj:document.getElementById('objSub').textContent,nTanks:tk.length,tanksOn:tk.filter(o=>!o.enabled||o.enabled()).length,cur:c.cur&&c.cur.key,stale:c.queue.filter(q=>q.key==='nfStale').length}; })()",
+   lambda r:r['step']=='north:fireEnd' and 'cistern' not in r['obj'] and r['nTanks']>=4 and r['tanksOn']==0 and r['cur']=='nfL1' and r['stale']==0),
  ("broken without his help: the ending where he lives","(()=>{ const g=G.northFire.giant, D=G.northFire.debug; g.douse(6.5); for(let i=0;i<6&&g.hp>0;i++)D.hit(4);"
    " const ok=T.settle(60,()=>G.northFire.state.done&&G.northFire.fire==='true'&&!G.northFireStory.scene); T.settle(10,()=>T.said(/keeper’s light/)); const s=T.st(); return {ok,s,drops:T.drops.length,gold:T.said(/What catches is gold/)}; })()",
    lambda r:r['ok'] and r['s']['outcome']=='lived' and r['s']['fire']=='true' and r['s']['far']=='lived' and r['drops']==1 and r['gold'] and r['s']['dad']=='keeper'),
@@ -84,9 +88,13 @@ LIVED=[
 LIVED_AFTER=[
  ("after a reload: done, he lives, the gold flame, he's at the pit","(()=>{ T.run(2); return T.st(); })()",
    lambda r:r['inside'] and r['done'] and r['outcome']=='lived' and r['fire']=='true' and r['dad']=='keeper' and r['far']=='lived'),
- ("go down the stair: outside the tower door","(()=>{ const D=G.northFire.DOOR, w=G.northFire.toWorld(D.x,0,G.northFire.R-1.0); G.player.teleport(w.x,w.y,w.z,0); G.step(1/30,3); const lab=T.use(/down the stair/); T.run(2.4);"
-   " const P=G.player.pos, d=G.northIsle.debug.doorPos; return {lab,inside:G.northFire.inside,isle:G.northIsle.inside,near:+Math.hypot(P.x-d.x,P.z-d.z).toFixed(1),cp:G.state.checkpointName}; })()",
-   lambda r:r['lab']=='Go down the stair' and not r['inside'] and r['isle'] and r['near']<8 and r['cp']=='the north island'),
+ ("a scene's line supersedes the room's older lines and leaves the rest alone","(()=>{ G.ui.clearCaptions(); G.ui.say('Old fire-room line one.',null,{group:'nf'}); G.ui.say('Old fire-room line two.',null,{group:'nf'});"
+   " G.ui.say('Somewhere else entirely.',null,{}); G.ui.say('A new shot.',null,{group:'nf',flush:true,priority:'high'}); G.step(1/30,1); const c=G.ui.captions(); G.ui.clearCaptions();"
+   " return {cur:c.cur&&c.cur.text,q:c.queue.map(q=>q.text)}; })()", lambda r:r['cur']=='A new shot.' and r['q']==['Somewhere else entirely.']),
+ ("go down the stair: outside the tower door","(()=>{ const D=G.northFire.DOOR, w=G.northFire.toWorld(D.x,0,G.northFire.R-1.0); G.player.teleport(w.x,w.y,w.z,0); G.step(1/30,3); G.ui.clearCaptions(); G.ui.say('A line from the fire room.',null,{group:'nf'}); G.ui.say('A line from anywhere.',null,{}); const lab=T.use(/down the stair/); T.run(2.4);"
+   " const P=G.player.pos, d=G.northIsle.debug.doorPos, c=G.ui.captions(), caps=(c.cur?[c.cur]:[]).concat(c.queue);"
+   " return {lab,inside:G.northFire.inside,isle:G.northIsle.inside,near:+Math.hypot(P.x-d.x,P.z-d.z).toFixed(1),cp:G.state.checkpointName,nf:caps.filter(q=>q.group==='nf').length,other:caps.filter(q=>q.text==='A line from anywhere.').length}; })()",
+   lambda r:r['lab']=='Go down the stair' and not r['inside'] and r['isle'] and r['near']<8 and r['cp']=='the north island' and r['nf']==0 and r['other']==1),
 ]
 RETRY=[
  ("start the fight","(()=>{ G.devtools.start('north-fight'); const ok=T.settle(14,()=>G.northFire.giant.state==='fight'); return {ok,s:T.st()}; })()", lambda r:r['ok'] and r['s']['dad']=='cower'),
