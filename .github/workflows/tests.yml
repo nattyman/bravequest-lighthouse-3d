@@ -38,7 +38,7 @@ jobs:
                'map_e2e':'?debug&headless','raft_e2e':'?debug&headless','travel_e2e':'?debug&headless',
                'devtools_e2e':'','cave_e2e':'?debug&headless','undercroft_e2e':'?debug&headless',
                'houndsfx_e2e':'?debug&headless','stagsfx_e2e':'?debug&headless','bossmusic_e2e':'?debug',
-               'temple_e2e':'?debug&headless','north_e2e':'?debug&headless','boat_e2e':'?debug&headless','cloud_e2e':'?cloud'}
+               'temple_e2e':'?debug&headless','north_e2e':'?debug&headless','boat_e2e':'?debug&headless','northisle_e2e':'?debug&headless','northcave_e2e':'?debug&headless','cloud_e2e':'?cloud'}
           want = [w.strip() for w in (os.environ.get('WANT') or '').split(',') if w.strip()]
           inc = [{'suite':k,'q':v} for k,v in S.items() if not want or k in want]
           inc += [{'suite':w,'q':'?debug&headless'} for w in want if w not in S]   # a new suite not in the list yet

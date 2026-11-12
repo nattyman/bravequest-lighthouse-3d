@@ -1286,6 +1286,7 @@ function departBlock(){
   const P=G.player, L=G.items.lantern||{}, T=G.items.storm||{}, q=(G.quest&&G.quest.step)||'';
   if(TR.on)return 'You’re already on your way.';
   if(!P||!P.pos||P.alive===false)return 'Not now.';
+  if(G.northIsle&&(G.northIsle.inside||G.northIsle.crossing))return 'The chart’s no use out here. Your boat is the way home.';
   const boss=bossFight();
   if(boss==='stag')return 'The Hollow Stag won’t let you slip away. Not while it stands.';
   if(boss==='gloaming')return 'The Gloaming is at the lighthouse. You can’t leave the light now.';

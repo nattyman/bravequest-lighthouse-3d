@@ -15,10 +15,11 @@
 const G=window.G, THREE=G.THREE, U=G.U;
 const PI=Math.PI, TAU=PI*2;
 // north is -z (the cottage door faces north); a little west of the tower so it sits off the cliff edge, not behind the vane
-const POS=new THREE.Vector3(150,58,-650);   // high on its rock: from the headland it sits right on the horizon, above Rowan's shoulder
-const COL='#bdf5d6';        // cold sea-glass green, nothing like our amber or the ether's violet
+const POS=new THREE.Vector3(146,58,-708);   // the fire-basket on the wrecker's tower (northisle.js): from the headland it sits right on the horizon
+const COL='#52e89a';        // cold sea-glass green, nothing like our amber or the ether's violet
 const TURN=-.34;            // rad/s: ours turns +.42
 const LOOK_COS=Math.cos(.45), LOOK_T=.7;
+const CORE=U.col(COL).multiplyScalar(2.2);   // far off it burns white-hot at the heart; up close it's plainly green
 const N={vis:0,look:0,yaw:0,built:false,force:null};
 const seen=()=>!!(G.flag&&G.flag('northLight'));
 let root, core, halo, beam, beamMat, coreMat, haloMat;
@@ -28,7 +29,7 @@ function ready(){ return N.force!=null?N.force:!!((G.flag&&G.flag('gloamingDead'
 
 function build(){
   root=new THREE.Group(); root.name='northLight'; root.position.copy(POS); G.scene.add(root);
-  coreMat=new THREE.SpriteMaterial({map:G.tex.flame,color:U.col(COL).multiplyScalar(2.2),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
+  coreMat=new THREE.SpriteMaterial({map:G.tex.flame,color:CORE.clone(),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
   core=new THREE.Sprite(coreMat); core.scale.setScalar(30); root.add(core);
   haloMat=new THREE.SpriteMaterial({map:G.tex.soft,color:U.col(COL),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
   halo=new THREE.Sprite(haloMat); halo.scale.setScalar(110); root.add(halo);
@@ -69,15 +70,17 @@ G.system('north',{order:47,modes:['play','paused','dead','title'],
   init(){ try{ build(); }catch(e){ console.error('north',e); } },
   update(dt){
     if(!N.built)return;
-    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside);
+    const inside=(G.cave&&G.cave.inside)||(G.undercroft&&G.undercroft.inside)||(G.temple&&G.temple.inside)||(G.northCave&&G.northCave.inside);
     const want=ready()&&!inside?1:0;
     N.vis=U.damp(N.vis,want,want?.35:2,dt||0);
     root.visible=N.vis>.005; if(!root.visible)return;
     if(G.state.mode!=='paused')N.yaw=(N.yaw+TURN*(dt||0))%TAU;
     beam.rotation.y=N.yaw;
     const sw=sweep(), t=G.time||0, fl=.86+.14*Math.sin(t*7.3)*Math.sin(t*2.1);   // a guttering, oily flame
-    coreMat.opacity=N.vis*(.7+.3*sw)*fl; core.scale.setScalar(30+40*sw);
-    haloMat.opacity=N.vis*(.28+.5*sw); halo.scale.setScalar(110+170*sw);
+    // sized for 700 m off; up close (the crossing, the island itself) it shrinks with distance so it stays a fire, not a sun
+    const cd=G.camera.position.distanceTo(POS), near=U.clamp(cd/700,.035,1);
+    coreMat.opacity=N.vis*(.7+.3*sw)*fl*(near<1?.6+.4*near:1); core.scale.setScalar((30+40*sw)*near); coreMat.color.copy(CORE).multiplyScalar(.4+.6*near);
+    haloMat.opacity=N.vis*(.28+.5*sw)*(near<1?.55+.45*near:1); halo.scale.setScalar((110+170*sw)*near);
     beamMat.opacity=N.vis*.08;
     // Rowan knows it: from up on the headland or the tower, facing it for a moment
     if(!seen()&&G.state.mode==='play'&&N.vis>.6&&onGallery()){

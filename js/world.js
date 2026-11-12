@@ -367,6 +367,8 @@ class Kit{
     return out;}
 }
 function rnd(seed){return U.rng(seed);}
+/* shared with northisle.js: the same merge / matrix / rock-blob helpers and the stone, slate and wood textures (built at init) */
+W.geo={mergeParts:(p,o)=>mergeParts(p,o),mat4:(...a)=>mat4(...a),blob:(...a)=>blob(...a),tex:()=>TEX};
 
 /* ---------- procedural textures ---------- */
 function stoneCanvas(g,s,base,vr,rows,mossy){
