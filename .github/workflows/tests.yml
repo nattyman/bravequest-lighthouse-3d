@@ -1,8 +1,6 @@
-# Brave Quest: Lighthouse — the browser test suites, one job per suite.
-# Where they run: the AWS runner (self-hosted, label bq-aws) when it's online, GitHub's machines when it isn't.
-# The plan job asks GitHub whether a bq-aws runner is online. Listing runners needs a token with the repo's
-# "Administration: Read-only" permission, saved as the secret RUNNER_STATUS_TOKEN; without it, everything runs on
-# GitHub's machines. A manual run can force either one.
+# Brave Quest: Lighthouse — the browser test suites, one job per suite, all side by side on GitHub's machines.
+# The repo is public, so standard GitHub-hosted runners are free. No self-hosted runner: on a public repo,
+# anyone's pull request could run code on it.
 name: tests
 on:
   push:
@@ -10,11 +8,6 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      runner:
-        description: 'Where to run: auto (AWS when its runner is online, else GitHub), aws, or github'
-        type: choice
-        options: [auto, aws, github]
-        default: auto
       suites:
         description: 'Suites to run, comma separated (blank = all), e.g. cave_e2e,map_e2e'
         type: string
@@ -27,27 +20,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.m.outputs.matrix }}
-      runner: ${{ steps.r.outputs.runner }}
     steps:
-      - id: r
-        name: Pick the runner
-        env:
-          WANT: ${{ inputs.runner || 'auto' }}
-          GH_TOKEN: ${{ secrets.RUNNER_STATUS_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          pick=github; why="GitHub's machines (default fallback)"
-          if [ "$WANT" = aws ]; then pick=aws; why="AWS runner (chosen by hand)"
-          elif [ "$WANT" = github ]; then why="GitHub's machines (chosen by hand)"
-          elif [ -z "$GH_TOKEN" ]; then why="GitHub's machines: no RUNNER_STATUS_TOKEN secret, so the AWS runner can't be checked"
-          else
-            n=$(gh api "repos/$REPO/actions/runners?per_page=100" --jq '[.runners[] | select(.status=="online" and any(.labels[]; .name=="bq-aws"))] | length' 2>/dev/null) || n=""
-            if [ -z "$n" ]; then why="GitHub's machines: couldn't check the AWS runner (token missing the Administration: Read-only permission?)"
-            elif [ "$n" -gt 0 ]; then pick=aws; why="AWS runner (online)"
-            else why="GitHub's machines: the AWS runner is offline"; fi
-          fi
-          echo "runner=$pick" >> "$GITHUB_OUTPUT"
-          echo "Tests run on: $why" | tee -a "$GITHUB_STEP_SUMMARY"
       - id: m
         shell: python
         env:
@@ -69,7 +42,7 @@ jobs:
   suite:
     needs: plan
     name: ${{ matrix.suite }}
-    runs-on: ${{ needs.plan.outputs.runner == 'aws' && fromJSON('["self-hosted","bq-aws"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -87,7 +60,7 @@ jobs:
       - name: Build dev.html and serve
         run: |
           python test/build_dev.py
-          # a free port of its own: several runners can share the AWS machine, and each job serves the game
+          # a free port of its own, so the job never collides with anything else on the machine
           PORT=$(python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
           echo "PORT=$PORT" >> "$GITHUB_ENV"
           (python -m http.server $PORT >/dev/null 2>&1 &)
