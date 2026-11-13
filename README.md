@@ -1,6 +1,6 @@
 # Brave Quest: Lighthouse
 
-A Zelda-like 3D adventure in the browser, built with Three.js (r128) and the Web Audio API. Gentle Gothic fairytale: you wake at the foot of a dead lighthouse on a sea cliff, fog rolling in, and learn that the moths were never after the light.
+A 3D adventure in the browser, built with Three.js (r128) and the Web Audio API. Gentle Gothic fairytale: you wake at the foot of a dead lighthouse on a sea cliff, fog rolling in, and learn that the moths were never after the light.
 
 ## Run it locally
 
