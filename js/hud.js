@@ -61,6 +61,9 @@ const queue=[]; let cur=null;
    - high (boss/quest beats, danger): interrupts the current line at once (a current high line keeps its minimum time first)
    - normal: a queued line with the same key is replaced; dropped if it has waited longer than STALE
    - low: flavour; dropped quickly if it can't be shown, never cuts anything
+   Cut scenes: {group} tags a line as one scene's (e.g. 'nf', the fire room); {group, flush:true} makes it supersede that
+   group: its waiting lines are dropped and its line on screen gives way at once (a new shot's line never waits behind the
+   last shot's). G.ui.dropCaptions(group) clears a group (a scene ending, leaving a room). Ungrouped lines are untouched.
    Reading time scales with length; a waiting line cuts the current one short once its minimum time has passed.
    The player picks the reading time in the pause menu (SPEEDS, localStorage 'bq-captions'):
    - relaxed (default): about twice the standard reading time, generous minimums; waiting lines cut in later
@@ -88,7 +91,7 @@ function setCapSpeed(id,quiet){
 const PRI={low:0,normal:1,high:2};
 const capRead=t=>U.clamp(t.length*CAP.PER,CAP.MIN,CAP.MAX);
 function capTimes(t){ const typeT=reduceMotion?0:t.length/CAP.TYPE; return {typeT, read:Math.max(capRead(t),typeT+1.2), min:Math.max(CAP.MIN,Math.min(typeT+.6,CAP.MAX))}; }
-function capItem(text,who,o){ const p=PRI[o.priority]; const it={t:text,who:who||'',pri:p==null?1:p,key:o.key||null,age:0}; if('portrait' in o)it.portrait=o.portrait; if(o.title)it.title=o.title; return it; }
+function capItem(text,who,o){ const p=PRI[o.priority]; const it={t:text,who:who||'',pri:p==null?1:p,key:o.key||null,group:o.group||null,age:0}; if('portrait' in o)it.portrait=o.portrait; if(o.title)it.title=o.title; return it; }
 const held=c=>CAP.hold&&c&&c.pri>=1; // waits for the player
 function capMissed(it){ if(it&&it.log&&!it.log.seen)it.log.m=1; logDirty=true; }
 function capEnqueue(it){
@@ -108,7 +111,7 @@ function capShow(it){
   if(cur&&cur!==it)capEnd(false);
   const T=capTimes(it.t);
   const face=portraitOf(it);
-  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log,portrait:it.portrait,title:it.title,face};
+  cur={t:it.t,who:it.who,pri:it.pri,key:it.key,group:it.group,i:reduceMotion?1e4:0,el:0,shown:-1,read:T.read,min:T.min,requeued:it.requeued,log:it.log,portrait:it.portrait,title:it.title,face};
   // the name in the card's display face; a small eyebrow (the speaker's title) beside it when there's a portrait
   const title=it.title||(face&&typeof face==='string'&&G.portraits?G.portraits.title(face):'');
   capWho.innerHTML=esc(it.who)+(title?' <small>'+esc(title)+'</small>':''); capWho.hidden=!it.who;
@@ -173,6 +176,11 @@ G.ui={
     const it=capItem(text,who,opts||{});
     it.log=logLine(it);
     if(cur&&cur.t===text){ cur.pri=Math.max(cur.pri,it.pri); cur.log=it.log; return; }
+    if(it.group&&opts&&opts.flush){
+      // a scene's new line: nothing older from the same scene waits in front of it, and its line on screen gives way now
+      for(let j=queue.length-1;j>=0;j--)if(queue[j].group===it.group&&queue[j].t!==text)capMissed(queue.splice(j,1)[0]);
+      if(cur&&cur.group===it.group){ capShow(it); return; }
+    }
     const d=queue.findIndex(q=>q.t===text); if(d>=0){ queue[d].log=it.log; if(queue[d].pri<it.pri){queue.splice(d,1);capEnqueue(it);} return; }
     if(it.key){
       const k=queue.findIndex(q=>q.key===it.key); if(k>=0)capMissed(queue.splice(k,1)[0]); // a newer line for the same thing replaces the waiting one
@@ -180,7 +188,7 @@ G.ui={
     }
     if(it.pri>=2&&cur&&!(cur.pri>=2&&cur.el<cur.min)){
       // interrupt now; a line cut off early (under half read) comes back once afterwards
-      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!queue.some(q=>q.t===cur.t)){ capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,age:-4,requeued:true,log:cur.log,portrait:cur.portrait,title:cur.title}); cur.requeuing=true; }
+      if(cur.pri>=1&&!cur.requeued&&cur.el<cur.read*.5&&!(it.group&&cur.group===it.group)&&!queue.some(q=>q.t===cur.t)){ capEnqueue({t:cur.t,who:cur.who,pri:cur.pri,key:cur.key,group:cur.group,age:-4,requeued:true,log:cur.log,portrait:cur.portrait,title:cur.title}); cur.requeuing=true; }
       capShow(it); return;
     }
     if(it.pri===0&&(cur||queue.length)&&queue.some(q=>q.pri>0)){ capMissed(it); return; } // flavour never waits behind real lines
@@ -255,9 +263,16 @@ capEl.addEventListener('pointerdown',e=>{
 capEl.addEventListener('click',e=>{ e.preventDefault(); e.stopPropagation(); });
 capEl.addEventListener('contextmenu',e=>e.preventDefault());
 /* for tests and devtools: what is on screen and waiting */
-G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,face:typeof cur.face==='function'?'custom':cur.face||null,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
-  queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,age:+q.age.toFixed(2)})), speed:CAP.speed});
+G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,group:cur.group||null,face:typeof cur.face==='function'?'custom':cur.face||null,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
+  queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,group:q.group||null,age:+q.age.toFixed(2)})), speed:CAP.speed});
 G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); drawStack(); };
+/** drop one scene's captions (said with {group}): the waiting ones and the one on screen. Other lines carry on. */
+G.ui.dropCaptions=group=>{
+  if(!group)return 0; let n=0;
+  for(let j=queue.length-1;j>=0;j--)if(queue[j].group===group){ capMissed(queue.splice(j,1)[0]); n++; }
+  if(cur&&cur.group===group){ capEnd(false); n++; if(queue.length)capShow(queue.shift()); else capEl.classList.remove('show'); }
+  drawStack(); return n;
+};
 /** for tests: the stack as drawn — {depth (back cards showing, 0-2), count ('+N' badge text or ''), who:[names on the back cards]} */
 G.ui.captionStack=()=>({depth:+(capStack&&capStack.dataset.depth||0),count:capCount&&!capCount.hidden?capCount.textContent:'',
   who:capBacks.filter(b=>b.classList.contains('on')).map(b=>b.firstChild?b.firstChild.textContent:''),leaving:document.querySelectorAll('.caption.leaving').length});
@@ -440,9 +455,12 @@ function keyCap(k,isInteract){
   if(TOUCH_OF_KEY[k]&&(G.input.device==='touch'||(G.isMobile&&G.input.device!=='keyboard')))return `<span class="tap">${TOUCH_OF_KEY[k]}</span>`;
   return k?`<kbd>${esc(k)}</kbd>`:'';
 }
+/* a scene can hush the prompt rows (the fire room's endings: no "Set the lantern down" over a held shot). G.promptMute: fns -> bool */
+G.promptMute=G.promptMute||[];
+const promptsMuted=()=>{ for(const f of G.promptMute){ try{ if(f())return true; }catch(_){} } return false; };
 function updatePrompt(){
   let html='';
-  if(G.state.mode==='play'){
+  if(G.state.mode==='play'&&!promptsMuted()){
     const rows=[]; const c=G.interact.current;
     if(c)rows.push([G.isMobile&&!usingPad()?'Use':(c.key||'E'),G.interact.label(c),true]);
     for(const h of G.hints){ if(!rows.some(r=>r[1]===h.label))rows.push([h.key,h.label,false]); }

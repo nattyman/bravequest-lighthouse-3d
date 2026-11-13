@@ -558,6 +558,7 @@ Object.assign(P,{
   lockTarget:null,gliding:false,sprinting:false,inputEnabled:true,model:null,heading:START.yaw,camYaw:START.yaw,
   hands:{left:null,right:null},
   actionLock:0,speedMul:1,poseHooks:[], // hooks for other modules' actions (potions.js)
+  hurtFilters:[], // fn(damage, info) -> new damage (or null to leave it): runs after i-frames, before the blow lands
   // upgrade multipliers (progression.js sets them): dmg +half-hearts per staff hit/bolt, cost x technique/roll stamina, stamMax x stamina pool,
   // charge x bolt charge rate, boltSpeed x, pierce extra bolt targets. camPull {yaw,pitch,dist,rate}: the camera eases to it (reward moment)
   mods:{dmg:0,cost:1,stamMax:1,charge:1,boltSpeed:1,pierce:0}, camPull:null,
@@ -566,7 +567,8 @@ Object.assign(P,{
     const kind=info.kind||'melee';
     const bypass=info.ignoreIframes||kind==='fall';
     if(!bypass&&(iframes>0||isRollInvuln()))return false;
-    const dmg=Math.max(0,info.damage==null?1:info.damage);
+    let dmg=Math.max(0,info.damage==null?1:info.damage);
+    for(const f of P.hurtFilters){ try{ const r=f(dmg,info); if(r!=null&&isFinite(r))dmg=Math.max(0,r); }catch(e){ console.error(e); } }   // a fight can soften a blow (northfire.js: his father catches the one that would put Rowan down)
     P.hp=Math.max(0,P.hp-dmg);
     if(kind!=='fall'){
       iframes=.9; hurtT=.36;

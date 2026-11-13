@@ -33,7 +33,7 @@ function sdSeg(px,pz,ax,az,bx,bz,w){ const dx=bx-ax,dz=bz-az,l2=dx*dx+dz*dz; let
 function sdBox(px,pz,x0,x1,z0,z1){ const cx=(x0+x1)/2,cz=(z0+z1)/2,hx=(x1-x0)/2,hz=(z1-z0)/2; const qx=Math.abs(px-cx)-hx,qz=Math.abs(pz-cz)-hz; return Math.hypot(Math.max(qx,0),Math.max(qz,0))+Math.min(Math.max(qx,qz),0); }
 const sdCirc=(px,pz,cx,cz,r)=>Math.hypot(px-cx,pz-cz)-r;
 const SHAFT={x:0,z:-47}, PLAT_R=1.75, HOLE_R=2.25, TOP=25, BOT=1.0;
-const S={v:1,entered:false,drained:false,hoistTop:false,read:{},met:false,inside:false,trans:null,water:.55,plat:BOT,hoist:null,said:{},scene:null,prevCp:null};
+const S={v:1,entered:false,drained:false,hoistTop:false,read:{},met:false,open:false,burning:null,inside:false,trans:null,water:.55,plat:BOT,hoist:null,said:{},scene:null,prevCp:null};
 const lowF=(x,z)=>{ const t=-z; return 1.0-2.25*smooth(26,30,t)*(1-smooth(36,40,t)); };
 const ZONES=[
   {id:'mouth',   sd:(x,z)=>sdSeg(x,z,0,3,0,-14,2.6),    floor:(x,z)=>lerp(0,.6,clamp(-z/14,0,1)), ceil:()=>4.4},
@@ -244,12 +244,16 @@ function buildKnox(){
   for(const s of [-1,1]){ const e=add(new THREE.SphereGeometry(.013,6,5),new THREE.MeshBasicMaterial({color:0x9ff5c8}),s*.045,1.85,.12); void e; }   // eyes that have looked at that fire too long
   const armL=add(new THREE.CylinderGeometry(.06,.05,.62,8),coat,-.27,1.32,0); armL.rotation.z=.12;
   const armR=add(new THREE.CylinderGeometry(.06,.05,.62,8),coat,.3,1.55,.12); armR.rotation.set(-1.0,0,-.25);
+  r.userData.armL=armL; r.userData.armR=armR; r.userData.coat=coat;
   knoxLamp=new THREE.Group(); knoxLamp.position.set(.36,1.82,.42); r.add(knoxLamp);
   knoxLamp.add(new THREE.Mesh(new THREE.CylinderGeometry(.09,.11,.22,6,1,true),G.toon('#252226')));
   knoxLamp.add(new THREE.Mesh(new THREE.SphereGeometry(.07,8,6),new THREE.MeshBasicMaterial({color:col('#8ff2bd')})));
   const L=new THREE.PointLight(col('#7fe8b4'),1.6,12,1.6); knoxLamp.add(L);
+  r.userData.lamp=knoxLamp;
   return r;
 }
+/* another copy of him, for the fire room (northfire.js): its own lamp, its own materials */
+function makeKnox(){ const keep=knoxLamp; const r=buildKnox(); knoxLamp=keep; return r; }
 function build(){
   buildWalls(); buildFloorCeil(); buildProps();
   waterCh=waterMesh(6.4,32,4.55,-11.5,'#16302e',.86); waterCh.position.y=-.05;
@@ -387,7 +391,7 @@ function updateScene(dt){
       try{ const A=G.audio; if(A&&A.ready&&A.S){ const t=A.context.currentTime; A.S.thud(t,{g:.25,dur:.25}); A.S.clank&&A.S.clank(t+.35,{g:.14,dur:.2}); } }catch(e){}
       say('The trapdoor bangs shut above. A bar drops across it.',null,{key:'ncTrap'});
       later(1.6,()=>say('Twenty years. He’s been up there twenty years, feeding that fire.','Rowan',{key:'ncAfter1'}));
-      later(3.6,()=>{ try{ G.ui.toast('The fire room','Coming in the next chapter'); }catch(e){} });
+      S.said.name=1; later(5.4,()=>{ S.said.name=0; learnName(); });
       setQuest(); } }
 }
 const R=t=>({text:t,who:'Rowan'});
@@ -413,14 +417,31 @@ function openTalk(){
   if(!ok){ card.lines.forEach(l=>say(typeof l==='string'?l:l.text,typeof l==='string'?'Tobias Knox':'Rowan')); endTalk(); }
 }
 function endTalk(){ if(S.met)return; S.met=true; G.emit('northCave:met',{}); S.scene={t:0,phase:'up'}; }
-function tryTrap(){ say(S.met?'Barred from above. He isn’t opening it.':'A trapdoor, at the top of the stair.','Rowan',{key:'ncTrapTry'}); if(S.met)try{ G.ui.toast('The fire room','Coming in the next chapter'); }catch(e){} }
+function tryTrap(){
+  if(S.open&&G.northFire&&G.northFire.enter){ G.northFire.enter(); return; }
+  say(S.met?'Barred from above. He isn’t opening it.':'A trapdoor, at the top of the stair.','Rowan',{key:'ncTrapTry'}); }
+/* the fire learns his name (Heath, 2026-11-11: the fire room is next). A while after the trapdoor bangs shut, the voice comes
+   down through the boards, and the bar burns through: it isn't his father who lets Rowan up. */
+function learnName(){
+  if(S.open||!S.met||S.burning)return; S.burning={t:0}; S.said.name=1;
+  say('Rowan.','The fire',{key:'ncName1'});
+  later(2.2,()=>say('The voice comes down through the boards. It isn’t his father’s. It sounds like a fire sounds, if a fire could learn a word.',null,{key:'ncName2'}));
+  later(4.6,()=>say('Green light leaks round the trapdoor’s edges. The bar across it is glowing.',null,{key:'ncName3'}));
+  later(7.4,()=>{ S.open=true; S.burning=null; if(trap){ trap.rotation.x=-1.25; trap.position.y=8.1; } if(S._glowUp)S._glowUp.intensity=2.2;
+    try{ const A=G.audio; if(A&&A.ready&&A.S){ const t=A.context.currentTime; A.S.thud(t,{g:.3,dur:.4}); A.S.clank&&A.S.clank(t+.15,{g:.2,dur:.3}); } }catch(e){}
+    say('The bar burns through and drops. The trapdoor swings open on its own.',null,{key:'ncName4'});
+    later(1.8,()=>say('It knows my name.','Rowan',{key:'ncName5'})); later(3.6,()=>say('And he’s up there with it.','Rowan',{key:'ncName6'}));
+    G.emit('northCave:open',{}); setQuest(); });
+}
 
 /* ================================================================ 7. THE OBJECTIVE */
 function setQuest(){
   if(!G.quest)return; const NI=G.northIsle;
   if(!S.inside){ if(NI&&NI.inside&&NI.state&&NI.state.door&&!S.met&&mouth)G.quest.set('north:cave','Another way in','Wreckers always have a way up from the water. Look along the shore under the cliffs',V(mouth.face.x,1.5,mouth.face.z),'The sea cave'); return; }
   const w=(x,y,z)=>toWorld(x,y,z);
-  if(S.met){ G.quest.set('north:met','The fire room','Your father went back up to the fire and barred the trapdoor. The next chapter starts here',null,''); return; }
+  if(S.met){ const ta=-PI/2+21*.36, tp=w(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+7,SHAFT.z+Math.sin(ta)*(TF_R-.6));
+    if(S.open)G.quest.set('north:trap','The fire room','The fire burned the bar through. Climb the stair',tp,'The trapdoor');
+    else G.quest.set('north:met','The fire room','Your father went back up to the fire and barred the trapdoor',null,''); return; }
   if(!S.read.ledger){ G.quest.set('north:caveIn','The wreckers’ stair','Somebody keeps lamps lit down here. Find out who',w(-20.5,3,-32.5),'The store'); return; }
   if(!S.drained){ G.quest.set('north:sluice','The wreckers’ stair','The way on is flooded. There’s a wheel on the quay wall',w(1.15,2.2,-25.4),'The sluice wheel'); return; }
   if(!S.hoistTop){ G.quest.set('north:hoist','The wreckers’ stair','A hoist goes up through the rock, into the tower',w(SHAFT.x,2,SHAFT.z),'The hoist'); return; }
@@ -429,12 +450,13 @@ function setQuest(){
 
 /* ================================================================ 8. SAVE */
 const reg=()=>G.persist&&G.persist.register&&G.persist.register('northCave',{
-  save:()=>({v:1,entered:S.entered,drained:S.drained,hoistTop:S.hoistTop,read:Object.assign({},S.read),met:S.met,
+  save:()=>({v:1,entered:S.entered,drained:S.drained,hoistTop:S.hoistTop,read:Object.assign({},S.read),met:S.met,open:S.open,
     prevCp:S.prevCp?{p:[+S.prevCp.p.x.toFixed(2),+S.prevCp.p.y.toFixed(2),+S.prevCp.p.z.toFixed(2)],yaw:S.prevCp.yaw||0,name:S.prevCp.name||''}:null}),
-  load:d=>{ if(!d)return; S.entered=!!d.entered; S.drained=!!d.drained; S.hoistTop=!!d.hoistTop; S.read=Object.assign({},d.read||{}); S.met=!!d.met;
+  load:d=>{ if(!d)return; S.entered=!!d.entered; S.drained=!!d.drained; S.hoistTop=!!d.hoistTop; S.read=Object.assign({},d.read||{}); S.met=!!d.met; S.open=!!d.open;
+    if(S.open&&trap){ trap.rotation.x=-1.25; trap.position.y=8.1; } else if(trap){ trap.rotation.x=0; trap.position.y=8.5; }
     S.plat=S.hoistTop?TOP:BOT; S.water=S.drained?-1.7:.55; S.prevCp=d.prevCp?{p:V(d.prevCp.p[0],d.prevCp.p[1],d.prevCp.p[2]),yaw:d.prevCp.yaw,name:d.prevCp.name}:null; }});
 if(G.persist&&G.persist.register)reg(); else G.on('ready',reg);
-G.on('game:reset',()=>{ Object.assign(S,{entered:false,drained:false,hoistTop:false,read:{},met:false,plat:BOT,water:.55,hoist:null,scene:null,prevCp:null}); });
+G.on('game:reset',()=>{ if(trap){ trap.rotation.x=0; trap.position.y=8.5; } Object.assign(S,{entered:false,drained:false,hoistTop:false,read:{},met:false,open:false,burning:null,plat:BOT,water:.55,hoist:null,scene:null,prevCp:null}); });
 G.on('north:door',()=>later(1.2,()=>setQuest()));
 
 /* ================================================================ 9. WIRING */
@@ -450,7 +472,7 @@ G.system('northCave',{order:86,modes:['play','paused','dead','title'],
     IA.add({pos:L(1.15,1.4,-25.4),radius:2.2,priority:5,label:'Turn the sluice wheel',enabled:()=>ins()&&!S.drained&&!S.draining,use:turnWheel});
     IA.add({pos:()=>toWorld(SHAFT.x,S.plat+.4,SHAFT.z),radius:1.6,priority:7,label:()=>S.plat<TOP-1?'Work the hoist':'Let the hoist down',
       enabled:()=>ins()&&!S.hoist&&!S.scene&&onPlatform(),use:workHoist});
-    const ta=-PI/2+21*.36; IA.add({pos:L(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+.5,SHAFT.z+Math.sin(ta)*(TF_R-.6)),radius:1.5,priority:6,label:'The trapdoor',enabled:()=>ins()&&!S.scene&&S.plat>=TOP-.1,use:tryTrap});
+    const ta=-PI/2+21*.36; IA.add({pos:L(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+.5,SHAFT.z+Math.sin(ta)*(TF_R-.6)),radius:1.5,priority:6,label:()=>S.open?'Climb into the fire room':'The trapdoor',enabled:()=>ins()&&!S.scene&&S.plat>=TOP-.1,use:tryTrap});
     root.visible=false;
   },
   update(dt){
@@ -468,6 +490,8 @@ G.system('northCave',{order:86,modes:['play','paused','dead','title'],
       G.lights.hemi.color.lerp(HEMI_SKY,.75); G.lights.hemi.groundColor.lerp(HEMI_GND,.75); }
     for(const l of lamps){ const f=.85+.15*Math.sin(G.time*7.1+l.g.position.x)*Math.sin(G.time*2.3); l.L.intensity=l.base*f; l.sp.material.opacity=.5*f; }
     if(m==='play'){ updateWater(d); updateHoist(d); updateScene(d); }
+    // a save from before the fire room was built: he's met and gone up, but the fire never said his name. Say it now
+    if(m==='play'&&S.met&&!S.open&&!S.burning&&!S.scene&&!S.said.name&&P.pos.y-O.y>TOP-1){ S.said.name=1; later(2.5,learnName); }
     if(m==='play'&&!S.drained&&!S.said.flood){ const lx=P.pos.x-O.x, lz=P.pos.z-O.z; if(Math.abs(lx)<1.8&&lz<-26.9&&lz>-30&&P.pos.y-O.y<3){ S.said.flood=1;
       say('The passage dips under the water, flooded right to the roof. The sea came in this way, and something keeps it here.','Rowan',{key:'ncFlood'}); } }
   }
@@ -491,5 +515,6 @@ if(G.portraits&&G.portraits.add)G.portraits.add('knox',(g,w,h,glass)=>{
 
 const API=G.northCave={inside:false,O,state:S,setQuest,enter:o=>startTrans('in',o),exit:o=>startTrans('out',o),
   get mouth(){ return mouth; }, lowTide,
-  debug:{ S, toWorld, SHAFT, TOP, floorL, walkL, workHoist, turnWheel, readLedger, meet:meetFather, get knox(){ return knox; } }};
+  makeKnox, setCp, trapPos:()=>{ const ta=-PI/2+21*.36; return toWorld(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+.05,SHAFT.z+Math.sin(ta)*(TF_R-.6)); },
+  debug:{ S, toWorld, SHAFT, TOP, floorL, walkL, workHoist, turnWheel, readLedger, meet:meetFather, learnName, get knox(){ return knox; } }};
 })();

@@ -350,7 +350,7 @@ function dropHeart(src,pos,o){
 }
 function updateDrops(dt,p){
   for(const src in drops){ const d=drops[src]; d.t+=dt; d.mesh.rotation.y+=dt*1.4; d.mesh.position.y=d.pos.y+.75+Math.sin(d.t*2.2)*.1;
-    d.mesh.visible=d.interior==='undercroft'?inUndercroft():d.interior==='temple'?inTemple():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave)&&!inTemple();
+    d.mesh.visible=d.interior==='undercroft'?inUndercroft():d.interior==='temple'?inTemple():d.interior==='northFire'?inNorthFire():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave)&&!inTemple()&&!inNorthFire();
     if(isPlay()&&p.alive&&d.mesh.visible&&Math.hypot(d.pos.x-p.pos.x,d.pos.z-p.pos.z)<1.3&&Math.abs(d.pos.y-p.pos.y)<1.8){
       root.remove(d.mesh); delete drops[src]; const o=d.o;
       const h=grantHeart(src), m=grantMarks(src,o.marks); if(h)heldHp+=2;
@@ -389,6 +389,17 @@ function onAnswer(e){
   const x=at.x+1.4, z=at.z+1.4; let y=G.floorAt(x,z,at.y+2); if(!(y>at.y-2&&y<at.y+2))y=at.y;
   dropHeart('answer',V(x,y,z),{marks:2,interior:'temple',eyebrow:'The Answer',desc:'Where the seam closed, the stone is warm, and something red and warm is lying on it that was never given away. Your heart grows by one.'});
 }
+/* the north island's fire room: the Wreck Giant — a Keeper's Heart (+2 Marks) where it fell, either way the fight ends
+   (northfire_story.js emits north:giantDead {pos, outcome} after the ending) */
+function inNorthFire(){ const F=G.northFire; return !!(F&&F.inside); }
+function onGiant(e){
+  if(!e||e.restored)return;
+  const at=e.pos?V(e.pos.x,e.pos.y,e.pos.z):(P()&&P().pos?P().pos.clone():V());
+  let y=G.floorAt(at.x,at.z,at.y+2); if(!(y>at.y-2&&y<at.y+2))y=at.y;
+  dropHeart('giant',V(at.x,y,at.z),{marks:2,interior:'northFire',eyebrow:'The Wreck Giant',
+    desc:e.outcome==='died'?'In the ash where it fell, something red and warm that the fire never got. Your heart grows by one.'
+      :'In the rubble where it fell, something red and warm that the fire never got. Your heart grows by one.'});
+}
 function onFreed(e){
   const before=wingN(); S.freed=Math.max(S.freed+1,(e&&e.freed)|0,G.state.freed|0); const n=wingN();
   if(n>before){ G.emit('progress:wing',{n});
@@ -410,6 +421,8 @@ function reconcile(quiet){
   const CB=G.caveBoss; if(((CB&&CB.defeated)||G.flag('undertowDead'))&&!drops.undertow){ if(grantHeart('undertow'))got.push('a Keeper’s Heart'); if(grantMarks('undertow',2))got.push('2 Marks'); }
   const UB=G.undercroftBoss; if(((UB&&UB.defeated)||G.flag('craneDead'))&&!drops.crane){ if(grantHeart('crane'))got.push('a Keeper’s Heart'); if(grantMarks('crane',2))got.push('2 Marks'); }
   const TB=G.templeBoss; if(((TB&&TB.defeated)||G.flag('answerDead'))&&!drops.answer){ if(grantHeart('answer'))got.push('a Keeper’s Heart'); if(grantMarks('answer',2))got.push('2 Marks'); }
+  // the Wreck Giant: not while you're still in the fire room, where its heart is lying there to pick up
+  const NF=G.northFire; if(((NF&&NF.state&&NF.state.done)||G.flag('giantDead'))&&!drops.giant&&!inNorthFire()){ if(grantHeart('giant'))got.push('a Keeper’s Heart'); if(grantMarks('giant',2))got.push('2 Marks'); }
   const fr=G.state.freed|0; if(fr>S.freed){ const w0=wingN(); S.freed=fr; if(wingN()>w0)got.push((wingN()-w0)+' Moth '+(wingN()-w0>1?'Wings':'Wing')); }
   for(const b of (G.blights||[])) if(b&&b.cured&&grantMarks('blight:'+b.id,1))got.push('a Mark');
   apply();
@@ -749,7 +762,7 @@ function journalData(){
   return {hearts:maxHp()/2, shardsInto:shardN()%SHARDS_PER_HEART, shards:shardN(), shardTotal:SPOTS.length||12, wings:wingN(), marks:marksHeld(), earned:marksEarned(), spent:S.spent,
     upgrades:UPGRADES.filter(u=>owns(u.id)).map(u=>u.id), caches:count(S.caches), cacheTotal:CACHES.length||8, freed:negs, freedTotal:negTotal,
     blights:bl.map(b=>({id:b.id,name:b.name,cured:!!b.cured})),
-    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)},{id:'answer',name:'The Answer',done:!!((G.templeBoss&&G.templeBoss.defeated)||S.hearts.answer)}]};
+    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)},{id:'answer',name:'The Answer',done:!!((G.templeBoss&&G.templeBoss.defeated)||S.hearts.answer)},{id:'giant',name:'The Wreck Giant',done:!!((G.northFire&&G.northFire.state&&G.northFire.state.done)||S.hearts.giant)}]};
 }
 function renderJournal(){
   const d=journalData(), el=$('journalBody'); if(!el)return;
@@ -852,6 +865,7 @@ G.system('progress',{order:62,modes:'always',
     G.on('cave:bossDead',onUndertow);
     G.on('undercroft:bossDead',onCrane);
     G.on('temple:bossDead',onAnswer);
+    G.on('north:giantDead',onGiant);
     G.on('negative:freed',onFreed);
     G.on('blight:cured',onBlight);
     G.on('inv:change',()=>{ if(tab==='temper')renderTemper(); });

@@ -1,5 +1,6 @@
-# Brave Quest: Lighthouse — the browser test suites, one job per suite, all in parallel.
-# Runs on GitHub's machines by default; choose "aws" to use the self-hosted runner (label: bq-aws).
+# Brave Quest: Lighthouse — the browser test suites, one job per suite, all side by side on GitHub's machines.
+# The repo is public, so standard GitHub-hosted runners are free. No self-hosted runner: on a public repo,
+# anyone's pull request could run code on it.
 name: tests
 on:
   push:
@@ -7,11 +8,6 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      runner:
-        description: 'Where to run: github (GitHub-hosted) or aws (self-hosted runner labelled bq-aws)'
-        type: choice
-        options: [github, aws]
-        default: github
       suites:
         description: 'Suites to run, comma separated (blank = all), e.g. cave_e2e,map_e2e'
         type: string
@@ -38,7 +34,7 @@ jobs:
                'map_e2e':'?debug&headless','raft_e2e':'?debug&headless','travel_e2e':'?debug&headless',
                'devtools_e2e':'','cave_e2e':'?debug&headless','undercroft_e2e':'?debug&headless',
                'houndsfx_e2e':'?debug&headless','stagsfx_e2e':'?debug&headless','bossmusic_e2e':'?debug',
-               'temple_e2e':'?debug&headless','north_e2e':'?debug&headless','boat_e2e':'?debug&headless','northisle_e2e':'?debug&headless','northcave_e2e':'?debug&headless','cloud_e2e':'?cloud'}
+               'temple_e2e':'?debug&headless','north_e2e':'?debug&headless','boat_e2e':'?debug&headless','northisle_e2e':'?debug&headless','northcave_e2e':'?debug&headless','northstarts_e2e':'','northfire_e2e':'?debug&headless','cloud_e2e':'?cloud'}
           want = [w.strip() for w in (os.environ.get('WANT') or '').split(',') if w.strip()]
           inc = [{'suite':k,'q':v} for k,v in S.items() if not want or k in want]
           inc += [{'suite':w,'q':'?debug&headless'} for w in want if w not in S]   # a new suite not in the list yet
@@ -46,7 +42,7 @@ jobs:
   suite:
     needs: plan
     name: ${{ matrix.suite }}
-    runs-on: ${{ inputs.runner == 'aws' && fromJSON('["self-hosted","bq-aws"]') || 'ubuntu-latest' }}
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -64,12 +60,15 @@ jobs:
       - name: Build dev.html and serve
         run: |
           python test/build_dev.py
-          (python -m http.server 8991 >/dev/null 2>&1 &)
-          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:8991/dev.html && break; sleep 1; done
+          # a free port of its own, so the job never collides with anything else on the machine
+          PORT=$(python -c "import socket; s=socket.socket(); s.bind(('127.0.0.1',0)); print(s.getsockname()[1])")
+          echo "PORT=$PORT" >> "$GITHUB_ENV"
+          (python -m http.server $PORT >/dev/null 2>&1 &)
+          for i in $(seq 30); do curl -sf -o /dev/null http://localhost:$PORT/dev.html && break; sleep 1; done
       - name: Run ${{ matrix.suite }}
         run: |
           mkdir -p /tmp/claude-0
-          python -u test/${{ matrix.suite }}.py "http://localhost:8991/dev.html${{ matrix.q }}" 2>&1 | tee result.log
+          python -u test/${{ matrix.suite }}.py "http://localhost:$PORT/dev.html${{ matrix.q }}" 2>&1 | tee result.log
           test ${PIPESTATUS[0]} -eq 0
         shell: bash
       - name: Failed checks
