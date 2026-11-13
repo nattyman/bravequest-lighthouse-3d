@@ -113,6 +113,9 @@ T.place={
   use(re){ T.play(); G.step(1/30,2); const c=G.interact.pick(G.player.pos), lab=c&&G.interact.label(c); if(!c||(re&&!re.test(lab)))return 'NOPE:'+lab; c.use(); G.step(1/30,2); return lab; },
   glass(on,n){ G.input.setVirtual('glass',!!on); G.step(1/30,n||15); return G.glass.raised; },
   trans(){ for(let i=0;i<80&&G.undercroft._debug.S.trans;i++)G.step(1/30,1); G.step(1/30,4); },
+  // the cellars' pack (it spawns when place:candles first stands in the cellars) hunts you between checks in real time, so by the
+  // doorway checks it may be grabbing and shoving you, by however long the machine took: these checks are about the doorway
+  clear(r){ let n=0; for(const m of G.monsters.list.slice())if(m.alive&&!m.dying&&m.pos.distanceTo(G.player.pos)<(r||30)){ G.monsters.despawn(m); n++; } G.step(1/30,2); return n; },
 };
 'ok'"""
 PLACE=[
@@ -132,10 +135,10 @@ PLACE=[
    " return {l1,lit1,l2,lit2,l3,lit3:G.undercroft.isLit('cellars'),ether:G.alchemy.etherUnits,dark:G.atmo.darkTarget}; })()",
    lambda r: r['lit1'] and r['l1']=='Light the candle' and not r['lit2'] and 'needs 5 ether' in r['l2'] and r['lit3'] and r['ether']==7 and r['dark']<1),
  # the collapsed east wall: solid in the present
- ("place:wall", "(()=>{ T.place.at(13.6,-2,-24,Math.PI/2); T.place.walk(45); return {L:T.place.L(),room:G.undercroft.room(G.player.pos)}; })()",
+ ("place:wall", "(()=>{ T.place.at(13.6,-2,-24,Math.PI/2); T.place.clear(); T.place.walk(45); return {L:T.place.L(),room:G.undercroft.room(G.player.pos)}; })()",
    lambda r: r['L'][0]<15 and r['room']=='cellars'),
  # the Glass: raised, the past doorway is walkable (slow walk, vignette); lowered mid-way you're eased back, never trapped
- ("place:glassDoor", "(()=>{ G.glass.give({silent:true}); T.place.at(13.6,-2,-24,Math.PI/2); const st0=G.player.stamina; const up=T.place.glass(true); const sp=G.player.speedMul; T.place.walk(8); T.place.at(15.8,-2,-24,Math.PI/2); G.step(1/30,4);"
+ ("place:glassDoor", "(()=>{ G.glass.give({silent:true}); T.place.at(13.6,-2,-24,Math.PI/2); T.place.clear(); const st0=G.player.stamina; const up=T.place.glass(true); const sp=G.player.speedMul; T.place.walk(8); T.place.at(15.8,-2,-24,Math.PI/2); G.step(1/30,4);"
    " const mid=T.place.L(); const vig=+getComputedStyle(document.getElementById('glassVig')).opacity; let push=null; G.on('undercroft:pastPush',e=>push=e); T.place.glass(false,35);"
    " const back=T.place.L(), ctl=G.player.inputEnabled; T.place.glass(true); T.place.walk(90); const through=T.place.L(), room=G.undercroft.room(G.player.pos); T.place.glass(false);"
    " return {up,sp,mid,vig,push:!!push,back,ctl,through,room,stam:+(G.player.stamina-st0).toFixed(2)}; })()",
@@ -338,8 +341,11 @@ SECTIONS={'place':(PLACE_HELP,PLACE),'boss':(BOSS_HELP,BOSS),'people':(PEOPLE_HE
 SPECIAL={**PEOPLE_SPECIAL}   # python-driven steps (real mouse clicks, a pretend controller): js = the key
 
 
+CHECK_S=float(os.environ.get('CHECK_TIMEOUT','240'))   # wall-clock budget per check (the slowest takes well under a minute on CI)
 async def run(pg, name, js, check, fails):
-    try: r=await pg.evaluate(js)
+    try: r=await asyncio.wait_for(pg.evaluate(js),CHECK_S)
+    except asyncio.TimeoutError:   # the page is stuck in a loop: say so and stop, rather than wait out the CI job's timeout
+        print('FAIL', name, f': timed out after {CHECK_S:.0f}s, the page is stuck; stopping here'); print('FAIL', name, '(stuck)', flush=True); os._exit(1)
     except Exception as e: r='EXC '+str(e).split('\n')[0][:300]
     ok=False
     try: ok=bool(check(r)) if not (isinstance(r,str) and r.startswith('EXC')) else False

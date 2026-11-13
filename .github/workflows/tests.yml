@@ -43,7 +43,9 @@ jobs:
     needs: plan
     name: ${{ matrix.suite }}
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    # the slowest suite (devtools_e2e) takes ~13 min here; a stuck one should fail fast, not burn 45 min (the cave, undercroft
+    # and finale suites also stop themselves when a single check runs past its own budget)
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
