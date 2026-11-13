@@ -110,11 +110,15 @@ function sdMin(x,z){ let m=1e9,r=.8; for(const Z of ZONES){ const b=Z.bb; if(x<b
 const wallNoise=(x,z)=>.62*vnoise(x*.33+11.1,z*.33+4.2)+.38*vnoise(x*.9-7.7,z*.9+2.9);
 function Sraw(x,z){ const [m,r]=sdMin(x,z); return m+r*wallNoise(x,z); }
 /** physics floor among zones at (x,z) for a character at y: highest floor <= y+.9 */
-function zoneFloor(x,z,y){ let f=null, rock=null; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)>=0)continue;
+const UNDER_TIMBER=1.6;   // headroom a character needs to walk under timber (Rowan is 1.45 m, a tread .14 m thick)
+function zoneFloor(x,z,y){ let f=null, rock=null, low=null; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)>=0)continue;
   const h=Z.floor(x,z);
   if(Z.kind==='rock'){ if(rock==null||h>rock)rock=h; }      // overlapping rock zones: the highest is solid all the way down (as the visual field draws it)
-  else if(h<=y+.9&&(f==null||h>f))f=h; }                     // timber (stairs, decks, jetty) can be walked under
+  else if(h<=y+.9){ if(f==null||h>f)f=h; }                   // timber (stairs, decks, jetty) can be walked under...
+  else if(h<y+UNDER_TIMBER&&(low==null||h<low))low=h; }      // ...but not where it's lower than your head: the stair-room steps stand 1.2-1.5 m over the shore,
+                                                               // and walking in under them (through the stringers) wedged Rowan against the third tread
   if(rock!=null&&(f==null||rock>f))f=rock;                    // may be above y+.9: then it is a ledge face (moveCharacter's step test blocks it), never a space underneath
+  if(low!=null&&(f==null||low>f))f=low;                       // the same for timber too low to pass under: a face, so the step test blocks it
   return f; }
 function zonesAt(x,z){ const out=[]; for(const Z of ZONES){ const b=Z.bb; if(x<b[0]||x>b[1]||z<b[2]||z>b[3])continue; if(Z.sd(x,z)<0)out.push(Z);} return out; }
 function inSump(x,z){ const zs=zonesAt(x,z); return zs.some(Z=>Z.sump)&&!zs.some(Z=>!Z.sump&&Z.floor(x,z)>-.9); } // the low passage proper (not where the shore overlaps it)

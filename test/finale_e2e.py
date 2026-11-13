@@ -11,6 +11,7 @@ import asyncio, sys, time, json, os
 from playwright.async_api import async_playwright
 URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8890/dev.html?debug&headless'
 OUT='/tmp/claude-0/gloaming'; os.makedirs(OUT,exist_ok=True)
+CHECK_S=float(os.environ.get('CHECK_TIMEOUT','240'))   # wall-clock budget per check (the slowest takes ~10 s on CI)
 
 HELP=r"""(()=>{ window.T={ev:[],bar:[]};
   const e=G.emit; G.emit=(n,d)=>{ if(n==='boss:dead'&&!(d&&d.who))return; if(/^(finale:start|boss:dead|gloaming:|player:dead|player:respawn)/.test(n))T.ev.push([n,d&&d.who||'',+G.time.toFixed(2)]); return e(n,d); };
@@ -42,8 +43,14 @@ STEPS=[
    return {ok:B.state==='fight'&&B.rise===1&&T.lastBar==='The Gloaming',rise0:+r0.toFixed(2),state:B.state,hp:B.hp}; })()"""),
  ("untouchable", r"""(()=>{ T.god(true); const B=T.B(); T.until(()=>!T.FB().solid&&B.tt>2.2,300); T.near(); const hp=B.hp; const hit=T.strikeBoss(3);
    return {ok:hit&&B.hp===hp&&!T.FB().solid,hit,hp,after:B.hp,tt:+B.tt.toFixed(2)}; })()"""),
- ("warnBeforeSolid", r"""(()=>{ const B=T.B(); T.until(()=>!T.FB().solid&&B.warn<.1,400); /* start from a fresh cycle: real-time frames between steps can land us mid-warning */ let maxWarn=0; T.until(()=>{ maxWarn=Math.max(maxWarn,B.warn); return T.FB().solid; },400);
-   return {ok:T.FB().solid&&maxWarn>.4,maxWarn:+maxWarn.toFixed(2),solidT:+B.solidT.toFixed(2),omega:+B.omega.toFixed(3)}; })()"""),
+ ("warnBeforeSolid", r"""(()=>{ const B=T.B(), L=G.world.lighthouse, tr=[];
+   const rec=()=>{ tr.push([+G.time.toFixed(2),B.state,+B.warn.toFixed(2),+B.tt.toFixed(2),+B.omega.toFixed(3),+B.solidT.toFixed(2),+Math.atan2(B.pos.x-L.x,B.pos.z-L.z).toFixed(3),+G.lighthouse.beam.yaw().toFixed(3)]); if(tr.length>50)tr.shift(); };
+   /* measure one whole approach of the beam: let a solid window come and go first, so we never start part-way into one (wherever the
+      last check left the beam) */
+   const k0=T.until(()=>{ rec(); return T.FB().solid; },400), k1=T.until(()=>{ rec(); return !T.FB().solid; },400);
+   let maxWarn=0; const k2=T.until(()=>{ rec(); maxWarn=Math.max(maxWarn,B.warn); return T.FB().solid; },400);
+   const ok=k0<400&&k1<400&&T.FB().solid&&maxWarn>.4;
+   return {ok,maxWarn:+maxWarn.toFixed(2),solidT:+B.solidT.toFixed(2),omega:+B.omega.toFixed(3),frames:[k0,k1,k2],trace:ok?undefined:tr}; })()"""),
  ("inBeam", r"""(()=>{ const B=T.B(); T.near(); const hp=B.hp; T.strikeBoss(2); G.step(1/30,6); T.strikeBoss(2); return {ok:B.hp===hp-4,hp,after:B.hp}; })()"""),
  ("shot:solid", "SHOT solid 'T.view(9,.5,2.5,5)'"),
  ("realSwing", r"""(()=>{ const B=T.B(); T.until(()=>T.FB().solid&&B.solidT>2,500); T.near(); const hp=B.hp;
@@ -104,14 +111,17 @@ async def main():
         pg.on('console',lambda m:errs.append('console: '+m.text) if m.type=='error' and '404' not in m.text else None)
         await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate(HELP)
+        await pg.evaluate('G.headless&&(G.headless.hold=true); 0')   # only G.step() moves the game: nothing drifts between checks by however fast the machine is
         for name,js in STEPS:
             try:
                 if js.startswith('SHOT'):
                     _,tag,code=js.split(' ',2); code=code.strip("'")
                     await pg.evaluate(f"(()=>{{ {code}; G.headless&&G.headless.draw(3); }})()"); await pg.wait_for_timeout(400)
                     path=f'{OUT}/{tag}.png'; await pg.screenshot(path=path); await pg.evaluate('T.camOff()'); print(f'shot {name:14s} {path}'); continue
-                r=await pg.evaluate(js); good=bool(r.get('ok')) if isinstance(r,dict) else bool(r)
-                ok=ok and good; print(f"{'ok  ' if good else 'FAIL'} {name:14s} {json.dumps(r)[:400]}")
+                r=await asyncio.wait_for(pg.evaluate(js),CHECK_S); good=bool(r.get('ok')) if isinstance(r,dict) else bool(r)
+                ok=ok and good; print(f"{'ok  ' if good else 'FAIL'} {name:14s} {json.dumps(r)[:400 if good else 4000]}")
+            except asyncio.TimeoutError:   # the page is stuck in a loop: say so and stop, rather than wait out the CI job's timeout
+                print(f'FAIL {name:14s} timed out after {CHECK_S:.0f}s, the page is stuck; stopping here'); print('FAIL', f'{time.time()-t0:.0f}s'); sys.stdout.flush(); os._exit(1)
             except Exception as e: ok=False; print(f'FAIL {name:14s} {str(e)[:300]}')
         ev=await pg.evaluate('JSON.stringify(T.ev.slice(-30))'); print('events',ev[:900])
         await b.close()
