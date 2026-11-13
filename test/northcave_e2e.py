@@ -5,11 +5,16 @@
 - the low passage stops you at the water's edge until the sluice wheel drains it (~4.6 s);
 - the hoist carries you up to the foot of the tower (a checkpoint); his father comes down; the talk card (Tobias Knox) with its
   branches; then he goes back up and bars the trapdoor; the objective says the next chapter starts there;
-- back down and out of the cave: the island again, its checkpoint back; it all survives a save and reload.
+- the trapdoor isn't in reach from the floor under it, only from the top of the stair;
+- back down and out of the cave: the island again, its checkpoint back; it all survives a save and reload;
+- the stair (from the "trapdoor, burned open" start point), through the real controller: walk up it from the floor ring to the
+  top tread (past where it winds over its own lower flight) without falling, "Climb into the fire room" there and not from the
+  floor under the trapdoor, and back down. Screenshots of the climb in $SHOTS (default /tmp/claude-0/northcave-stair).
 usage: python3 test/northcave_e2e.py [url]   (default http://localhost:8800/dev.html?debug&headless)"""
-import asyncio, sys, json
+import asyncio, sys, json, os
 from playwright.async_api import async_playwright
 URL=sys.argv[1] if len(sys.argv)>1 else 'http://localhost:8800/dev.html?debug&headless'
+SHOTS=os.environ.get('SHOTS','/tmp/claude-0/northcave-stair'); os.makedirs(SHOTS,exist_ok=True)
 
 LIB=r"""
 window.T={
@@ -24,6 +29,25 @@ window.T={
     return 'stuck@'+(P.pos.x-G.northCave.O.x).toFixed(1)+','+(P.pos.y-G.northCave.O.y).toFixed(1)+','+(P.pos.z-G.northCave.O.z).toFixed(1); },
   route(pts){ const w=G.northCave.debug.toWorld; const out=[]; for(const [x,z] of pts){ const p=w(x,0,z); out.push(T.walk(p.x,p.z)); G.step(1/30,2); } return out; },
   L(){ const P=G.player.pos, O=G.northCave.O; return [+(P.x-O.x).toFixed(2),+(P.y-O.y).toFixed(2),+(P.z-O.z).toFixed(2)]; },
+  /* the real controller: the virtual stick (8-way keys relative to the camera, dithered so the mean heading is analog) */
+  keys(set){ for(const k of ['forward','back','left','right','sprint'])G.input.setVirtual(k,set.has(k)); },
+  release(){ T.keys(new Set()); },
+  steer(x,z){ const P=G.player, dx=x-P.pos.x, dz=z-P.pos.z, d=Math.hypot(dx,dz); if(d<1e-3){ T.release(); return d; }
+    const yaw=P.camYaw, fx=Math.sin(yaw), fz=Math.cos(yaw), my=(dx*fx+dz*fz)/d, mx=(dx*-fz+dz*fx)/d, s=new Set();
+    const a=Math.atan2(mx,my)/(Math.PI/4), lo=Math.floor(a), fr=a-lo; T._pwm=(T._pwm||0)+fr; let k=lo; if(T._pwm>=1){ T._pwm-=1; k=lo+1; }
+    k=((k%8)+8)%8; for(const n of [['forward'],['forward','right'],['right'],['back','right'],['back'],['back','left'],['left'],['forward','left']][k])s.add(n);
+    T.keys(s); return d; },
+  // where Rowan is on the stair (tread index, continuous); on the floor ring, the same measure carried on back past the first tread
+  sNow(){ const C=G.northCave.debug, l=T.L(), s=C.stairS(l[0],l[2],l[1]+.05); if(s!=null)return s;
+    const a=Math.atan2(l[2]-C.SHAFT.z,l[0]-C.SHAFT.x), s0=(((a-C.ST.a0)%(2*Math.PI))+2*Math.PI)%(2*Math.PI)/C.ST.da; return s0>C.ST.wrap/2?s0-C.ST.wrap:s0; },
+  // walk the stair with the stick, a carrot a tread ahead along it, until Rowan is at tread `to`; what happened on the way
+  stair(to,o){ o=o||{}; const C=G.northCave.debug, P=G.player, up=to>T.sNow(), r=o.r||2.5, hp0=P.hp; let n=0, air=0, maxDrop=0, prevY=T.L()[1], hi=-1e9, lo=1e9, worst=0;
+    for(;n<(o.max||1500);n++){ const s=T.sNow(); if(up?s>=to:s<=to)break;
+      const c=C.stairPt(Math.min(C.ST.last+.2,s+(up?1:-1)),r), w=C.toWorld(C.SHAFT.x+c.x,0,C.SHAFT.z+c.z); T.steer(w.x,w.z); G.step(1/30,1);
+      const y=T.L()[1]; if(!P.grounded)air++; if(prevY-y>maxDrop)maxDrop=prevY-y; prevY=y; hi=Math.max(hi,y); lo=Math.min(lo,y); if(up)worst=Math.max(worst,hi-y); }
+    T.release(); G.step(1/30,6); const s=T.sNow();
+    return {s:+s.toFixed(2),L:T.L(),secs:+(n/30).toFixed(1),air,maxDrop:+maxDrop.toFixed(2),back:+worst.toFixed(2),hi:+hi.toFixed(2),lo:+lo.toFixed(2),hurt:hp0-P.hp,grounded:P.grounded}; },
+  label(){ G.step(1/30,1); const c=G.interact.pick(G.player.pos); return c?G.interact.label(c):null; },
 };
 'ok'"""
 
@@ -71,13 +95,41 @@ STEPS=[
    lambda r: r['first'] and len(r['first'])==3 and r['rowan'] and r['rocks'] and r['name'] and r['home'] and not r['open'] and r['met']),
  ("heGoesUp", "(()=>{ T.run(5); T.calm(); return {knox:G.northCave.debug.knox.visible,trap:T.said(/bar drops across it/),after:T.said(/feeding that fire/),step:G.quest.step,ctl:G.player.inputEnabled}; })()",
    lambda r: not r['knox'] and r['trap'] and r['after'] and r['step']=='north:met' and r['ctl']),
- ("trapdoor", "(()=>{ const C=G.northCave.debug, ta=-Math.PI/2+21*.36, w=C.toWorld(C.SHAFT.x+Math.cos(ta)*2.6,C.TOP,C.SHAFT.z+Math.sin(ta)*2.6); const r=T.walk(w.x,w.z); const lab=T.use(/trapdoor/); G.step(1/30,4); return {r,lab,barred:T.said(/Barred from above/)}; })()",
-   lambda r: r['lab']=='The trapdoor' and r['barred']),
+ ("trapdoor", "(()=>{ const C=G.northCave.debug, p=C.stairPt(C.ST.last,1.95), w=C.toWorld(C.SHAFT.x+p.x,C.TOP,C.SHAFT.z+p.z); const r=T.walk(w.x,w.z); const ground=T.use(/trapdoor/), L0=T.L();"
+   " const t=G.northCave.trapPos(); G.player.teleport(t.x,t.y,t.z,0); G.step(1/30,4); const L1=T.L(); const lab=T.use(/trapdoor/); G.step(1/30,4); const barred=T.said(/Barred from above/), down=T.stair(-1.2); return {r,ground,L0,L1,lab,barred,down}; })()",
+   lambda r: r['r']=='ok' and r['ground'].startswith('NOPE') and abs(r['L0'][1]-25)<.1 and r['L1'][1]>31 and r['lab']=='The trapdoor' and r['barred'] and abs(r['down']['L'][1]-25)<.05 and r['down']['hurt']==0),
  ("downAndOut", "(()=>{ T.calm(); const C=G.northCave.debug; T.route([[0,-46.8]]); const lab=T.use(/hoist down/); const L0=T.L(); let t=0; while(G.northCave.state.plat>1.05&&t<400){ G.step(1/30,1); t++; } G.step(1/30,6);"
    " const r=T.route([[0,-41],[0,-27],[0,-12],[0,0]]); const lab2=T.use(/Leave the cave/); T.run(2); T.calm(); const P=G.player, M=G.northCave.mouth;"
    " return {lab,L0,r,lab2,inside:G.northCave.inside,interior:G.interior,d:+Math.hypot(P.pos.x-M.x,P.pos.z-M.z).toFixed(1),cp:G.state.checkpointName,isle:G.scene.getObjectByName('northTerrain').visible,cam:G.camera.far}; })()",
    lambda r: r['lab']=='Let the hoist down' and all(o=='ok' for o in r['r']) and r['lab2']=='Leave the cave' and not r['inside'] and r['interior'] is None and r['d']<1.5 and r['cp']=='the north island' and r['isle'] and r['cam']>1000),
  ("save", "(()=>{ T.calm(); G.flow.writeSave(); return !!localStorage.getItem(G.flow.keys.save); })()", lambda r: r),
+]
+STAIR=[
+ ("start: the trapdoor burned open", "(()=>{ G.devtools.start('north-trap'); T.run(1); T.calm(); const S=G.northCave.state; return {inside:G.northCave.inside,open:S.open,top:S.hoistTop,L:T.L()}; })()",
+   lambda r: r['inside'] and r['open'] and r['top'] and abs(r['L'][1]-25)<.1),
+ ("at the foot of the stair", "(()=>{ const C=G.northCave.debug, p=C.stairPt(-1.6,2.5), w=C.toWorld(C.SHAFT.x+p.x,C.TOP,C.SHAFT.z+p.z); G.player.teleport(w.x,w.y,w.z,-p.a); G.player.aimCamera&&G.player.aimCamera(-p.a,.3); G.step(1/30,10);"
+   " return {L:T.L(),s:+T.sNow().toFixed(2),lab:T.label()}; })()",
+   lambda r: abs(r['L'][1]-25)<.05 and r['s']<-1 and r['lab']!='Climb into the fire room'),
+ ("up the first flight (input)", "T.stair(9)",
+   lambda r: r['s']>=9 and r['L'][1]>27.5 and r['maxDrop']<.2 and r['back']<.3 and r['air']<4 and r['hurt']==0 and r['grounded']),
+ ("shot:stair-partway", "0", None),
+ ("over the lower flight to the top (input)", "(()=>{ const r=T.stair(20.9); r.lab=T.label(); return r; })()",
+   lambda r: r['s']>=20.9 and r['L'][1]>31.4 and r['maxDrop']<.2 and r['back']<.3 and r['air']<4 and r['hurt']==0 and r['grounded'] and r['lab']=='Climb into the fire room'),
+ ("shot:stair-top", "0", None),
+ ("no further than the top tread", "(()=>{ const C=G.northCave.debug, p=C.stairPt(C.ST.last+2.5,2.5), w=C.toWorld(C.SHAFT.x+p.x,0,C.SHAFT.z+p.z), y0=T.L()[1]; for(let i=0;i<60;i++){ T.steer(w.x,w.z); G.step(1/30,1); } T.release(); G.step(1/30,6);"
+   " return {s:+T.sNow().toFixed(2),L:T.L(),y0,lab:T.label(),grounded:G.player.grounded}; })()",
+   lambda r: r['s']<=21.35 and abs(r['L'][1]-r['y0'])<.05 and r['grounded'] and r['lab']=='Climb into the fire room'),
+ ("no stepping off the open side", "(()=>{ const C=G.northCave.debug, p=C.stairPt(C.ST.last,0), w=C.toWorld(C.SHAFT.x+p.x,0,C.SHAFT.z+p.z), y0=T.L()[1]; for(let i=0;i<45;i++){ T.steer(w.x,w.z); G.step(1/30,1); } T.release(); G.step(1/30,6);"
+   " const l=T.L(); return {r:+Math.hypot(l[0]-C.SHAFT.x,l[2]-C.SHAFT.z).toFixed(2),L:l,y0,grounded:G.player.grounded}; })()",
+   lambda r: r['r']>=2.15 and abs(r['L'][1]-r['y0'])<.4 and r['grounded']),
+ ("back down (input)", "(()=>{ const r=T.stair(-1.2); r.lab=T.label(); return r; })()",
+   lambda r: r['s']<=-1.2 and abs(r['L'][1]-25)<.05 and r['air']<4 and r['hurt']==0 and r['grounded'] and r['lab']!='Climb into the fire room'),
+ ("not from the floor under the trapdoor", "(()=>{ const C=G.northCave.debug, p=C.stairPt(C.ST.last,1.95), w=C.toWorld(C.SHAFT.x+p.x,0,C.SHAFT.z+p.z); let n=0; while(n<300&&T.steer(w.x,w.z)>.3){ G.step(1/30,1); n++; } T.release(); G.step(1/30,6);"
+   " const l=T.L(), d=Math.hypot(l[0]-C.SHAFT.x-p.x,l[2]-C.SHAFT.z-p.z); return {d:+d.toFixed(2),L:l,lab:T.label()}; })()",
+   lambda r: r['d']<.6 and abs(r['L'][1]-25)<.05 and r['lab']!='Climb into the fire room' and r['lab']!='The trapdoor'),
+ ("up again and through", "(()=>{ const C=G.northCave.debug, p=C.stairPt(-1.2,2.5), w=C.toWorld(C.SHAFT.x+p.x,0,C.SHAFT.z+p.z); let n=0; while(n<300&&T.steer(w.x,w.z)>.4){ G.step(1/30,1); n++; } const r=T.stair(20.9);"
+   " r.lab=T.use(/fire room/); T.run(2.4); r.fire=!!(G.northFire&&G.northFire.inside); return r; })()",
+   lambda r: r['s']>=20.9 and r['lab']=='Climb into the fire room' and r['fire']),
 ]
 AFTER=[
  ("restored", "(()=>{ G.step(1/30,10); const S=G.northCave.state; return {drained:S.drained,met:S.met,ledger:!!S.read.ledger,top:S.hoistTop,entered:S.entered,at:G.northIsle.at,inside:G.northIsle.inside}; })()",
@@ -88,6 +140,9 @@ AFTER=[
 
 async def run(pg,steps,fails):
   for name,js,ok in steps:
+    if name.startswith('shot:'):
+      await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(400)
+      path=f'{SHOTS}/{name[5:]}.png'; await pg.screenshot(path=path,timeout=120000); print('shot',name[5:],path); continue
     try: r=await pg.evaluate(js); good=bool(ok(r))
     except Exception as e: r=str(e)[:300]; good=False
     print(('ok  ' if good else 'FAIL'),name,':',json.dumps(r)[:460])
@@ -105,6 +160,7 @@ async def main():
     await pg.reload(timeout=180000); await pg.wait_for_timeout(5000); await pg.evaluate('G.headless&&(G.headless.hold=true);0')
     await pg.evaluate("document.getElementById('continue').click(); G.step(1/30,60); 0"); await pg.evaluate(LIB)
     await run(pg,AFTER,fails)
+    await run(pg,STAIR,fails)
     print('ok  ' if not errs else 'FAIL','noPageErrors :',errs[:3])
     if errs: fails.append('noPageErrors')
     print('RESULT:', 'PASSED' if not fails else 'FAILED '+', '.join(fails))
