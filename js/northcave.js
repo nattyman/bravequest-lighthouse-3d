@@ -50,12 +50,30 @@ function nearest(x,z,list){ let b=null,bd=1e9; for(const Z of list||ZONES){ cons
 function groundF(x,z){ let f=null; for(const Z of WALK){ if(Z.sd(x,z)<0){ const h=Z.floor(x,z); if(Z.wet&&h<S.water-.75)continue; if(f==null||h>f)f=h; } } return f; }
 /** the tower's foot (the room at the top of the shaft): a floor ring round the hoist hole */
 const TF_R=3.2;
+/* the stair up the tower wall to the trapdoor: 22 stone treads, a turn and a fifth. Tread k sits at angle a0+k*da (round the
+   shaft from the north side, through east), its top stairTop(k) above the floor ring. You walk on it: the floor is flat on each
+   tread with a short ramp over each riser, and like every floor here it's the one nearest below your feet, so the upper flight
+   (a turn, ~5 m, above) never catches you on the lower one. The rise (.29) leaves headroom under the trapdoor at the top. */
+const ST={n:22,a0:-PI/2,da:.36,top0:.44,rise:.29,rIn:2.1,rOut:TF_R+.1,rMid:TF_R-.55,rail:2.2,blend:.25};
+ST.wrap=TAU/ST.da; ST.last=ST.n-1; ST.edge=ST.last+.5; ST.end=ST.last+.3;   // end: as far round as you can walk at the top
+const stairTop=k=>ST.top0+ST.rise*k;
+/** a tread's local position (k may be fractional: his father walks it) */
+const stairPt=(k,r)=>{ const a=ST.a0+k*ST.da, R=r==null?ST.rMid:r; return {x:Math.cos(a)*R,y:stairTop(k),z:Math.sin(a)*R,a}; };
+/** the floor's height above the ring at stair position s (tread index, continuous) */
+function stairH(s){ let k=Math.round(s); if(k>ST.last)k=ST.last; if(k<0)k=0; let f=s-k; if(k===ST.last&&f>0)f=0;
+  return stairTop(k+Math.sign(f)*.5*clamp((Math.abs(f)-(.5-ST.blend))/ST.blend,0,1)); }
+/** the stair position under (x,z) (room-local) that a body at height y stands on: the winding nearest below y+.9, or null */
+function stairS(x,z,y){ const dx=x-SHAFT.x, dz=z-SHAFT.z, r=Math.hypot(dx,dz); if(r<ST.rIn-.05||r>ST.rOut+.1)return null;
+  const s0=(((Math.atan2(dz,dx)-ST.a0)%TAU)+TAU)%TAU/ST.da; let best=null, bh=-1e9;
+  for(let s=s0-ST.wrap;s<=ST.edge;s+=ST.wrap){ if(s<-.5)continue; const h=TOP+stairH(s); if(h<=y+.9&&h>bh){ bh=h; best=s; } }
+  return best; }
 function floorL(x,z,y){
   let best=null; const cand=h=>{ if(h!=null&&h<=y+.9&&(best==null||h>best))best=h; };
   cand(groundF(x,z));
   const r=Math.hypot(x-SHAFT.x,z-SHAFT.z);
   if(r<PLAT_R)cand(S.plat);
   if(r<TF_R){ if(r>=PLAT_R-.05||(S.plat<TOP-.05&&!S.hoist))cand(TOP); }   // the ring; and while the hoist is down, a safe lip over the hole (you can't get up there without it)
+  { const s=stairS(x,z,y); if(s!=null)cand(TOP+stairH(s)); }               // the stair
   return best;
 }
 function walkL(x,z){ if(groundF(x,z)!=null)return true; const r=Math.hypot(x-SHAFT.x,z-SHAFT.z); return r<TF_R; }
@@ -64,7 +82,7 @@ function walkL(x,z){ if(groundF(x,z)!=null)return true; const r=Math.hypot(x-SHA
 function ceilL(x,z){ const r=Math.hypot(x-SHAFT.x,z-SHAFT.z); if(r<HOLE_R)return TOP+8.3; const Z=nearest(x,z); return Z.ceil(x,z); }
 /* the camera stays inside the rock: march from the head to the boom's end and stop short of walls, roof and floor */
 function camOK(x,y,z){ const r=Math.hypot(x-SHAFT.x,z-SHAFT.z);
-  if(y>TOP-.6)return r<TF_R-.3&&y<TOP+8.2;
+  if(y>TOP-.6)return r<TF_R-.3&&y<TOP+8.35;
   if(y>6.2)return r<HOLE_R-.35;
   if(sdAll(x,z)>-.3)return false; const f=groundF(x,z); return y<ceilL(x,z)-.3&&(f==null||y>f+.3); }
 G.cameraConstrainers.push((cam,target)=>{
@@ -99,13 +117,28 @@ G.constrainers.push((prev,next,y,rad)=>{
     next.x=ex+O.x; next.z=ez+O.z; return true; }
   next.x=nx+O.x; next.z=nz+O.z; return true;
 });
+/* the stair, for a body standing on it: no walking off its open (inner) edge once it's more than a metre up, and no walking on
+   round past the top tread into thin air. A jump off is yours (in the air this lets go). */
+G.constrainers.push((prev,next,y)=>{
+  if(!inBoxW(next.x,next.z)||!S.inside)return false; const ly=y-O.y; if(ly<TOP+.2||ly>TOP+stairTop(ST.last)+1)return false;
+  const px=prev.x-O.x, pz=prev.z-O.z, s=stairS(px,pz,ly+.05); if(s==null)return false;
+  const h=stairH(s); if(Math.abs(ly-TOP-h)>.3)return false;
+  let nx=next.x-O.x-SHAFT.x, nz=next.z-O.z-SHAFT.z, r=Math.hypot(nx,nz), hit=false;
+  if(h>1&&r<ST.rail){ const k=ST.rail/(r||1e-6); nx*=k; nz*=k; r=ST.rail; hit=true; }
+  const d=U.angDiff(Math.atan2(nz,nx),Math.atan2(pz-SHAFT.z,px-SHAFT.x));
+  if(s+d/ST.da>ST.end){ const a=ST.a0+ST.end*ST.da; nx=Math.cos(a)*r; nz=Math.sin(a)*r; hit=true; }
+  if(hit){ next.x=nx+SHAFT.x+O.x; next.z=nz+SHAFT.z+O.z; }
+  return hit;
+});
 /* hooks: the interior's own floor and walkable, only inside its box */
 G.floorProviders.push((x,z,y)=>{ if(!inBoxW(x,z))return null; const f=floorL(x-O.x,z-O.z,(y==null?1e9:y)-O.y); return f==null?null:f+O.y; });
 G.walkOverrides.push((x,z)=>{ if(!inBoxW(x,z))return null; return walkL(x-O.x,z-O.z); });
 
 /* ================================================================ 3. VISUALS */
 const root=new THREE.Group(); root.name='northCave'; root.position.copy(O); root.visible=false;
-let waterLow=null, waterCh=null, plat=null, rope=null, wheel=null, lamps=[], knox=null, trap=null, knoxLamp=null;
+let waterLow=null, waterCh=null, plat=null, rope=null, wheel=null, lamps=[], knox=null, trap=null, trapHole=null, knoxLamp=null;
+/* the trapdoor shut (in the ceiling, under the boards), or open: swung up into the fire room, clear of the head of the stair */
+function setTrap(open){ if(!trap)return; trap.rotation.x=open?-1.25:0; trap.position.y=open?8.6+.6:8.5; if(trapHole)trapHole.visible=!!open; }
 const noise3=(x,y,z)=>Math.sin(x*1.9+y*1.3)*.5+Math.sin(y*2.3+z*1.7)*.3+Math.sin(z*1.1+x*2.7)*.2;
 function rockCol(c,x,y,z,wet){ const base=col('#4a4a52'), dk=col('#26252b'), weed=col('#2f3d2c'), salt=col('#8a8a86');
   c.copy(dk).lerp(base,.35+.4*vnoise(x*.7+y*.3,z*.7-y*.2)); if(y<.6+(wet?.6:0))c.lerp(weed,.5*smooth(.6,-.6,y)); if(vnoise(x*2.1,z*2.1+y)>.78)c.lerp(salt,.25); }
@@ -223,10 +256,17 @@ function buildTowerFoot(){
   const wall=new THREE.Mesh(new THREE.CylinderGeometry(TF_R+.1,TF_R+.1,9,20,1,true),stone); wall.position.y=4.5; g.add(wall);
   const fl=new THREE.Mesh(new THREE.RingGeometry(HOLE_R-.35,TF_R+.15,24,1),stoneF); fl.rotation.x=-PI/2; fl.position.y=.01; g.add(fl);
   const ceil=new THREE.Mesh(new THREE.CircleGeometry(TF_R+.15,20),G.toon('#2a2524',{side:THREE.DoubleSide})); ceil.rotation.x=PI/2; ceil.position.y=8.6; g.add(ceil);
-  // the stair: wedges up the wall, a turn and a half, to the trapdoor
-  for(let k=0;k<22;k++){ const a=-PI/2+k*.36, y=.35+k*.37, st=new THREE.Mesh(new THREE.BoxGeometry(1.05,.18,.55),stoneF);
-    st.position.set(Math.cos(a)*(TF_R-.55),y,Math.sin(a)*(TF_R-.55)); st.rotation.y=-a; g.add(st); }
-  const ta=-PI/2+21*.36; trap=new THREE.Mesh(new THREE.BoxGeometry(1.2,.12,1.2),wood); trap.position.set(Math.cos(ta)*(TF_R-.9),8.5,Math.sin(ta)*(TF_R-.9)); g.add(trap);
+  // the stair: stone treads built into the wall, a turn and a fifth, to the trapdoor. Each fills its slice of the turn and comes
+  // down to the one below, so it reads as one winding stair (and there's no gap between treads to walk over)
+  for(let k=0;k<ST.n;k++){ const a=ST.a0+k*ST.da, lo=a-ST.da/2, hi=a+ST.da/2, th=k===0?ST.top0:ST.rise+.02, sh=new THREE.Shape(), N=4;
+    for(let i=0;i<=N;i++){ const q=lo+(hi-lo)*i/N, p=[Math.cos(q)*ST.rOut,-Math.sin(q)*ST.rOut]; if(i===0)sh.moveTo(p[0],p[1]); else sh.lineTo(p[0],p[1]); }
+    for(let i=N;i>=0;i--){ const q=lo+(hi-lo)*i/N; sh.lineTo(Math.cos(q)*ST.rIn,-Math.sin(q)*ST.rIn); }
+    const geo=new THREE.ExtrudeGeometry(sh,{depth:th,bevelEnabled:false,curveSegments:1}); geo.rotateX(-PI/2); geo.translate(0,stairTop(k)-th,0);
+    const st=new THREE.Mesh(geo,stoneF); st.name='ncTread'; st.receiveShadow=true; g.add(st); }
+  const ta=ST.a0+ST.last*ST.da; trap=new THREE.Mesh(new THREE.BoxGeometry(1.2,.12,1.2),wood); trap.position.set(Math.cos(ta)*(TF_R-.9),8.5,Math.sin(ta)*(TF_R-.9)); g.add(trap);
+  // the hatchway, open: the fire room's green light in a square in the ceiling (the lid swings up out of the way, over it)
+  trapHole=new THREE.Mesh(new THREE.PlaneGeometry(1.15,1.15),new THREE.MeshBasicMaterial({color:col('#3f9a72'),side:THREE.DoubleSide})); trapHole.rotation.x=PI/2;
+  trapHole.position.set(trap.position.x,8.58,trap.position.z); g.add(trapHole); setTrap(S.open);
   const glowUp=new THREE.PointLight(col('#7fe8b4'),.0,10,1.6); glowUp.position.set(trap.position.x,7.6,trap.position.z); g.add(glowUp); S._glowUp=glowUp;
   // his father: a big man gone thin, oilskin coat, a grey beard, a green lamp held up
   knox=buildKnox(); knox.visible=false; g.add(knox);
@@ -371,22 +411,35 @@ function updateHoist(dt){
   if(rope)rope.rotation.x+=dt*(H.to>H.from?-4:4);
   if(H.t>=H.dur){ S.plat=H.to; S.hoist=null; if(P.camPull&&P.camPull.pitch===1.05)P.camPull=null; S.hoistTop=H.to>=TOP-.1; if(S.hoistTop){ setCp('foot'); if(!S.met)later(.8,meetFather); } else setCp('mouth'); setQuest(); }
 }
+/* on the stair the room is too tight for a camera behind him (the wall's at his shoulder, the ceiling over his head at the top):
+   it swings in over the middle of the room, looking out at him and up the way he's going, lower as he climbs */
+let stairPull=null;
+function stairCam(P){
+  if(S.inside&&P.alive&&G.state.mode!=='play')return;   // a card or the pause: leave it as it is
+  let on=false;
+  if(S.inside&&P.alive&&!S.trans&&!S.hoist&&!S.scene){ const lx=P.pos.x-O.x, lz=P.pos.z-O.z, ly=P.pos.y-O.y, s=stairS(lx,lz,ly+.05);
+    if(s!=null){ const h=stairH(s); if(h>1.2&&ly-TOP-h<1.5){ on=true;
+      const a=Math.atan2(lz-SHAFT.z,lx-SHAFT.x), nx=Math.cos(a), nz=Math.sin(a), tx=-nz, tz=nx;   // out to the wall, and on round (up)
+      const pull={yaw:Math.atan2(nx+.6*tx,nz+.6*tz),pitch:clamp(.36-.052*h,.02,.3),dist:3.2,rate:2.2};
+      if(!P.camPull||P.camPull===stairPull){ P.camPull=stairPull=pull; } } } }
+  if(!on&&stairPull){ if(P.camPull===stairPull)P.camPull=null; stairPull=null; }
+}
 /* the first meeting */
 function meetFather(){
   if(S.met||S.scene)return; S.scene={t:0,phase:'down'}; knox.visible=true;
-  const ta=-PI/2+19*.36; knox.position.set(Math.cos(ta)*(TF_R-.55),.35+19*.37,Math.sin(ta)*(TF_R-.55)); knox.rotation.y=-ta;
+  { const p=stairPt(19); knox.position.set(p.x,p.y,p.z); knox.rotation.y=-p.a; }
   if(S._glowUp)S._glowUp.intensity=1.2;
   say('Boots on the stair above you. A green lamp, coming down.',null,{key:'ncBoots'});
   G.player.setControl&&G.player.setControl(false);
 }
 function updateScene(dt){
   const sc=S.scene; if(!sc)return; sc.t+=dt;
-  if(sc.phase==='down'){ const k=smooth(0,3.2,sc.t), steps=lerp(19,4,k), a=-PI/2+steps*.36;
-    knox.position.set(Math.cos(a)*(TF_R-.55),.35+steps*.37+.05*Math.sin(sc.t*9),Math.sin(a)*(TF_R-.55));
+  if(sc.phase==='down'){ const k=smooth(0,3.2,sc.t), p=stairPt(lerp(19,4,k));
+    knox.position.set(p.x,p.y+.05*Math.sin(sc.t*9),p.z);
     const P=G.player, wx=P.pos.x-O.x-SHAFT.x, wz=P.pos.z-O.z-SHAFT.z; knox.rotation.y=Math.atan2(wx-knox.position.x,wz-knox.position.z);
     if(sc.t>3.4){ sc.phase='talk'; G.player.setControl&&G.player.setControl(true); openTalk(); } }
-  else if(sc.phase==='up'){ const k=smooth(0,3,sc.t), steps=lerp(4,21,k), a=-PI/2+steps*.36;
-    knox.position.set(Math.cos(a)*(TF_R-.55),.35+steps*.37,Math.sin(a)*(TF_R-.55)); knox.rotation.y=-a-PI/2;
+  else if(sc.phase==='up'){ const k=smooth(0,3,sc.t), p=stairPt(lerp(4,ST.last,k));
+    knox.position.set(p.x,p.y,p.z); knox.rotation.y=-p.a-PI/2;
     if(sc.t>3.1){ knox.visible=false; if(S._glowUp)S._glowUp.intensity=.5; S.scene=null;
       try{ const A=G.audio; if(A&&A.ready&&A.S){ const t=A.context.currentTime; A.S.thud(t,{g:.25,dur:.25}); A.S.clank&&A.S.clank(t+.35,{g:.14,dur:.2}); } }catch(e){}
       say('The trapdoor bangs shut above. A bar drops across it.',null,{key:'ncTrap'});
@@ -427,7 +480,7 @@ function learnName(){
   say('Rowan.','The fire',{key:'ncName1'});
   later(2.2,()=>say('The voice comes down through the boards. It isn’t his father’s. It sounds like a fire sounds, if a fire could learn a word.',null,{key:'ncName2'}));
   later(4.6,()=>say('Green light leaks round the trapdoor’s edges. The bar across it is glowing.',null,{key:'ncName3'}));
-  later(7.4,()=>{ S.open=true; S.burning=null; if(trap){ trap.rotation.x=-1.25; trap.position.y=8.1; } if(S._glowUp)S._glowUp.intensity=2.2;
+  later(7.4,()=>{ S.open=true; S.burning=null; setTrap(true); if(S._glowUp)S._glowUp.intensity=2.2;
     try{ const A=G.audio; if(A&&A.ready&&A.S){ const t=A.context.currentTime; A.S.thud(t,{g:.3,dur:.4}); A.S.clank&&A.S.clank(t+.15,{g:.2,dur:.3}); } }catch(e){}
     say('The bar burns through and drops. The trapdoor swings open on its own.',null,{key:'ncName4'});
     later(1.8,()=>say('It knows my name.','Rowan',{key:'ncName5'})); later(3.6,()=>say('And he’s up there with it.','Rowan',{key:'ncName6'}));
@@ -439,7 +492,7 @@ function setQuest(){
   if(!G.quest)return; const NI=G.northIsle;
   if(!S.inside){ if(NI&&NI.inside&&NI.state&&NI.state.door&&!S.met&&mouth)G.quest.set('north:cave','Another way in','Wreckers always have a way up from the water. Look along the shore under the cliffs',V(mouth.face.x,1.5,mouth.face.z),'The sea cave'); return; }
   const w=(x,y,z)=>toWorld(x,y,z);
-  if(S.met){ const ta=-PI/2+21*.36, tp=w(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+7,SHAFT.z+Math.sin(ta)*(TF_R-.6));
+  if(S.met){ const sp=stairPt(ST.last,TF_R-.6), tp=w(SHAFT.x+sp.x,TOP+sp.y+1.4,SHAFT.z+sp.z);
     if(S.open)G.quest.set('north:trap','The fire room','The fire burned the bar through. Climb the stair',tp,'The trapdoor');
     else G.quest.set('north:met','The fire room','Your father went back up to the fire and barred the trapdoor',null,''); return; }
   if(!S.read.ledger){ G.quest.set('north:caveIn','The wreckers’ stair','Somebody keeps lamps lit down here. Find out who',w(-20.5,3,-32.5),'The store'); return; }
@@ -453,10 +506,10 @@ const reg=()=>G.persist&&G.persist.register&&G.persist.register('northCave',{
   save:()=>({v:1,entered:S.entered,drained:S.drained,hoistTop:S.hoistTop,read:Object.assign({},S.read),met:S.met,open:S.open,
     prevCp:S.prevCp?{p:[+S.prevCp.p.x.toFixed(2),+S.prevCp.p.y.toFixed(2),+S.prevCp.p.z.toFixed(2)],yaw:S.prevCp.yaw||0,name:S.prevCp.name||''}:null}),
   load:d=>{ if(!d)return; S.entered=!!d.entered; S.drained=!!d.drained; S.hoistTop=!!d.hoistTop; S.read=Object.assign({},d.read||{}); S.met=!!d.met; S.open=!!d.open;
-    if(S.open&&trap){ trap.rotation.x=-1.25; trap.position.y=8.1; } else if(trap){ trap.rotation.x=0; trap.position.y=8.5; }
+    setTrap(S.open);
     S.plat=S.hoistTop?TOP:BOT; S.water=S.drained?-1.7:.55; S.prevCp=d.prevCp?{p:V(d.prevCp.p[0],d.prevCp.p[1],d.prevCp.p[2]),yaw:d.prevCp.yaw,name:d.prevCp.name}:null; }});
 if(G.persist&&G.persist.register)reg(); else G.on('ready',reg);
-G.on('game:reset',()=>{ if(trap){ trap.rotation.x=0; trap.position.y=8.5; } Object.assign(S,{entered:false,drained:false,hoistTop:false,read:{},met:false,open:false,burning:null,plat:BOT,water:.55,hoist:null,scene:null,prevCp:null}); });
+G.on('game:reset',()=>{ setTrap(false); Object.assign(S,{entered:false,drained:false,hoistTop:false,read:{},met:false,open:false,burning:null,plat:BOT,water:.55,hoist:null,scene:null,prevCp:null}); });
 G.on('north:door',()=>later(1.2,()=>setQuest()));
 
 /* ================================================================ 9. WIRING */
@@ -472,7 +525,8 @@ G.system('northCave',{order:86,modes:['play','paused','dead','title'],
     IA.add({pos:L(1.15,1.4,-25.4),radius:2.2,priority:5,label:'Turn the sluice wheel',enabled:()=>ins()&&!S.drained&&!S.draining,use:turnWheel});
     IA.add({pos:()=>toWorld(SHAFT.x,S.plat+.4,SHAFT.z),radius:1.6,priority:7,label:()=>S.plat<TOP-1?'Work the hoist':'Let the hoist down',
       enabled:()=>ins()&&!S.hoist&&!S.scene&&onPlatform(),use:workHoist});
-    const ta=-PI/2+21*.36; IA.add({pos:L(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+.5,SHAFT.z+Math.sin(ta)*(TF_R-.6)),radius:1.5,priority:6,label:()=>S.open?'Climb into the fire room':'The trapdoor',enabled:()=>ins()&&!S.scene&&S.plat>=TOP-.1,use:tryTrap});
+    // the trapdoor: from the top of the stair, under it (not from the floor 6 m below)
+    { const sp=stairPt(ST.last,TF_R-.6); IA.add({pos:L(SHAFT.x+sp.x,TOP+sp.y+.5,SHAFT.z+sp.z),radius:1.3,priority:6,label:()=>S.open?'Climb into the fire room':'The trapdoor',enabled:()=>ins()&&!S.scene&&S.plat>=TOP-.1,use:tryTrap}); }
     root.visible=false;
   },
   update(dt){
@@ -480,6 +534,7 @@ G.system('northCave',{order:86,modes:['play','paused','dead','title'],
     updateTrans(dt||0);
     const P=G.player;
     if(P&&P.pos&&!S.trans){ const inC=inBoxW(P.pos.x,P.pos.z)&&P.pos.y>O.y-40; if(inC!==S.inside)setInside(inC); }
+    if(P&&P.pos)stairCam(P);
     if(plat){ plat.position.y=S.plat; const L=TOP+8.4-S.plat; for(const r of S._ropes||[]){ r.scale.y=L; r.position.y=L/2; } }
     if(!S.inside){ if(mouth&&P&&G.northIsle&&G.northIsle.inside&&!S.said.mouth&&Math.hypot(P.pos.x-mouth.x,P.pos.z-mouth.z)<9){ S.said.mouth=1;
         say('A cave, under the cliff. There’s an iron ring in the rock by the mouth. Somebody ties a boat up here.','Rowan',{key:'ncMouth'}); } return; }
@@ -515,6 +570,6 @@ if(G.portraits&&G.portraits.add)G.portraits.add('knox',(g,w,h,glass)=>{
 
 const API=G.northCave={inside:false,O,state:S,setQuest,enter:o=>startTrans('in',o),exit:o=>startTrans('out',o),
   get mouth(){ return mouth; }, lowTide,
-  makeKnox, setCp, trapPos:()=>{ const ta=-PI/2+21*.36; return toWorld(SHAFT.x+Math.cos(ta)*(TF_R-.6),TOP+.05,SHAFT.z+Math.sin(ta)*(TF_R-.6)); },
-  debug:{ S, toWorld, SHAFT, TOP, floorL, walkL, workHoist, turnWheel, readLedger, meet:meetFather, learnName, get knox(){ return knox; } }};
+  makeKnox, setCp, trapPos:()=>{ const sp=stairPt(ST.last,TF_R-.6); return toWorld(SHAFT.x+sp.x,TOP+sp.y+.05,SHAFT.z+sp.z); },   // the top tread, under the trapdoor
+  debug:{ S, toWorld, SHAFT, TOP, ST, stairPt, stairS, stairH, floorL, walkL, workHoist, turnWheel, readLedger, meet:meetFather, learnName, get knox(){ return knox; } }};
 })();
