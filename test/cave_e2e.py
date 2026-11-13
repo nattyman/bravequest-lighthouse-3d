@@ -37,6 +37,30 @@ function walk(pts,o){ o=o||{}; let steps=0; const max=o.max||1800, tol=o.tol||.6
       if(d<best-.05){best=d;bestAt=steps;}
       if(steps-bestAt>(o.patience||90)||steps>max){ release(); return {ok:false,wp:i,at:where(),d:+d.toFixed(2),steps}; } } }
   release(); G.step(1/30,6); return {ok:true,at:where(),steps}; }
+/* walk to cave-local (x,z) by a path found over the cave's own physics (floors, step height, wall clearance, deep water), for when a
+   fight may have left you anywhere: on the shore below a stair, on the lip over the pool. Straight-line walk() otherwise. */
+function navPath(tx,tz){ const D=G.cave._debug, w=G.cave.water(), S=.5, p=G.cave.toLocal(P().pos), s0=D.Sat(p.x,p.z);
+  const clear=(x,z,first)=>{ const s=D.Sat(x,z); return s<-.42||(first&&s<s0); };   // (from a spot in a wall's skin, any step away from the wall)
+  const k=(i,j,f)=>i+','+j+','+Math.round(f*4);
+  const i0=Math.round(p.x/S), j0=Math.round(p.z/S), f0=D.zoneFloor(p.x,p.z,p.y+.05); if(f0==null)return null;
+  const q=[[i0,j0,f0]], prev=new Map([[k(i0,j0,f0),null]]); let end=null;
+  for(let h=0;h<q.length&&h<40000;h++){ const [i,j,f]=q[h]; if(Math.hypot(i*S-tx,j*S-tz)<.8){ end=q[h]; break; }
+    const at=(x,z)=>{ const nf=D.zoneFloor(x,z,f+.05); return nf!=null&&clear(x,z,h===0)&&nf-f<=.55&&w-nf<.6?nf:null; };
+    for(const [di,dj] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]]){ const nf=at((i+di)*S,(j+dj)*S);
+      if(nf==null||(di&&dj&&(at((i+di)*S,j*S)==null||at(i*S,(j+dj)*S)==null)))continue;
+      const kk=k(i+di,j+dj,nf); if(prev.has(kk))continue; prev.set(kk,q[h]); q.push([i+di,j+dj,nf]); } }
+  if(!end)return null;
+  const path=[]; for(let n=end;n;n=prev.get(k(n[0],n[1],n[2])))path.push([n[0]*S,n[1]*S]); path.reverse();
+  const pts=path.filter((_,i)=>i===1||(i>0&&(i%3===0||i===path.length-1))); pts.push([tx,tz]); return pts; }
+function nav(tx,tz,o){ o=Object.assign({local:true},o||{}); let pts=navPath(tx,tz);
+  if(!pts){ // boxed in on a lip of rock with only the pool beside you: step off into the deep water, the cave puts you back on your
+            // last dry footing (as it would a player), then find the way from there
+    const D=G.cave._debug, w=G.cave.water(), p=G.cave.toLocal(P().pos); let dir=null;
+    for(let a=0;a<16&&!dir;a++){ const x=p.x+Math.cos(a/16*Math.PI*2)*1.2, z=p.z+Math.sin(a/16*Math.PI*2)*1.2, f=D.zoneFloor(x,z,p.y); if(f!=null&&w-f>1.2)dir=[x,z]; }
+    if(dir){ for(let n=0;n<45;n++){ steer(dir[0]+G.cave.origin.x,dir[1]+G.cave.origin.z); G.step(1/30,1); top(); } release();
+      for(let n=0;n<60&&G.cave.water()-G.cave.toLocal(P().pos).y>.6;n++){ G.step(1/30,1); top(); } G.step(1/30,6); pts=navPath(tx,tz); } }
+  if(!pts)return {ok:false,why:'no path',from:where(),to:[tx,tz]};
+  return walk(pts,o); }
 function tap(a,n){ G.input.setVirtual(a,true); G.step(1/30,1); G.input.setVirtual(a,false); G.step(1/30,n==null?3:n); }
 function label(){ const c=G.interact.pick(P().pos); return c?G.interact.label(c):null; }
 /* press interact on what the controller offers (only if its label matches) */
@@ -66,9 +90,9 @@ function fight(o){ o=o||{}; const pp=P().pos; let steps=0, ft=null, fn=0; const 
     top(); if(o.each)o.each(steps); }
   release(); const l=alive(); return {left:l.length,steps,who:l.map(m=>m.kind+':'+m.state+'@'+G.cave.toLocal(m.pos).toArray().map(v=>v.toFixed(1)).join(','))}; }
 /* wait for a condition like a player would: keep fighting off anything that comes for the swarm meanwhile */
-function guard(pred,max){ let n=0; const P0=P().pos.clone();
+function guard(pred,max,back){ let n=0; const P0=P().pos.clone();   // back(): walks you back after each fight (a straight line otherwise)
   while(!pred()&&n<(max||10000)){ const near=G.monsters.list.some(m=>m.alive&&!m.dying&&m.pos.distanceTo(P().pos)<12);
-    if(near){ const f=fight({r:12,max:300}); n+=Math.max(1,f.steps); walk([[P0.x,P0.z]],{max:300}); }
+    if(near){ const f=fight({r:12,max:300}); const w=back?back():walk([[P0.x,P0.z]],{max:300}); n+=Math.max(1,f.steps)+(w.steps|0); }   // the walk back counts toward max too
     else { G.step(1/30,1); top(); n++; } }
   return +(n/30).toFixed(1); }
 /* run and jump (holding jump to glide) onto cave-local (x,z) */
@@ -84,7 +108,10 @@ const losses={}; G.on('moths:lost',e=>{ const k=G.cave.inside?(G.cave.room(P().p
 // story moments and readings open the conversation card (talk.js), which pauses: read each through as it opens (first reply)
 const talkAuto={on:true,seen:[],names:[],read:[]}; G.on('talk:open',e=>{ talkAuto.seen.push(e&&e.who); if(!talkAuto.on)return; const st0=G.talk.state(); talkAuto.names.push(st0&&st0.name);
   let n=0; while(G.talk.isOpen&&n<80){ const s=G.talk.state(); if(s.line&&talkAuto.read[talkAuto.read.length-1]!==s.line)talkAuto.read.push(s.line); if(s.choices.length)G.talk.choose(0); else G.talk.advance(); n++; } });
-return {keys,release,steer,walk,where,tap,label,use,wait,swarm,near,states,until,guard,hud,marker,fight,bolt,leap,ring,losses,top,talkAuto};
+/* keep a save the test built by hand until the reload reads it: an autosave already queued on a wall-clock timer (flow.js writes one
+   400 ms after you rise) would otherwise land on top of it, by however fast the machine ran the checks in between */
+function freezeSave(){ const set=Storage.prototype.setItem; Storage.prototype.setItem=function(k,v){ if(this===localStorage&&k==='bq-save-v1')return; return set.call(this,k,v); }; }
+return {keys,release,steer,walk,nav,where,tap,label,use,wait,swarm,near,states,until,guard,hud,marker,fight,bolt,leap,ring,losses,top,talkAuto,freezeSave};
 })(); 'lib'
 """
 
@@ -167,10 +194,13 @@ STEPS=[
    const lab=T.label(); const u=T.use(/vein/i); T.wait(1);
    return {ok:r.ok&&G.cave.isLit('stair')&&G.alchemy.etherUnits===10,lab,ether:G.alchemy.etherUnits,at:d,hud:T.hud()}; })()"""),
  ("shot:stair-lit",None),
- ("lowPassage", r"""(()=>{ const f=T.fight({room:'stair'}); const r0=T.walk([[-7.5,-53],[-7.6,-60],[-8,-65]],{local:true});
-   const tw=T.guard(()=>G.cave.lowPassageOpen()&&G.tide.low&&G.tide.lowLeft>40,12000); // through and back before the water returns
+ ("lowPassage", r"""(()=>{ const f=T.fight({room:'stair'});
+   // the fights (here and while waiting for the tide) can leave you anywhere in the room: down on the shore beside the steps, on the lip
+   // over the pool; find the way to the passage mouth from there (the old straight-line route walked in under the treads and wedged)
+   const r0=T.nav(-8,-65,{max:600});
+   const tw=T.guard(()=>G.cave.lowPassageOpen()&&G.tide.low&&G.tide.lowLeft>40,12000,()=>T.nav(-8,-65,{max:300})); // through and back before the water returns
    const r1=T.walk([[-8,-70],[-8,-76],[-8,-79.5],[-6,-83]],{local:true});
-   return {ok:r0.ok&&r1.ok&&G.cave.room(G.player.pos)==='channel',fight:f,tideWait:tw,level:+G.tide.level.toFixed(2),r1,swarm:T.swarm()}; })()"""),
+   return {ok:r0.ok&&r1.ok&&G.cave.room(G.player.pos)==='channel',fight:f,r0,tideWait:tw,level:+G.tide.level.toFixed(2),r1,swarm:T.swarm()}; })()"""),
  ("backThroughPassage", r"""(()=>{ const r=T.walk([[-7.6,-81],[-7.8,-77],[-8,-70],[-8,-65],[-7.6,-60],[-7.6,-53.5],[-4,-51.5],[-1.8,-52.6]],{local:true});
    return {ok:r.ok&&G.cave.room(G.player.pos)==='stair',r,lowOpen:G.cave.lowPassageOpen()}; })()"""),
  ("highTide", r"""(()=>{ const tw=T.guard(()=>G.cave.water()>1.3,12000); const r=T.walk([[-1.6,-53.6]],{local:true});
@@ -222,8 +252,10 @@ STEPS=[
    G.on('moths:lost',e=>{ if(gust.phase==='burst'&&e.pos&&G.cavePuzzles.vents.some(v=>Math.hypot(e.pos.x-v.pos.x,e.pos.z-v.pos.z)<3.3))killedInGust+=e.n; }); // a gust's victims die over its vent
    const seen=()=>{ if(gust.phase==='burst'&&!seen.b){ seen.b=1; bursts++; } if(gust.phase!=='burst')seen.b=0; };
    if(!L.shut)T.tap('shutter',3);
+   if(G.cave.room(G.player.pos)!=='drafts')return {ok:false,why:'not in the hall of drafts (the gusts only run there)',at:T.where()};
    for(const [x,z] of [[60,-72],[60,-62],[60,-54],[60,-46],[60,-42]]){
-     while(gust.phase!=='idle'||gust.next<3.5){ G.step(1/30,1); T.top(); seen(); }
+     let w=0; while((gust.phase!=='idle'||gust.next<3.5)&&w<900){ G.step(1/30,1); T.top(); seen(); w++; }   // a gust cycle is 6 s
+     if(w>=900)return {ok:false,why:'no quiet gap between gusts in 30 s',gust:{phase:gust.phase,next:gust.next},at:T.where()};
      T.fight({r:9,max:600,threats:true}); T.walk([[x,z]],{local:true,each:seen}); if(z===-54&&!window._gustShot){ window._gustShot=1; } }
    const sw=T.swarm();
    return {ok:L.shut&&bursts>=3&&killedInGust===0&&sw>=20&&G.cave.room(G.player.pos)==='drafts',bursts,killedInGust,swarm:sw,at:T.where()}; })()"""),
@@ -383,7 +415,7 @@ SOFTLOCK=[
  ("s:brokenSave", r"""(()=>{ // Heath's save: checkpoint behind the Undertow's door, standing in the gallery, seal closed, no 'reached' list
    G.setMode('paused'); document.getElementById('saveBtn').click(); const d=JSON.parse(localStorage.getItem('bq-save-v1'));
    const O=G.cave.origin; d.cp=[O.x+60,O.y+3,O.z-41]; d.cpName='the Undertow’s door'; d.pos=[O.x,O.y+3,O.z-33]; delete d.mods.cave.reached;
-   localStorage.setItem('bq-save-v1',JSON.stringify(d)); return {ok:true}; })()"""),
+   localStorage.setItem('bq-save-v1',JSON.stringify(d)); T.freezeSave(); return {ok:true}; })()"""),
  ("s:reload", "RELOAD"),
  ("s:continueBroken", r"""(()=>{ G.step(1/30,40); const cp=G.state.checkpointName, reg=G.cave.region(G.player.pos);
    const P=G.player; P.hurt({damage:99,kind:'melee',dir:new THREE.Vector3(0,0,1),knockback:0,ignoreIframes:true}); G.step(1/30,30);
@@ -392,7 +424,7 @@ SOFTLOCK=[
  ("s:afterRise5", r"""(()=>{ G.step(1/30,30); const reg=G.cave.region(G.player.pos); return {ok:G.state.mode==='play'&&G.cave.connected().includes(reg),reg,at:T.where(),cp:G.state.checkpointName}; })()"""),
  ("s:strandedSave", r"""(()=>{ // a save made trapped in the drafts (Heath's other possible state): Continue, then the draught leads out
    G.setMode('paused'); document.getElementById('saveBtn').click(); const d=JSON.parse(localStorage.getItem('bq-save-v1'));
-   const O=G.cave.origin; d.pos=[O.x+60,O.y+3,O.z-41]; localStorage.setItem('bq-save-v1',JSON.stringify(d)); return {ok:true}; })()"""),
+   const O=G.cave.origin; d.pos=[O.x+60,O.y+3,O.z-41]; localStorage.setItem('bq-save-v1',JSON.stringify(d)); T.freezeSave(); return {ok:true}; })()"""),
  ("s:reload2", "RELOAD"),
  ("s:continueStranded", r"""(()=>{ G.step(1/30,40); const reg=G.cave.region(G.player.pos), str=G.cave.stranded(), lab=T.label(); const u=T.use(/draught/); T.wait(2.5);
    return {ok:reg==='drafts'&&str&&u==='Follow the draught back to the mouth'&&G.cave.region(G.player.pos)==='mouth',reg,lab,at:T.where()}; })()"""),
@@ -404,8 +436,17 @@ DRAW=r"""new Promise(res=>{ const r=G.renderer, out={}; const rooms=['mouth','ga
       out[room]=Math.round(r.info.render.calls/8); r.info.autoReset=true; next(); }); }
   next(); })"""
 
+# Each check gets a wall-clock budget: a check that is still running after it is stuck (an unbounded wait in the page, or a
+# frozen renderer), and the run stops there with a clear message instead of sitting until the CI job's timeout.
+# The slowest checks (bossFight, cameraWalk) take ~1 min on a 2-core CI runner.
+CHECK_S=float(os.environ.get('CHECK_TIMEOUT','300'))
+# Checks that set up their own state (they enter each room through the debug hooks), so they still run after a failure.
+INDEPENDENT={'cameraWalk','drawCalls'}
+
+class Stuck(Exception): pass
+
 async def main():
-    fails=[]
+    fails=[]; skipped={}
     async with async_playwright() as p:
         b=await p.chromium.launch(executable_path='/usr/bin/google-chrome',args=['--use-gl=angle','--use-angle=swiftshader','--enable-unsafe-swiftshader'])
         pg=await (await b.new_context(viewport={'width':1000,'height':600})).new_page(); pg.set_default_timeout(480000)
@@ -416,29 +457,53 @@ async def main():
         await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000)
         await pg.evaluate("localStorage.removeItem('bq-save-v1')")
         await boot()
+        async def check(name,js):
+            if js=='WAIT_RISE':
+                # the clock stays held: the death card comes up on flow.js's 2 s timer (wall clock, but the game doesn't move meanwhile),
+                # then rising is stepped like everything else (letting the game run in real time here let the tide drift by however
+                # fast the machine happened to be, so later tide waits differed run to run)
+                await pg.evaluate('G.step(1/30,10); 0'); await pg.wait_for_selector('#rise',state='visible',timeout=20000)
+                await pg.click('#rise'); await pg.evaluate('G.step(1/30,18); 0'); await pg.wait_for_timeout(600); return {'ok':True}   # (the 600 ms: rising queues an autosave)
+            if js=='RELOAD':
+                await pg.reload(); await pg.wait_for_timeout(5000); await pg.evaluate('G.headless&&(G.headless.hold=true); 0')
+                await pg.click('#continue'); await pg.evaluate('G.step(1/30,75); 0'); await boot(); return {'ok':True}   # 2.5 s of play, stepped
+            if js=='DRAWCALLS':
+                d=await pg.evaluate(DRAW); return {'ok':max(d.values())<=330,'calls':d,'nanStacks':await pg.evaluate('window.NAN')}
+            return await pg.evaluate(js)
         async def run(steps):
+          broken=None   # the first failed check: every later check of this playthrough builds on its state
           for name,js in steps:
+            if broken and name not in INDEPENDENT:
+                if not name.startswith('shot:'): skipped.setdefault(broken,[]).append(name); print(f'SKIP {name} : depends on {broken}, which failed')
+                continue
             if name.startswith('shot:'):
                 await pg.wait_for_timeout(1400); await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/{name[5:]}.png',timeout=120000); print('  shot',name[5:]); continue
-            try:
-                if js=='WAIT_RISE':
-                    await pg.evaluate('G.headless.hold=false; 0'); await pg.wait_for_timeout(2600); await pg.click('#rise'); await pg.wait_for_timeout(600); await pg.evaluate('G.headless.hold=true; 0'); r={'ok':True}
-                elif js=='RELOAD':
-                    await pg.reload(); await pg.wait_for_timeout(5000); await pg.click('#continue'); await pg.wait_for_timeout(2500); await boot(); r={'ok':True}
-                elif js=='DRAWCALLS':
-                    d=await pg.evaluate(DRAW); r={'ok':max(d.values())<=330,'calls':d,'nanStacks':await pg.evaluate('window.NAN')}
-                else: r=await pg.evaluate(js)
+            try: r=await asyncio.wait_for(check(name,js),CHECK_S)
+            except asyncio.TimeoutError:
+                fails.append(name); print(f'FAIL {name} : timed out after {CHECK_S:.0f}s, the page is stuck (an unbounded wait in the check?); stopping here')
+                raise Stuck(name)
             except Exception as e: r={'ok':False,'exc':str(e).split('\n')[0][:300]}
             ok=bool(r.get('ok')) if isinstance(r,dict) else False
-            if not ok: fails.append(name)
+            if not ok:
+                fails.append(name)
+                if not broken and name not in INDEPENDENT:
+                    broken=name
+                    try: await pg.evaluate('G.headless&&G.headless.draw(3); 0'); await pg.wait_for_timeout(250); await pg.screenshot(path=f'{SHOTS}/FAIL-{name}.png',timeout=60000)
+                    except Exception: pass
             print(('PASS ' if ok else 'FAIL ')+name,':',json.dumps(r)[:900])
-        if not SOFT_ONLY: await run(STEPS)
-        # the soft-lock guards, in a fresh session (see SOFTLOCK)
-        await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000); await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await boot()
-        await run(SOFTLOCK)
+        try:
+            if not SOFT_ONLY: await run(STEPS)
+            # the soft-lock guards, in a fresh session (see SOFTLOCK)
+            await pg.goto(URL,timeout=180000); await pg.wait_for_timeout(5000); await pg.evaluate("localStorage.removeItem('bq-save-v1')"); await boot()
+            await run(SOFTLOCK)
+        except Stuck:
+            print('\nRESULT: FAILED '+', '.join(fails)+' (stuck: the remaining checks did not run)'); sys.stdout.flush()
+            os._exit(1)   # the renderer is wedged in a script; don't wait on a clean browser shutdown
         errs=[e for e in errs if '404' not in e and 'favicon' not in e]
         if errs: print('console errors:\n  '+'\n  '.join(errs[:12]))
         await b.close()
-    print('\nRESULT:', 'ALL PASS' if not fails and not errs else 'FAILED '+', '.join(fails)+(' + console errors' if errs else ''))
+    sk=sum(len(v) for v in skipped.values())
+    print('\nRESULT:', 'ALL PASS' if not fails and not errs else 'FAILED '+', '.join(fails)+(' + console errors' if errs else '')
+          +(f' (skipped {sk} later checks that depend on '+', '.join(skipped)+')' if sk else ''))
     sys.exit(1 if fails or errs else 0)
 asyncio.run(main())
