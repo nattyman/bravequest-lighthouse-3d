@@ -562,7 +562,12 @@ void main(){
   vec3 c=mix(uShallow,uDeep,smoothstep(.3,7.,depth));
   float dif=dot(n,uSunDir); c*=.62+.38*smoothstep(.15,.35,dif);
   float fr=pow(1.-max(dot(n,V),0.),4.); c=mix(c,uSky,clamp(fr*.75,0.,.75));
-  vec3 R=reflect(-V,n); float g=max(dot(R,uSunDir),0.); c+=uGlint*(smoothstep(.93,.96,g)*.55+pow(g,24.)*.12);
+  // the low sun on the water: a glitter path (sparkling cells) over a soft sheen. (A solid smoothstep(.93,.96) spot here
+  // was ~20 degrees across: on the big flat facets it showed as a hard-edged beige disc on the sea, e.g. off the north
+  // island's western stacks when looking toward the sun.)
+  vec3 R=reflect(-V,n); float g=max(dot(R,uSunDir),0.);
+  vec2 gq=vW.xz*2.2; float gh=fract(sin(dot(floor(gq),vec2(127.1,311.7)))*43758.5453), sp=step(.72,gh)*pow(max(0.,sin(uTime*(1.4+gh*2.2)+gh*60.)),6.)*smoothstep(.42,.12,length(fract(gq)-.5));
+  c+=uGlint*(smoothstep(.9,.99,g)*sp*.6+smoothstep(.8,1.,g)*.06+pow(g,24.)*.12);
   float wob=sin(uTime*1.3+vW.x*.21+vW.z*.17)*.18;
   float foam=1.-smoothstep(.05,.55,depth+wob*.5);
   float rings=step(.78,fract(depth*1.4-uTime*.22))*smoothstep(.4,.8,depth)*(1.-smoothstep(.9,2.2,depth));

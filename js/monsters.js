@@ -2,6 +2,7 @@
    BRAVE QUEST: LIGHTHOUSE — monsters.js  (Creatures agent)
    The fog's hunters: Hollows, Shade Hounds, and the Hollow Stag (boss). Brinelings (the sea cave) and the Nameless
    (the Hamlet Undercroft: placed by undercroft_boss.js; spawn('nameless',pos,{eatsMoths}) for the Wren defence).
+   The Drowned (the north island's graveyard: placed by northisle_foes.js; spawn('drowned',pos,{rise,avoid,zone})).
    Act 1 (v12): the Stag guards Hesper's lantern at the Resisting Tree (G.monsters.startStag(), flow.js calls it on
    approach); it is no longer the finale (finale_boss.js answers 'finale:start'). Its death emits boss:dead {who:'stag'}.
    API: G.monsters = {list, spawn(kind,pos,opts), alive(), boss, startStag(), stagArena(), reset()}
@@ -547,6 +548,9 @@ function attachFx(m){
     m.fx.body=add(I.emitter(c.hem,{rate:10,radius:.25,height:.3,size:[.7,1.9],life:[1.1,2],rise:.35,drift:.2,trail:.9,alpha:.5,color:'#4a4656'}));
     m.fx.skin=add(I.emitter(c.skinPts,{rate:5,radius:.2,size:[.3,.9],life:[.7,1.3],rise:.5,drift:.12,trail:.7,alpha:.7,color:'#0b0712'}));
     m.fx.pool=add(I.pool(m.pos,{radius:.9,alpha:.5}));
+  }else if(m.kind==='drowned'){
+    m.fx.body=add(I.emitter(c.drips,{rate:3,radius:.12,size:[.3,.9],life:[.8,1.5],rise:.15,drift:.12,trail:.8,alpha:.22,color:'#8ea2a3'}));
+    m.fx.pool=add(I.pool(m.pos,{radius:.85,alpha:.45,rim:'#2c4a3e'}));
   }else if(m.kind==='brineling'){
     m.fx.body=add(I.emitter(c.rim,{rate:7,radius:.08,size:[.25,.7],life:[.6,1.2],rise:.25,drift:.12,trail:1,alpha:.7,color:'#0b0712'}));
     m.fx.claws=add(I.emitter(c.clawTips,{rate:0,radius:.03,drip:1.6,alpha:.6}));
@@ -830,7 +834,7 @@ function spawn(kind,pos,opts={}){
   const S=kind==='vigilant'?sharedUniforms('#e2dcff',1.1,'#cfc8e0',1.7):sharedUniforms(kind==='stag'?'#b58cff':'#a37cff',kind==='stag'?1.8:1.7,kind==='stag'?'#2a1446':'#24103a',kind==='stag'?.5:.65);
   const SV=kind==='vigilant'?sharedUniforms('#a37cff',2.0,'#12081e',.5):null;   // the Vigilant's ink skin fades on its own
   const mat={uniforms:S}; // one set of uniforms drives every ink part of this monster (fade, flash, rim)
-  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):kind==='brineling'?buildBrineling(S):kind==='nameless'?buildNameless(S):kind==='vigilant'?buildVigilant(S,SV):buildStag(S);
+  const parts=kind==='hollow'?buildHollow(S):kind==='hound'?buildHound(S):kind==='brineling'?buildBrineling(S):kind==='nameless'?buildNameless(S):kind==='vigilant'?buildVigilant(S,SV):kind==='drowned'?buildDrowned(S):buildStag(S);
   const y=G.floorAt(pos.x,pos.z,(pos.y!=null?pos.y:H(pos.x,pos.z))+1);
   const m={kind,boss:kind==='stag',parts,mat,rimBase:mat.uniforms.uRim.value.clone(),pos:V(pos.x,y,pos.z),home:V(pos.x,y,pos.z),
     zone:opts.zone||{x:pos.x,z:pos.z,r:20,name:'adhoc'},heading:opts.heading!=null?opts.heading:rnd()*TAU,hp:p.hp,maxHp:p.hp,
@@ -854,12 +858,14 @@ function spawn(kind,pos,opts={}){
   if(opts.cave)m.cave=opts.cave;
   if(opts.undercroft)m.undercroft=opts.undercroft;
   if(kind==='vigilant'){ m.skinS=SV; initVigilant(m,opts); }
+  if(kind==='drowned')initDrowned(m,opts);
   if(kind==='nameless'&&opts.eatsMoths){ m.mothHunter=true; m.eatsMoths=true; m.mothRate=P.nameless.eatRate; }
   list.push(m);
   if(opts.board||opts.raid){ const R=raftInfo(); if(R)startGrip(m,R,opts.raid&&opts.raid.side,opts.raid&&opts.raid.along); }
   return m;
 }
 function onHit(m,info){
+  if(m.kind==='drowned'){ hitDrowned(m,info); return; }
   if(!m.alive||m.dying)return;
   if(m.kind==='vigilant'&&vigilantGlance(m,info))return;   // the ink skin turns the blow (TEMPLE.md)
   let d=info.damage||1;
@@ -879,6 +885,7 @@ function onHit(m,info){
   if(m.boss&&m.state==='staggered')G.ui.shake&&G.ui.shake(.15);
 }
 function die(m,info){
+  if(m.kind==='drowned'){ if(!m.dying)dieDrowned(m,info); return; }
   if(m.raid)knockOff(m,info);
   m.dying=true; m.hp=0; dropToken(m); m.st=0; m.state='dying';
   m.center.set(m.pos.x,m.pos.y+P[m.kind].height*.55,m.pos.z);
@@ -1221,7 +1228,7 @@ function updateBrineling(m,dt){
   if(m.onRaft&&!R)m.onRaft=null;
   m.scanT=(m.scanT||0)-dt;
   if(m.scanT<=0||(m.prey&&!swarmMoth(m.prey))){ m.scanT=.3; m.prey=nearestMoth(m.pos,m.onRaft?R.r+2.5:p.mothR,m.onRaft?3:6); }
-  const angry=!m.onRaft&&G.time-(m.lastHit||-99)<p.angryT;
+  const angry=!m.onRaft&&(G.time-(m.lastHit||-99)<p.angryT||(m.provokedUntil!=null&&G.time<m.provokedUntil));   // provokedUntil: opt-in, the north island's beach crabs (northisle_foes.js)
   const near=pp&&dP<1.8&&Math.abs(pp.y-m.pos.y)<1.5;
   m.crowd=near?(m.crowd||0)+dt:Math.max(0,(m.crowd||0)-dt*.5);
   const canPinch=()=>m.cool<=0&&pp&&playerAlive()&&dP<p.pinchRange&&Math.abs(pp.y-m.pos.y)<1.4&&takeToken(m);
@@ -1502,6 +1509,7 @@ function updateRings(dt){
 /* ---------------------------------------------------------------- per-frame */
 function updateMonster(m,dt){
   m.st+=dt;
+  if(m.dying&&m.kind==='drowned'){ dyingDrowned(m,dt); return; }
   if(m.dying){
     const dur=m.boss?3.2:1.3;
     // the form loses cohesion: it shudders, sheds smoke in sheets, dissolves, then bursts
@@ -1534,6 +1542,7 @@ function updateMonster(m,dt){
   else if(m.kind==='nameless')updateNameless(m,dt);
   else if(m.kind==='vigilant')updateVigilant(m,dt);
   else if(m.kind==='brineling'){ updateBrineling(m,dt); if(!m.alive)return; }
+  else if(m.kind==='drowned'){ updateDrowned(m,dt); if(!m.alive)return; }
   else updateStag(m,dt);
   if(m.state!=='return'&&!m.boss&&m.st>0&&m.zone)leashHeal(m,dt);
   if(!m.noSettle){ applyKnock(m,dt); settle(m,dt); }
@@ -1548,7 +1557,7 @@ function render(m,dt){
   const c=m.parts;
   c.root.position.copy(m.pos); c.root.rotation.y=m.heading;
   c.root.updateMatrixWorld(true);
-  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else if(m.kind==='vigilant')animVigilant(m,dt); else if(!m.dying)animStag(m,dt);
+  if(m.kind==='hollow')animHollow(m,dt); else if(m.kind==='hound')animHound(m,dt); else if(m.kind==='brineling')animBrineling(m,dt); else if(m.kind==='nameless')animNameless(m,dt); else if(m.kind==='vigilant')animVigilant(m,dt); else if(m.kind==='drowned'){ if(!m.dying)animDrowned(m,dt); } else if(!m.dying)animStag(m,dt);
 }
 
 /* ---------------------------------------------------------------- spawning */
@@ -1809,6 +1818,270 @@ function animVigilant(m,dt){
   if(m.skin&&k>0&&(m.burnT>0||beamTouches(m.skinPos,.95))&&rnd()<dt*30){ const a=rnd()*TAU;
     ember(m.pos.x+Math.cos(a)*.4,m.pos.y+.6+rnd()*1.6,m.pos.z+Math.sin(a)*.4,Math.cos(a)*.6,1+rnd()*1.5,Math.sin(a)*.6,.5+rnd()*.4,.18);
     puff(m.pos.x+Math.cos(a)*.35,m.pos.y+.8+rnd()*1.4,m.pos.z+Math.sin(a)*.35,0,.9,0,.8,.25,.8,.6,cInk,0,1); }
+}
+
+/* =====================================================================
+   THE DROWNED (north island, slice 5; Agent C — placed by js/northisle_foes.js)
+   The crews the green light put on the rocks, stirring among their cairns while the lure burns. Not ink: sailors in
+   waterlogged oilskins and sou'westers, weed in their hair, seawater sloughing off them, a cold green light in the eyes.
+   · They rise out of the ground (state 'rise', riseT s; spawn with opts.rise) and sink back into it (m.sinkAway = true:
+     state 'sink', sinkT s, then gone without a kill).
+   · Slow and heavy. A grab: both arms come up and forward over a long, readable wind-up, then a short heavy step
+     (2 half-hearts). From a few metres off, a lurch: they rear back and throw themselves forward with both arms
+     (2 half-hearts, longer wind-up). Blows rock them less than other things (kb) and only stagger them now and then
+     (a heavy blow, or the first in `poise` s): mashing doesn't hold one off, and once the arms are up the staff
+     won't stop it (Ember's nip still does: G.monsters.interrupt). Step or roll out of the way.
+   · opts.avoid = [{x,z,r}]: ground they will not step on (the Margery's corner: those men rest).
+   · Death: they fold and collapse into wet sand and weed (no ink, no gore); monster:killed {kind:'drowned'} as usual.
+   ===================================================================== */
+P.drowned={hp:12,radius:.45,height:1.9,aggro:15,speed:1.55,wander:.45,grabRange:2.3,grabWind:1.05,grabDist:1.7,grabDmg:2,
+  lurchMin:3.4,lurchMax:5.6,lurchWind:1.3,lurchDist:3.1,lurchDmg:2,recover:1.25,hurt:.4,kb:.45,poise:1.6,riseT:2.2,sinkT:1.9,dieT:1.7};
+const DR={oil:U.col('#2c2e1e'),oil2:U.col('#44432a'),salt:U.col('#7f8274'),weed:U.col('#223520'),weed2:U.col('#41562e'),
+  cloth:U.col('#1f1f22'),boot:U.col('#161311'),skin:U.col('#5f6e66'),skin2:U.col('#86927f'),hair:U.col('#1b1f1a'),rope:U.col('#6a5839'),
+  water:U.col('#a9bcbd'),sand:U.col('#8c8169'),eye:'#7dffbf'};
+let drGeo=null;
+function drownedGeos(){
+  if(drGeo)return drGeo;
+  const GE=G.world&&G.world.geo; if(!GE)return null;
+  const c=new THREE.Color(), nz=(x,y,z)=>U.vnoise?U.vnoise(x,y+z*.7):.5;
+  // oilskin: darker where it's sodden (low down, in the folds), salt-pale where it dried on the shoulders, weed stains at the hem
+  const oil=(p,n,o)=>{ o.copy(DR.oil).lerp(DR.oil2,.55*U.smooth(.4,.75,nz(p.x*7+2,p.y*5,p.z*7))); if(p.y<.62)o.lerp(DR.weed,.5*(1-U.smooth(.3,.62,p.y))*U.smooth(.35,.7,nz(p.x*11,p.y*9+4,p.z*11)));
+    if(n.y>.5)o.lerp(DR.salt,.35*U.smooth(.5,.9,n.y)); o.multiplyScalar(.85+.15*nz(p.x*19,p.y*17,p.z*19)); };
+  const skin=(p,n,o)=>{ o.copy(DR.skin).lerp(DR.skin2,.4*U.smooth(.4,.8,nz(p.x*14+5,p.y*14,p.z*14))); };
+  // the body: trouser legs and sea-boots under a long coat (ragged at the hem), a rope belt
+  const parts=[];
+  for(const s of [-1,1]){
+    parts.push({g:new THREE.CylinderGeometry(.095,.11,.8,8),m:GE.mat4(s*.12,.42,0,0,0,s*.04),c:DR.cloth});
+    parts.push({g:new THREE.CylinderGeometry(.12,.13,.3,9),m:GE.mat4(s*.13,.15,.02),c:DR.boot});
+    parts.push({g:new THREE.BoxGeometry(.2,.09,.3),m:GE.mat4(s*.13,.045,.07),c:DR.boot}); }
+  const sk=new THREE.LatheGeometry([[.25,1.0],[.3,.82],[.37,.55],[.42,.32],[.41,.3]].map(([r,y])=>new THREE.Vector2(r,y)),18,0,TAU);
+  { const p=sk.attributes.position; for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i), a=Math.atan2(x,z);
+      if(y<.4){ const tear=(nz(a*3+1,0,0)-.5)*.22+(Math.sin(a*7)>.6?.12:0); p.setY(i,y+tear); }
+      const k=1+.05*(nz(a*4,y*6,0)-.5); p.setX(i,x*k); p.setZ(i,z*k*.92); } sk.computeVertexNormals(); }
+  parts.push({g:sk,c:oil});
+  parts.push({g:new THREE.TorusGeometry(.265,.025,5,18),m:GE.mat4(0,.93,0,PI/2,0,0),c:DR.rope});
+  const body=GE.mergeParts(parts);
+  // the torso (in the upper group, from the waist), a turned-up collar
+  const front=(p,n,o)=>{ oil(p,n,o); if(p.z>.1&&Math.abs(p.x)<.035)o.multiplyScalar(.55); };
+  const tp=[{g:sweep([[0,-.06,0,.26,.2],[0,.22,.03,.29,.21],[0,.45,.06,.3,.2],[0,.56,.08,.22,.16],[0,.62,.09,.1,.09]],12,3),c:front},
+    {g:new THREE.CylinderGeometry(.15,.21,.12,12,1,true),m:GE.mat4(0,.6,.08,.15,0,0),c:oil}];
+  for(let k=0;k<3;k++)tp.push({g:new THREE.SphereGeometry(.022,6,4),m:GE.mat4(.045,.1+k*.15,.235+k*.012),c:DR.salt});
+  const torso=GE.mergeParts(tp);
+  // the head: a swollen grey face (sockets dark, the mouth slack), lank hair, a sou'wester with the back brim drooping
+  const face=new THREE.SphereGeometry(.14,16,12); face.scale(.94,1.1,.97);
+  const fc=(p,n,o)=>{ skin(p,n,o); const eye=Math.exp(-Math.pow((p.y-.015)/.03,2))*Math.exp(-Math.pow((Math.abs(p.x)-.05)/.035,2))*(p.z>.06?1:0);
+    const mouth=Math.exp(-Math.pow((p.y+.07)/.018,2))*Math.exp(-Math.pow(p.x/.04,2))*(p.z>.06?1:0); o.lerp(DR.hair,Math.min(1,eye*1.2+mouth*.9)); };
+  const brim=new THREE.CylinderGeometry(.27,.27,.025,18,1); { const p=brim.attributes.position; for(let i=0;i<p.count;i++){ const z=p.getZ(i), x=p.getX(i);
+      if(z<0)p.setY(i,p.getY(i)+z*.45); p.setZ(i,z<0?z*1.25:z); p.setY(i,p.getY(i)-Math.abs(x)*.12); } brim.computeVertexNormals(); }
+  const hp=[{g:face,c:fc},
+    {g:new THREE.SphereGeometry(.165,14,8,0,TAU,0,PI*.4),m:GE.mat4(0,.075,-.02,-.12,0,0,1,1,1.06),c:oil},
+    {g:brim,m:GE.mat4(0,.095,-.02,-.16,0,0),c:oil}];
+  for(let k=0;k<7;k++){ const a=PI*(.55+k*.13), x=Math.sin(a)*.12, z=Math.cos(a)*.12;
+    hp.push({g:new THREE.ConeGeometry(.022,.2+(k%3)*.05,4),m:GE.mat4(x,-.07,z,PI,0,(x)*.6),c:(q,n,o)=>o.copy(DR.hair).lerp(DR.weed,.5)}); }
+  const head=GE.mergeParts(hp);
+  // arms: an oilskin sleeve, then the forearm with a frayed cuff and a pale, puffy hand
+  const upper=GE.mergeParts([{g:sweep([[0,.04,0,.085],[0,-.15,.01,.08],[0,-.31,.02,.072]],8,3),c:oil}]);
+  const fp=[{g:sweep([[0,0,0,.07],[0,-.14,.02,.066],[0,-.25,.035,.06]],8,3),c:oil},
+    {g:new THREE.CylinderGeometry(.075,.07,.06,9,1,true),m:GE.mat4(0,-.25,.035),c:DR.oil2},
+    {g:GE.blob(.065,1,3.3,.18),m:GE.mat4(0,-.33,.05,0,0,0,.9,1.15,.7),c:skin}];
+  for(let k=0;k<4;k++){ const x=(k-1.5)*.026; fp.push({g:new THREE.ConeGeometry(.016,.11,5),m:GE.mat4(x,-.42,.06,PI-.15,0,0),c:skin}); }
+  const fore=GE.mergeParts(fp);
+  drGeo={body,torso,head,upper,fore};
+  return drGeo;
+}
+function buildDrowned(S){
+  const G0=drownedGeos();
+  const mat=G.toon('#ffffff',{vertexColors:true,emissive:'#060a08',side:THREE.DoubleSide});
+  const weedMat=G.toon('#2d4228',{emissive:'#050805'});
+  const root=new THREE.Group(), body=new THREE.Group(); root.add(body);
+  const meshes=[];
+  const mk=(par,g,x,y,z)=>{ const m=new THREE.Mesh(g?g.clone():new THREE.BoxGeometry(.4,1.8,.3),mat); m.position.set(x||0,y||0,z||0); par.add(m); meshes.push(m); return m; };
+  const bm=mk(body,G0&&G0.body); if(G.outline)G.outline(bm,{thickness:.016,color:'#06040a'});
+  const upper=new THREE.Group(); upper.position.y=.92; body.add(upper);
+  const tm=mk(upper,G0&&G0.torso);
+  const head=new THREE.Group(); head.position.set(0,.74,.13); upper.add(head);
+  const hm=mk(head,G0&&G0.head); if(G.outline)G.outline(hm,{thickness:.012,color:'#06040a'});
+  // the green fire's light in the eyes (one small hot point each, one soft halo between them)
+  const eyes=[], eyeMats=[];
+  for(const s of [-1,1]){ const e=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.flame,color:U.col(DR.eye).multiplyScalar(2.6),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false}));
+    e.scale.setScalar(.07); e.position.set(s*.05,.015,.14); e.renderOrder=4; head.add(e); eyes.push(e); eyeMats.push(e.material); }
+  const halo=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:U.col('#3fd98a'),blending:THREE.AdditiveBlending,transparent:true,depthWrite:false,opacity:.32}));
+  halo.scale.setScalar(.75); halo.position.set(0,.02,.12); halo.renderOrder=4; head.add(halo); eyeMats.push(halo.material);
+  const arms=[];
+  for(const s of [-1,1]){ const sh=new THREE.Group(); sh.position.set(s*.29,.5,.06); upper.add(sh); mk(sh,G0&&G0.upper);
+    const el=new THREE.Group(); el.position.set(0,-.31,.02); sh.add(el); mk(el,G0&&G0.fore);
+    arms.push({sh,el,s,tip:anchor(el,0,-.4,.06),cuff:anchor(el,0,-.25,.035)}); }
+  // weed hanging from the hat brim, and drips: from the hem, the cuffs and the brim
+  const ribbonsDef=[{a:anchor(head,-.17,.0,-.06),o:{n:6,len:.55,r0:.028,r1:.006,dir:V(-.15,-1,-.2),stiff:7,wave:.05,freq:1.6},mat:weedMat},
+    {a:anchor(head,.12,-.02,-.16),o:{n:6,len:.48,r0:.024,r1:.005,dir:V(.1,-1,-.3),stiff:7,wave:.05,freq:1.9},mat:weedMat}];
+  const drips=[anchor(body,.3,.42,.1),anchor(body,-.32,.4,-.05),anchor(body,.05,.35,-.38),anchor(head,.2,.0,.1),anchor(head,-.1,-.02,-.22)];
+  for(const a of arms)drips.push(a.cuff,a.tip);
+  return {root,body,upper,head,arms,eyes,eyeMats,halo,mat,weedMat,meshes,shadow:[bm,tm],drips,ribbonsDef,
+    mats:[],extra:[mat,weedMat],tendrils:[],clawTips:arms.map(a=>a.tip)};
+}
+function initDrowned(m,opts){
+  m.hb.name='Drowned'; m.hb.lockOffset=1.45;
+  m.avoid=Array.isArray(opts.avoid)?opts.avoid:[];
+  m.riseK=1; m.dripAcc=0; m.sway=rnd()*TAU;
+  for(const o of m.parts.shadow)o.castShadow=true;
+  if(opts.rise){ m.state='rise'; m.riseK=0; m.parts.body.position.y=-2.1; }
+}
+/* wet things: seawater spray (hits), sand and weed (rising, sinking, dying) */
+function drSpray(pos,dir,power){
+  for(let k=0;k<Math.round(10*power);k++){ const s=(1.2+rnd()*2.6)*power;
+    puff(pos.x,pos.y+(rnd()-.5)*.3,pos.z,dir.x*s+(rnd()-.5)*1.8,.8+rnd()*2.2,dir.z*s+(rnd()-.5)*1.8,1.2+rnd()*.6,.12,.08,.85,DR.water,10,.4); }
+  for(let k=0;k<Math.round(5*power);k++)puff(pos.x,pos.y,pos.z,dir.x*1.5+(rnd()-.5),.4+rnd()*.6,dir.z*1.5+(rnd()-.5),.5+rnd()*.4,.25,.7,.35,DR.water,0,2.5);
+}
+function drEarth(x,y,z,r,n){
+  for(let k=0;k<n;k++){ const a=rnd()*TAU, rr=r*Math.sqrt(rnd());
+    puff(x+Math.cos(a)*rr,y+.05,z+Math.sin(a)*rr,Math.cos(a)*.8,.3+rnd()*.9,Math.sin(a)*.8,.7+rnd()*.7,.25,.8,.55,rnd()<.25?DR.weed2:DR.sand,1.5,1.6); }
+}
+function hitDrowned(m,info){
+  if(!m.alive||m.dying||m.state==='sink')return;
+  let d=info.damage||1;
+  if(m.state==='return'&&info.kind!=='swarm'){ m.flash=.5; setState(m,'chase'); m.aggro=true; return; }
+  m.hp-=d; m.flash=1; m.lastHit=G.time;
+  m.center.set(m.pos.x,m.pos.y+1.2,m.pos.z);
+  const dir=info.dir||V(0,0,1);
+  drSpray(m.center,dir,info.kind==='swarm'?.3:1);
+  const kb=(info.knockback==null?5:info.knockback)*P.drowned.kb;
+  m.kv.x+=dir.x*kb; m.kv.z+=dir.z*kb;
+  m.aggro=true;
+  if(m.hp<=0){ dieDrowned(m,info); return; }
+  // heavy: a blow only staggers one if it's a heavy one (a charged swing, a slam, a plunge) or the first in a while;
+  // otherwise it takes it and comes on. Once the arms are up nothing the staff does stops the grab: step out of the way
+  if(info.kind!=='swarm'&&m.state!=='attack'&&m.state!=='windup'&&m.state!=='rise'&&(d>=4||G.time-(m.flinchT||-99)>P.drowned.poise)){ m.flinchT=G.time; dropToken(m); setState(m,'hurt'); }
+}
+function dieDrowned(m,info){
+  m.dying=true; m.hp=0; dropToken(m); m.st=0; m.state='dying';
+  m.center.set(m.pos.x,m.pos.y+1,m.pos.z); drSpray(m.center,(info&&info.dir)||V(0,0,1),1.2);
+  if(rnd()<.35){try{G.pickups.spawn('heart',m.pos.clone().setY(m.pos.y+.3));}catch(e){}}
+  G.emit('monster:killed',{kind:m.kind,pos:m.pos.clone(),boss:false});
+}
+/* folding down into the sand: knees, then forward onto the hands, then flat, then nothing but a wet heap (northisle_foes.js leaves the heap) */
+function dyingDrowned(m,dt){
+  const p=P.drowned, c=m.parts, k=Math.min(1,m.st/p.dieT);
+  m.fade=1-U.smooth(.62,1,k);
+  c.root.position.copy(m.pos); c.root.rotation.y=m.heading;
+  c.body.position.y=-U.smooth(.05,.9,k)*1.05; c.body.scale.set(1+k*.25,1-k*.45,1+k*.25);
+  c.upper.rotation.x=U.damp(c.upper.rotation.x,1.25,5,dt); c.head.rotation.x=U.damp(c.head.rotation.x,.6,4,dt);
+  for(const a of c.arms){ a.sh.rotation.x=U.damp(a.sh.rotation.x,-1.2,5,dt); a.sh.rotation.z=U.damp(a.sh.rotation.z,a.s*.5,5,dt); }
+  for(const x of c.extra){ if(m.fade<1&&!x.transparent){ x.transparent=true; x.needsUpdate=true; } x.opacity=m.fade; }
+  for(const e of c.eyeMats)e.opacity=Math.max(0,1-k*2.2)*(e===c.halo.material?.32:1);
+  if(m.fxK>0&&rnd()<dt*26)drEarth(m.pos.x,m.pos.y,m.pos.z,.7,1);
+  if(m.fxK>0&&rnd()<dt*14){ const a=c.drips[(rnd()*c.drips.length)|0]; a.getWorldPosition(_v); puff(_v.x,_v.y,_v.z,0,-.2,0,1.2,.1,.07,.8,DR.water,9,.3); }
+  if(m.fx&&m.fx.pool)m.fx.pool.intensity=m.fade*m.fxK;
+  if(m.st>p.dieT){ drEarth(m.pos.x,m.pos.y,m.pos.z,1,14); remove(m); }
+}
+function drAvoid(m){
+  for(const a of m.avoid){ const dx=m.pos.x-a.x, dz=m.pos.z-a.z, d=Math.hypot(dx,dz), R=a.r+P.drowned.radius;
+    if(d<R){ if(d>1e-4){ const k=(R-d)/d; m.pos.x+=dx*k; m.pos.z+=dz*k; } else m.pos.x+=R; if(m.wt&&Math.hypot(m.wt.x-a.x,m.wt.z-a.z)<R)m.wt=null; } }
+}
+const drAvoiding=(m,x,z)=>m.avoid.some(a=>Math.hypot(x-a.x,z-a.z)<a.r+P.drowned.radius+.2);
+function updateDrowned(m,dt){
+  const p=P.drowned, pp=playerPos(), dP=pp?U.dist2(m.pos,pp):1e9, dy=pp?Math.abs(pp.y-m.pos.y):99;
+  m.flare=U.damp(m.flare,0,3.5,dt);
+  m.hb.targetable=m.state!=='rise'&&m.state!=='sink';
+  if(m.sinkAway&&m.state!=='sink'){ dropToken(m); setState(m,'sink'); }
+  switch(m.state){
+    case 'rise':{
+      const k=Math.min(1,m.st/p.riseT); m.riseK=k; m.speedNow=0;
+      if(pp)faceTo(m,pp.x,pp.z,1.2,dt);
+      if(m.fxK>0&&rnd()<dt*(30*(1-k)+4))drEarth(m.pos.x,m.pos.y,m.pos.z,.9,1);
+      if(k>=1){ m.riseK=1; m.aggro=true; m.cool=.6+rnd()*.8; setState(m,'chase'); }
+      break;}
+    case 'sink':{
+      const k=Math.min(1,m.st/p.sinkT); m.riseK=1-k; m.speedNow=0;
+      if(m.fxK>0&&rnd()<dt*(26*k+4))drEarth(m.pos.x,m.pos.y,m.pos.z,.9,1);
+      if(k>=1){ drEarth(m.pos.x,m.pos.y,m.pos.z,.9,8); remove(m); return; }
+      break;}
+    case 'idle':
+      if(!m.wt||U.dist2(m.pos,m.wt)<.8){
+        if(m.pause>0){ m.pause-=dt; m.speedNow=0; }
+        else { let x,z,k=0; do{ const a=rnd()*TAU, r=1+rnd()*Math.min(6,m.zone.r*.4); x=m.home.x+Math.cos(a)*r; z=m.home.z+Math.sin(a)*r; k++; }while((!okGround(x,z)||drAvoiding(m,x,z))&&k<10);
+          m.wt=V(x,0,z); m.pause=2+rnd()*4; }
+      } else { faceTo(m,m.wt.x,m.wt.z,1.6,dt); if(!moveDir(m,m.heading,p.wander,dt))m.wt=null; m.speedNow=p.wander; }
+      if(!playerFar(m)&&dP<p.aggro&&dy<7)setState(m,'chase');
+      break;
+    case 'chase':{
+      if(playerFar(m)||U.dist2(m.pos,m.home)>m.zone.r+LEASH+5){ setState(m,'return'); break; }
+      m.cool-=dt;
+      faceTo(m,pp.x,pp.z,2.4,dt);
+      const toP=Math.atan2(pp.x-m.pos.x,pp.z-m.pos.z);
+      const ready=m.cool<=0&&dP<7&&dy<1.6&&takeToken(m);   // holding the attack token = allowed to close in
+      if(ready&&dP<p.grabRange){ m.atk='grab'; setState(m,'windup'); G.emit('drowned:windup',{pos:m.pos.clone(),atk:'grab',lead:p.grabWind,monster:m}); break; }
+      if(ready&&dP>p.lurchMin&&dP<p.lurchMax&&rnd()<dt*.6){ m.atk='lurch'; setState(m,'windup'); G.emit('drowned:windup',{pos:m.pos.clone(),atk:'lurch',lead:p.lurchWind,monster:m}); break; }
+      if(tokens.has(m)||dP>5.5){ if(dP>1.5){ moveDir(m,toP,p.speed,dt); m.speedNow=p.speed; } else m.speedNow=0; }
+      else { // the others close round him at arm's length and wait their turn, drifting a little
+        const ring=3.4, side=toP+PI/2*m.orbit; let a=side, s=p.speed*.3;
+        if(dP<ring-.6){ a=toP+PI; s=p.speed*.5; } else if(dP>ring+.8){ a=toP; s=p.speed*.8; }
+        if(!moveDir(m,a,s,dt))m.orbit*=-1; m.speedNow=s; }
+      break;}
+    case 'windup':{
+      const W=m.atk==='lurch'?p.lurchWind:p.grabWind;
+      if(pp)faceTo(m,pp.x,pp.z,m.st<W*.65?3.5:.8,dt);
+      m.flare=Math.min(1,m.st/W*1.15); m.speedNow=0;
+      if(m.st>=W){ m.hitSet.clear(); m.travel=0; setState(m,'attack'); G.emit('drowned:grab',{pos:m.pos.clone(),atk:m.atk,monster:m}); }
+      break;}
+    case 'attack':{
+      m.flare=1; const fx=Math.sin(m.heading), fz=Math.cos(m.heading), L=m.atk==='lurch'?p.lurchDist:p.grabDist, v=L/(m.atk==='lurch'?.42:.32);
+      if(m.travel<L){ moveDir(m,m.heading,v,dt); m.travel+=v*dt;
+        strikeAt(m,m.pos.x+fx*.85,m.pos.y+1.15,m.pos.z+fz*.85,1.0,m.atk==='lurch'?p.lurchDmg:p.grabDmg,m.atk==='lurch'?7:5,'melee'); }
+      if(m.st>(m.atk==='lurch'?.55:.45))setState(m,'recover');
+      break;}
+    case 'recover':
+      m.speedNow=0;
+      if(m.st>p.recover*(m.atk==='lurch'?1.3:1)){ dropToken(m); m.cool=1.3+rnd()*1.5; setState(m,'chase'); }
+      break;
+    case 'hurt':
+      m.speedNow=0;
+      if(m.st>p.hurt){ m.cool=Math.max(m.cool,.7); setState(m,'chase'); }
+      break;
+    case 'return':
+      goHome(m,dt,p.speed);
+      if(!playerFar(m)&&dP<p.aggro*.6)setState(m,'chase');
+      break;
+  }
+  if(m.state!=='attack'&&m.state!=='rise'&&m.state!=='sink')separation(m,dt);
+  drAvoid(m);
+  m.noSettle=false;
+}
+function animDrowned(m,dt){
+  const c=m.parts, t=G.time, s=m.state, sp=m.speedNow||0;
+  const W=s==='windup', A=s==='attack', R=s==='recover', Hh=s==='hurt', lurch=m.atk==='lurch';
+  m.phase+=dt*(.6+sp*1.8);
+  // out of the ground (and back into it): the whole body below the surface, coming up at a tilt
+  const rk=m.riseK==null?1:m.riseK, up=s==='rise'?U.smooth(0,1,rk):s==='sink'?rk*rk:1;
+  c.body.position.y=-2.1*(1-up)+(up>=1?Math.abs(Math.sin(m.phase*2))*.03*Math.min(1,sp*1.5):0);
+  c.body.rotation.x=(1-up)*(s==='rise'?-.35:.3);
+  // a heavy, rolling shuffle, the weight dragged from foot to foot; a lolling head
+  c.body.rotation.z=U.damp(c.body.rotation.z,Math.sin(m.phase*2)*.08*Math.min(1,sp+.25)+Math.sin(t*.7+m.sway)*.03,5,dt);
+  const lean=W?(lurch?-.3:-.12)*m.flare:A?(lurch?.75:.55):Hh?-.15:R?.4:.28+Math.sin(t*.5+m.sway)*.04;
+  c.upper.rotation.x=U.damp(c.upper.rotation.x,lean,A?16:6,dt);
+  c.head.rotation.x=U.damp(c.head.rotation.x,W||A?-.25:.15+Math.sin(t*.43+m.sway)*.1,4,dt);
+  c.head.rotation.z=U.damp(c.head.rotation.z,W||A?0:Math.sin(t*.31+m.sway*1.3)*.22,2.5,dt);
+  for(const a of c.arms){
+    let sx=.08+Math.sin(m.phase*2+(a.s>0?0:PI))*.12*Math.min(1,sp), sz=a.s*.07, ex=-.12;
+    if(W){ sx=(lurch?-2.6:-1.9)*m.flare; sz=a.s*(lurch?.45:.2)*m.flare; ex=-(lurch?.2:.5)*m.flare; }
+    else if(A){ sx=-1.5; sz=-a.s*.08; ex=-.1; }
+    else if(R){ sx=-.75; ex=-.45; }
+    else if(s==='rise'){ sx=-2.4*(1-up)+.08; ex=-.6*(1-up); }        // clawing up out of the ground
+    a.sh.rotation.x=U.damp(a.sh.rotation.x,sx,A?24:6,dt); a.sh.rotation.z=U.damp(a.sh.rotation.z,sz,A?24:6,dt);
+    a.el.rotation.x=U.damp(a.el.rotation.x,ex,9,dt);
+  }
+  stepTendrils(m,dt,1+sp*.6,0);
+  // the green in the eyes: steady, brightening on the wind-up
+  const glow=m.fade*(.75+.25*Math.sin(t*2.3+m.sway))*(1+m.flare*1.4);
+  c.eyes.forEach(e=>e.scale.setScalar(.07*(1+m.flare*.8)));
+  c.eyeMats[0].opacity=c.eyeMats[1].opacity=Math.min(1,glow); c.halo.material.opacity=.3*glow; c.halo.scale.setScalar(.75*(1+m.flare*.6));
+  // hit flash (a pale sea-glint), seawater sloughing off as it moves
+  const f=m.flash; c.mat.emissive.setRGB(.025+f*.35,.04+f*.45,.035+f*.4);
+  const k=m.fxK;
+  if(k>0&&up>.4){ m.dripAcc+=dt*(5+sp*5+(A?14:0))*k;
+    while(m.dripAcc>=1){ m.dripAcc-=1; const a=c.drips[(rnd()*c.drips.length)|0]; a.getWorldPosition(_v);
+      puff(_v.x+(rnd()-.5)*.08,_v.y,_v.z+(rnd()-.5)*.08,(rnd()-.5)*.3,-.3,(rnd()-.5)*.3,1.1,.1,.07,.8,DR.water,9,.3); } }
+  if(m.fx&&m.fx.pool)m.fx.pool.intensity=Math.min(1,k*m.fade*up);
+  if(m.fx&&m.fx.body)m.fx.body.intensity=k*up*(.6+sp*.4);
 }
 
 /* ---------------------------------------------------------------- system */

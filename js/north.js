@@ -37,7 +37,9 @@ function build(){
   haloMat=new THREE.SpriteMaterial({map:G.tex.soft,color:U.col(COL),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,fog:false});
   halo=new THREE.Sprite(haloMat); halo.scale.setScalar(110); root.add(halo);
   // the beam: one long faint cone each way, like ours, seen side-on from the island as a slow sweep in the haze
-  const tex=G.canvasTex(64,(g,s)=>{ const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(255,255,255,0)'); gr.addColorStop(.75,'rgba(255,255,255,.4)'); gr.addColorStop(1,'rgba(255,255,255,1)'); g.fillStyle=gr; g.fillRect(0,0,s,s); });
+  // (canvas top = the fire end, bottom = the cone's open far end.) It thins out to nothing before the far end: the open rim,
+  // seen end-on from near the tower (or from home when it points our way), would otherwise hang in the sky as a hard pale disc.
+  const tex=G.canvasTex(64,(g,s)=>{ const gr=g.createLinearGradient(0,0,0,s); gr.addColorStop(0,'rgba(255,255,255,0)'); gr.addColorStop(.55,'rgba(255,255,255,.4)'); gr.addColorStop(.78,'rgba(255,255,255,.62)'); gr.addColorStop(.92,'rgba(255,255,255,.2)'); gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=gr; g.fillRect(0,0,s,s); });
   beamMat=new THREE.MeshBasicMaterial({map:tex,color:U.col(COL),transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide,fog:false});
   beam=new THREE.Group(); root.add(beam);
   for(const s of [1,-1]){ const g=new THREE.ConeGeometry(16,260,24,1,true); g.translate(0,-130,0); g.rotateZ(s*PI/2); g.rotateZ(-s*.03);

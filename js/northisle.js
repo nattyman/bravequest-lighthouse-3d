@@ -141,17 +141,18 @@ function buildFoam(){
   foam=new THREE.Mesh(g,foamMat); foam.name='northFoam'; foam.renderOrder=2; root.add(foam);
 }
 /* rocks, sea stacks and the cove's reef */
+const ROCKS=[];   // {x,z,r,y,top,kind:'reef'|'stack'|'boulder'} as built (read-only export: northisle_life.js keeps its dressing off them)
 function buildRocks(GE){
   const r=U.rng(7710), parts=[], rk=col('#5d6270'), rk2=col('#3c404c'), wet=col('#2e2c2c'), weed=col('#3a4a32');
   const rockC=(p,n,o)=>{ o.copy(rk2).lerp(rk,vnoise(p.x*2.2,p.z*2.2+p.y*1.4)); if(p.y<.4)o.lerp(wet,.55); if(n.y>.55&&p.y>.5&&p.y<2.5)o.lerp(weed,.3); };
-  const add=(x,z,s,sq,y)=>{ const g=GE.blob(1,1,x*.13+z*.07,.28); const yy=y==null?isleH(x,z)+s*.15:y; parts.push({g,m:GE.mat4(x,yy,z,r()*3,r()*3,r()*3,s*1.2,s*(sq||.8),s),c:rockC});
-    G.addCollider({x,z,r:s*1.05,y0:-12,y1:yy+s*(sq||.8)}); };
+  const add=(x,z,s,sq,y,kind)=>{ const g=GE.blob(1,1,x*.13+z*.07,.28); const yy=y==null?isleH(x,z)+s*.15:y; parts.push({g,m:GE.mat4(x,yy,z,r()*3,r()*3,r()*3,s*1.2,s*(sq||.8),s),c:rockC});
+    G.addCollider({x,z,r:s*1.05,y0:-12,y1:yy+s*(sq||.8)}); ROCKS.push({x,z,r:s*1.2,y:yy,top:yy+s*(sq||.8),kind:kind||'boulder'}); };
   // the reef either side of the cove mouth, where the boats broke
   for(const [da,dr,s] of [[-.32,-4,2.4],[-.27,-9,1.7],[-.38,-13,2.8],[.3,-5,2.2],[.36,-11,3.1],[.26,-15,1.6],[-.2,-18,1.3],[.18,-21,1.5]]){
-    const a=COVE_A+da, R=shoreR(a)-dr; add(C.x+Math.cos(a)*R,C.z+Math.sin(a)*R,s,.75); }
+    const a=COVE_A+da, R=shoreR(a)-dr; add(C.x+Math.cos(a)*R,C.z+Math.sin(a)*R,s,.75,null,'reef'); }
   // sea stacks off the cliffs
   for(const [a,dr,s] of [[2.4,-10,4.5],[2.75,-16,3.2],[-.4,-12,5],[-1.4,-9,3.8],[-2.3,-14,4.2],[.55,-8,3.5]]){
-    const R=shoreR(a)-dr, x=C.x+Math.cos(a)*R, z=C.z+Math.sin(a)*R; add(x,z,s,1.9,-1.5); }
+    const R=shoreR(a)-dr, x=C.x+Math.cos(a)*R, z=C.z+Math.sin(a)*R; add(x,z,s,1.9,-1.5,'stack'); }
   // boulders on the moor and the crag
   for(let i=0;i<46;i++){ const a=r()*TAU, d=r()*58; const x=C.x+Math.cos(a)*d, z=C.z+Math.sin(a)*d; if(isleH(x,z)<3)continue;
     if(pathInfo(x,z).d<PW+1.4)continue; if(Math.hypot(x-TOWER.x,z-TOWER.z)<9)continue; add(x,z,.5+r()*1.4,.7); }
@@ -417,6 +418,9 @@ G.on('boat:built',()=>{ if(S.at==='north'&&G.boat&&G.boat.moorAt)G.boat.moorAt(N
 
 const API=G.northIsle={get inside(){ const P=G.player; return onIsland(P&&P.pos)||!!(G.northCave&&G.northCave.inside)||!!(G.northFire&&G.northFire.inside); },   // live (fog.js asks before this system runs)
   centre:C,tower:TOWER,cove:{beach:BEACH,moor:NMOOR,dir:COVE_DIR,mouthA:MOUTH_A},shoreR,setQuest:()=>setQuest(),box:BOX,path:PATH,
+  // read-only, for the island's dressing (northisle_life.js): distance to the path's centreline, its half-width, how much a
+  // spot is "the cove" (0..1, by bearing), and the rocks as built (reef, sea stacks, boulders; filled in init)
+  pathDist:(x,z)=>pathInfo(x,z).d, pathW:PW, coveK:(x,z)=>coveK(angTo(x,z)), rocks:ROCKS,
   get at(){ return S.at; }, get landed(){ return S.landed; }, get crossing(){ return X.on; }, get boatPos(){ return X.on&&X.dir==='north'?X.boatPos:null; }, get crossPhase(){ return X.phase; },
   height:isleH, inBox, cross, state:S, doorOut, get fireLook(){ return fireMode==='unset'?null:(fireMode||'lure'); },
   debug:{ arrive:(d)=>arrive(d||'north',true), get doorPos(){ return doorPos; }, boards:BOARDS, get pile(){ return S._pile; }, X }};

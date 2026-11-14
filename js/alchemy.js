@@ -829,6 +829,7 @@ function onBlightCured(e){
 }
 function onKilled(e){
   if(!looping()||!e||!e.pos)return;
+  if(e.kind==='drowned')return;   // drowned sailors aren't ink: they fall to sand and weed, no ichor
   const n=e.boss?5:1;
   for(let k=0;k<n;k++){ const a=Math.random()*TAU, s=n>1?1.5+Math.random()*1.5:0;
     const p=V(e.pos.x,e.pos.y+.9,e.pos.z);
