@@ -585,7 +585,7 @@ function buildAfter(GE){
   /* ---- before 'lived' (and in 'died'): the loose stones on the path's upper legs; the wreck of ours lying canted in the sand ---- */
   { const parts=[];
     for(const s of LOOSE){ const y=H(s.x,s.z); parts.push({g:GE.blob(1,0,s.seed,.25),m:GE.mat4(s.x,y+s.s*.2,s.z,r()*.4,r()*TAU,r()*.4,s.s*1.25,s.s*.65,s.s),c:stoneC(Math.floor(s.seed*7))}); }
-    const gy=Math.max(H(PATCH.x,PATCH.z),.2), M=boatMat(PATCH.x,gy+PATCH.R*.05,PATCH.z,PATCH.yaw,-.5,-.08);   // over on her side, half sunk in the sand
+    const gy=Math.max(H(PATCH.x,PATCH.z),.2), M=boatMat(PATCH.x,gy+PATCH.R*.05,PATCH.z,PATCH.yaw,.55,-.08);   // over on her side, half sunk in the sand
     parts.push({g:hullGeo(PATCH.L,PATCH.R),m:M,c:hullColour(M,PATCH.R,false)}); parts.push({g:transomGeo(PATCH.L,PATCH.R),m:M,c:col('#43362a')});
     for(let k=0;k<3;k++){ const lx=-1.5+k*1.4, lz=PATCH.side*(PATCH.R+.6+r()*.6), c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), x=PATCH.x+lx*c+lz*sn, z=PATCH.z-lx*sn+lz*c;
       parts.push({g:new THREE.BoxGeometry(1.4+r()*.8,.05,.17),m:GE.mat4(x,H(x,z)+.04,z,0,PATCH.yaw+(r()-.5)*.9,(r()-.5)*.1),c:col('#4a3b2d')}); }

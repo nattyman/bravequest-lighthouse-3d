@@ -137,7 +137,7 @@ const READS={
   look:{label:'Look home',name:'Look home',
     lines:{before:[N_('A flat stone set on the cliff’s edge for a seat, worn smooth, facing south.'),'Hesper’s light, clear across the water.','Whoever sits here can see it every night.'],
       known:['Hesper’s light, clear across the water.','He sat here too. He could see home from this rock every night for twenty years.','And he never once rowed for it.'],
-      lived:['Hesper’s light. And his behind me, burning gold.','Two keepers on one stretch of water. Anyone out there tonight has something honest to steer by.'],
+      lived:['Hesper’s light. And his behind me, burning gold.','Two keepers on one stretch of water. Anyone out there tonight has a true light to steer by.'],
       died:['Hesper’s light. The only one on this coast now.','Behind me the crag’s dark. Nothing up there for anyone to steer by, true or false.']},
     log:{before:'A stone seat on the west cliffs of the north island, facing our light across the water.',known:'His seat on the west cliffs, facing our light across the water.'}},
   /* ---- what the companions bring (companions.js calls companionFind) ---- */
