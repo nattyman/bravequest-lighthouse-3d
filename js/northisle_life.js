@@ -419,8 +419,9 @@ function buildFog(root,placed){
   cand.sort((a,b)=>b[0]-a[0]);
   const rr=U.rng(3131);
   for(const [,x,z] of cand){ if(spots.length>=18)break; const w=10+rr()*8, drift=2+rr()*2;
-    if(!clear(x,z,w*.42+drift,w*.25))continue; if(spots.some(s=>Math.hypot(s.x-x,s.z-z)<13))continue; if(towerD(x,z)<16)continue;
-    spots.push({x,z,w,drift,h:N.height(x,z)}); }
+    const ext=w*.5+2+drift*1.5;   // half the billboard, its offset from the spot, and how far it drifts
+    if(!clear(x,z,ext,w*.25))continue; if(spots.some(s=>Math.hypot(s.x-x,s.z-z)<13))continue; if(towerD(x,z)<16)continue;
+    spots.push({x,z,w,drift,ext,h:N.height(x,z)}); }
   const n=spots.length*2; if(!n){ placed.fog=[]; return; }
   const geo=new THREE.PlaneGeometry(1,1), att=new Float32Array(n*4);
   const mesh=new THREE.InstancedMesh(geo,null,n);
@@ -448,7 +449,7 @@ void main(){ float a=texture2D(uMap,vUv).a*2.*vA*smoothstep(.0,.4,vUv.y); vec3 c
 }`});
   mesh.material.uniforms.uMap.value=G.tex.soft;   // (merge clones textures; the clone would never upload)
   mesh.name='northLifeFog'; mesh.frustumCulled=false; mesh.renderOrder=3; root.add(mesh); L.fogMesh=mesh;
-  placed.fog=spots.map(s=>[s.x,s.z,+(s.w*.42+s.drift).toFixed(1)]);
+  placed.fog=spots.map(s=>[s.x,s.z,+s.ext.toFixed(2)]);
 }
 
 /* ================================================================ 8. THE FIRE'S COLOUR NEAR THE TOWER */
