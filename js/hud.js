@@ -51,6 +51,8 @@ function capSlide(){
   old.classList.add('leaving'); old.classList.remove('waiting','held'); old.setAttribute('aria-hidden','true');
   { const cv=old.querySelector('.capface canvas'); if(cv&&!capFace.hidden)try{ cv.getContext('2d').drawImage(capFaceCv,0,0); }catch(_){} } // a cloned canvas comes blank
   old.style.left=r.left+'px'; old.style.top=r.top+'px'; old.style.width=r.width+'px'; old.style.height=r.height+'px';
+  // one leaving card at a time: tapping through several lines quickly must not pile up half-faded copies (a doubled panel)
+  document.querySelectorAll('.caption.leaving').forEach(e=>e.remove());
   document.body.appendChild(old);
   const a=old.animate([{transform:'none',opacity:1},{transform:'translate(-26px,16px) rotate(-1.2deg)',opacity:0}],{duration:340,easing:'cubic-bezier(.4,0,.7,.2)',fill:'forwards'});
   const done=()=>old.remove(); a.onfinish=done; setTimeout(done,700);
@@ -196,11 +198,11 @@ G.ui={
   },
   /** Enter / a tap on the caption: finish the typing, else move on to the next waiting line (or dismiss). Returns what it did. */
   advance(){
-    if(!cur){ if(queue.length){ capShow(queue.shift()); return 'next'; } return ''; }
+    if(!cur){ if(queue.length){ capShow(queue.shift()); drawStack(); return 'next'; } return ''; }
     if(cur.i<cur.t.length){ cur.i=1e4; return 'complete'; } // the rest of its reading time still runs
     capEnd(true);
-    if(queue.length){ capShow(queue.shift()); return 'next'; }
-    capEl.classList.remove('show'); return 'dismiss';
+    if(queue.length){ capShow(queue.shift()); drawStack(); return 'next'; }
+    capEl.classList.remove('show'); drawStack(); return 'dismiss';   // the back cards follow at once (not a frame later)
   },
   objective(text,sub){
     if(text!=null&&objEl.textContent!==text){ objEl.textContent=text; objEl.classList.add('fresh'); clearTimeout(objTimer); objTimer=setTimeout(()=>objEl.classList.remove('fresh'),2600); }
@@ -265,7 +267,7 @@ capEl.addEventListener('contextmenu',e=>e.preventDefault());
 /* for tests and devtools: what is on screen and waiting */
 G.ui.captions=()=>({cur:cur&&{text:cur.t,who:cur.who,pri:cur.pri,key:cur.key,group:cur.group||null,face:typeof cur.face==='function'?'custom':cur.face||null,el:+cur.el.toFixed(2),read:+cur.read.toFixed(2),min:+cur.min.toFixed(2),typing:cur.i<cur.t.length,held:held(cur)},
   queue:queue.map(q=>({text:q.t,pri:q.pri,key:q.key,group:q.group||null,age:+q.age.toFixed(2)})), speed:CAP.speed});
-G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); drawStack(); };
+G.ui.clearCaptions=()=>{ queue.length=0; cur=null; capEl.classList.remove('show'); document.querySelectorAll('.caption.leaving').forEach(e=>e.remove()); drawStack(); };
 /** drop one scene's captions (said with {group}): the waiting ones and the one on screen. Other lines carry on. */
 G.ui.dropCaptions=group=>{
   if(!group)return 0; let n=0;
