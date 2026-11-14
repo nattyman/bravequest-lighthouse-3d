@@ -407,10 +407,29 @@ function buildNorth(){
   const F=G.northIsleFinds, CS=F&&F.companionSpots; if(!CS||!CS.grotto||!CS.stack)return;
   const g=SP.grotto, k=SP.stack; g.at.copy(CS.grotto.at); g.stand.copy(CS.grotto.stand); k.at.copy(CS.stack.at); k.stand.copy(CS.stack.stand); NORTH.ok=true;
   { const list=[], a=g.at, o=CS.grotto.out, yaw=Math.atan2(o.x,o.z), sx=Math.cos(yaw), sz=-Math.sin(yaw);   // o: from the rock face toward the island
-    // the cleft: a tall black wedge into the rock, a fox's width at the foot
-    list.push({geo:paintGeo(new THREE.ConeGeometry(.34,1.25,4),'#040304'),m:M4(a.x-o.x*.12,a.y+.32,a.z-o.z*.12,0,yaw+PI/4,0,1,1,.42)});
-    list.push({geo:box(.46,.36,.22,'#040304'),m:M4(a.x-o.x*.1,a.y-.1,a.z-o.z*.1,0,yaw,0)});
-    scratches(list,V(a.x+sx*.42+o.x*.06,a.y+.18,a.z+sz*.42+o.z*.06),yaw+PI/2,{len:.26,tilt:.15}); furTuft(list,V(a.x-sx*.3+o.x*.08,a.y-.18,a.z-sz*.3+o.z*.08));
+    // the cleft: a narrow fissure between two leaning slabs of the outcrop, a fox's width at the foot, closing to a crack
+    // overhead with a stone jammed in it. Inside, a funnel of dark rock going back into black (a recess, not a cut-out);
+    // broken flakes on its lips and scree spilled out in front. (In the frame f: toward the island, s: along the cliff.)
+    const gy=a.y-.25, W=(ss,yy,ff)=>V(a.x+sx*ss+o.x*ff,gy+yy,a.z+sz*ss+o.z*ff), RK='#47474f', RKC=(x,y,z,c)=>{ c.multiplyScalar(.72+.38*U.vnoise(x*4+z*2,y*4)); if(y>.55)c.lerp(U.col('#56603f'),.45*smooth(.55,.9,y)); };
+    { const outL=[[-.27,-.05],[-.25,.25],[-.2,.5],[-.17,.72],[-.12,.95],[-.07,1.18],[-.03,1.42]], outR=[[.05,1.36],[.07,1.12],[.13,.9],[.15,.66],[.2,.42],[.24,.18],[.26,-.05]];
+      const rim=outL.concat(outR).map(([ss,yy],k)=>[ss+.025*Math.sin(k*2.7),yy]), n=rim.length, cS=-.01, cY=.42;
+      const pos=[], col=[], idx=[], push=(ss,yy,ff,hex)=>{ const v=W(ss,yy,ff); pos.push(v.x,v.y,v.z); const c=U.col(hex); col.push(c.r,c.g,c.b); return pos.length/3-1; };
+      const R0=rim.map(([ss,yy])=>push(ss,yy,.08,'#3a3740')), R1=rim.map(([ss,yy])=>push(cS+(ss-cS)*.62,cY+(yy-cY)*.7,-.02,'#141217')), R2=rim.map(([ss,yy])=>push(cS+(ss-cS)*.3,cY+(yy-cY)*.4,-.1,'#050406')), c0=push(cS,cY,-.18,'#010101');
+      for(let k=0;k<n;k++){ const k1=(k+1)%n; idx.push(R0[k],R1[k],R0[k1],R0[k1],R1[k],R1[k1], R1[k],R2[k],R1[k1],R1[k1],R2[k],R2[k1], R2[k],c0,R2[k1]); }
+      for(let i=idx.length-3;i>=0;i-=3)idx.push(idx[i],idx[i+2],idx[i+1]);   // both faces (the set pieces' material is one-sided)
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); g.setIndex(idx); g.computeVertexNormals();
+      for(let i=0;i<g.attributes.normal.count;i++)g.attributes.normal.setXYZ(i,o.x,.2,o.z);   // lit as the rock face is, not as a funnel
+      list.push({geo:g}); }
+    // the two slabs that make its sides (leaning in over it), a chockstone wedged high up, flakes broken off its lips
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,0),RK,RKC),m:new THREE.Matrix4().compose(W(-.6,.74,0),new THREE.Quaternion().setFromEuler(new THREE.Euler(.05,yaw+.25,-.09)),V(.4,.92,.42))});
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,0),RK,RKC),m:new THREE.Matrix4().compose(W(.58,.66,0),new THREE.Quaternion().setFromEuler(new THREE.Euler(-.04,yaw-.3,.1)),V(.42,.86,.46))});
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,0),'#3d3c43',RKC),m:new THREE.Matrix4().compose(W(.01,1.4,-.02),new THREE.Quaternion().setFromEuler(new THREE.Euler(.3,yaw+.6,.2)),V(.19,.13,.17))});
+    for(const [ss,yy,ff,sc] of [[-.37,.95,.08,.07],[.34,.55,.1,.06],[-.35,.3,.1,.05],[.28,1.15,.06,.05]])list.push({geo:paintGeo(new THREE.TetrahedronGeometry(1,0),'#5a5960',RKC),m:new THREE.Matrix4().compose(W(ss,yy,ff),new THREE.Quaternion().setFromEuler(new THREE.Euler(ss*7,yy*5,ff*9)),V(sc,sc*1.6,sc*.7))});
+    // scree: chips of the same rock spilled out over the turf in front
+    for(let k=0;k<11;k++){ const ff=.15+((k*37)%11)/11*1.1, ss=(((k*53)%13)/13-.5)*(.5+ff*.7), sc=.04+((k*29)%7)/7*.09, v=W(ss,0,ff), gh=(G.world&&G.world.height)?G.world.height(v.x,v.z):gy;
+      list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,0),'#4e4d55',RKC),m:new THREE.Matrix4().compose(V(v.x,gh+sc*.35,v.z),new THREE.Quaternion().setFromEuler(new THREE.Euler(k,k*2.3,k*.7)),V(sc*1.3,sc*.6,sc))}); }
+    scratches(list,W(.42,.42,.3),yaw+PI/2,{len:.26,tilt:.15}); furTuft(list,W(-.3,.07,.12));
+    for(const ss of [-.6,.58]){ const v=W(ss,0,0); G.addCollider({x:v.x,z:v.z,r:.36,y0:gy-1,y1:gy+1.6}); }   // the slabs are solid (the slot between them is a fox's width)
     addPiece(list,'island',a,120); }
   { const list=[], n=k.at, f=CS.stack.face, L=Math.hypot(f.x,f.z)||1, fx=f.x/L, fz=f.z/L, yaw=Math.atan2(fx,fz);   // f: from the stack toward the cliff
     list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#5f5b57',(x,y,z,c)=>{ c.lerp(U.col('#4e5a3a'),smooth(.2,.9,y)*.5); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.42,n.z,0,.3,0,1.35,.5,1.25)});

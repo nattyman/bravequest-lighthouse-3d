@@ -72,6 +72,10 @@ ACT=lambda k,l: l!=G_NAMES.get(k)
 G_NAMES={'swift':'The Swift’s cairn','kittiwake':'The Kittiwake’s cairn','rose':'The Rose of Ardrey’s cairn','brennick':'The Brennick Lass’s cairn','providence':'The Providence’s cairn',
          'noname':'The nameless cairn','margery':'The Margery’s men','tally':'The tally marks','bunk':'The bunk','stove':'The stove','chair':'The chair by the window','toy':'The toy boat'}
 
+# the HUD settled before a screenshot: captions advanced just before it leave a sliding copy and fading cards mid-animation
+# (a software-rendered frame is slow), which read as a doubled caption panel in the shot
+SETTLE="(()=>{ document.querySelectorAll('.caption.leaving').forEach(e=>e.remove()); (document.getAnimations?document.getAnimations():[]).forEach(a=>{ try{ if(a.effect&&a.effect.getTiming().iterations!==Infinity)a.finish(); }catch(_){} }); 0; })()"
+
 def shot(name, js):
     return (name, js, None)
 
@@ -215,6 +219,7 @@ async def run(pg,steps,fails):
     if js is None:
       try:
         await pg.evaluate(SHOTJS[ok]); await pg.evaluate("(()=>{ const k=document.getElementById('keys'); if(k)k.style.visibility='hidden'; G.headless&&G.headless.draw&&G.headless.draw(3); })()"); await pg.wait_for_timeout(350)
+        await pg.evaluate(SETTLE)
         path=os.path.join(SHOTS,'story-'+ok+'.png'); await pg.screenshot(path=path,timeout=90000); print('shot',path)
       except Exception as e: print('shot failed',ok,str(e)[:200])
       try: await pg.evaluate("window._afterShot&&(window._afterShot(),window._afterShot=null);0")

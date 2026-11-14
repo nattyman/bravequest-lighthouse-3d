@@ -250,24 +250,41 @@ function buildWreck(GE,faces){
   const mesh=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); mesh.castShadow=true; mesh.receiveShadow=true; mesh.name='nifMargery'; root.add(mesh);
 }
 function buildBar(GE){
-  // a ribbon of lumpy rock and wet sand along the bar, its edges falling away under the sea; boulders along its flanks
-  const ns=Math.ceil(BSEG.len/.55), nd=12, EXT=BW+2.2, pos=[], cl=[], idx=[], c=new THREE.Color();
-  const at=s=>{ let g=BSEG[0]; for(const q of BSEG)if(s*BSEG.len>=q.s0)g=q; const t=clamp((s*BSEG.len-g.s0)/g.l,0,1); return {x:g.ax+g.dx*t,z:g.az+g.dz*t,nx:-g.dz/g.l,nz:g.dx/g.l}; };
+  // a ribbon of wet sand and dark weedy rock along the bar, its edges ragged and falling away under the sea; rocks on its
+  // flanks, cobbles and wrack strewn over it (all visual: the walk is barY/barInfo, unchanged)
+  const ns=Math.ceil(BSEG.len/.5), nd=14, EXT=BW+2.2, pos=[], cl=[], idx=[], c=new THREE.Color(), t=new THREE.Color();
+  const SANDD=col('#4a3f31'), SANDL=col('#6f614b'), RKD=col('#29282a'), RKM=col('#433f3b'), WD=col('#283318'), WL=col('#4d5627'), WETD=col('#211c18');
+  const rockAt=(x,z)=>smooth(.5,.66,vnoise(x*.42+3,z*.42-1)*.75+vnoise(x*1.3-7,z*1.3+4)*.25);
+  const weedAt=(x,z)=>smooth(.56,.7,vnoise(x*.8-5,z*.8+2)*.8+vnoise(x*2.6,z*2.6)*.2);
+  const at=s=>{ let g=BSEG[0]; for(const q of BSEG)if(s*BSEG.len>=q.s0)g=q; const tt=clamp((s*BSEG.len-g.s0)/g.l,0,1); return {x:g.ax+g.dx*tt,z:g.az+g.dz*tt,nx:-g.dz/g.l,nz:g.dx/g.l}; };
   for(let i=0;i<=ns;i++){ const s=i/ns, p=at(s);
-    for(let j=0;j<=nd;j++){ const dd=-EXT+2*EXT*j/nd, d=Math.abs(dd), e0=BW+.5*(vnoise(s*23+(dd>0?7:0),3.1)-.5); let y=barY(s,Math.min(d,BW)); if(d>e0)y-=1.6*smooth(e0,EXT,d)+.15*(d-e0);
-      const x=p.x+p.nx*dd, z=p.z+p.nz*dd; { const gh=H(x,z); if(Math.abs(gh-y)<.06)y=gh-.06; }
-      pos.push(x,y,z); const rk=smooth(.45,.7,vnoise(x*.45+3,z*.45-1));
-      c.copy(SANDW).lerp(SAND,.3*smooth(-1.1,-.5,y)*(.5+.5*vnoise(x*1.3,z*1.3))).lerp(ROCK2,rk*.4); c.lerp(WEED,smooth(.6,.78,vnoise(x*.8-5,z*.8+2))*.35*(1-rk*.5)); c.lerp(WET,smooth(-1.2,-2,y)*.6);
+    for(let j=0;j<=nd;j++){ const dd=-EXT+2*EXT*j/nd, d=Math.abs(dd), sd=dd>0?7:0;
+      // a ragged edge: two scales of noise, never far inside the walk (the drop just inside it is a few centimetres)
+      const e0=BW-.15+.95*(vnoise(s*19+sd,3.1)*.7+vnoise(s*61+sd,8.3)*.3); let y=barY(s,Math.min(d,BW)); if(d>e0)y-=1.6*smooth(e0,EXT,d)+.15*(d-e0);
+      const x=p.x+p.nx*dd, z=p.z+p.nz*dd, rk=rockAt(x,z);
+      if(d<e0)y+=rk*.1+.035*(vnoise(x*2.2,z*2.2)-.5);                       // rock stands a hand above the sand
+      { const gh=H(x,z); if(Math.abs(gh-y)<.06)y=gh-.06; }
+      pos.push(x,y,z);
+      c.copy(SANDD).lerp(SANDL,.55*vnoise(x*1.1,z*1.1)*smooth(-1.15,-.55,y));   // wet sand, a little paler up on the crown
+      c.lerp(t.copy(RKD).lerp(RKM,vnoise(x*2.3,z*2.3)),rk*.9);
+      const wd=weedAt(x,z); c.lerp(t.copy(WD).lerp(WL,.6*vnoise(x*3.1,z*3.1)),wd*.8*(1-rk*.4));
+      c.lerp(WETD,smooth(-1.05,-1.8,y)*.75);
       cl.push(c.r,c.g,c.b); } }
   for(let i=0;i<ns;i++)for(let j=0;j<nd;j++){ const a=i*(nd+1)+j, b=a+nd+1; idx.push(a,a+1,b,b,a+1,b+1); }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(cl,3)); g.setIndex(idx); g.computeVertexNormals();
   const parts=[{g,c:null}], r=rnd(8833);
-  // boulders on its flanks (no colliders: the bar's own edge is the walk's edge), barnacled and weedy
-  for(let k=0;k<34;k++){ const s=.05+r()*.9, p=at(s), side=r()<.5?-1:1, dd=side*(BW+.2+r()*1.6), x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.22+r()*.42, y=barY(s,BW)-.2-r()*.25;
-    const seed=k*3.7; parts.push({g:GE.blob(1,1,seed,.3),m:GE.mat4(x,y,z,r()*.6,r()*3,r()*.6,sz*1.4,sz*.65,sz),c:(q,n,o)=>{ o.copy(ROCK2).lerp(ROCK,.6*vnoise(q.x*2,q.z*2+q.y)).multiplyScalar(.8); if(n.y>.3)o.lerp(BARN,.1*smooth(.5,.8,vnoise(q.x*7,q.z*7))); o.lerp(WEED,smooth(-.5,-1.0,q.y)*.7); }}); }
+  const rockC=(q,n,o)=>{ o.copy(RKD).lerp(RKM,.7*vnoise(q.x*2,q.z*2+q.y)); if(n.y>.3)o.lerp(BARN,.16*smooth(.55,.8,vnoise(q.x*7,q.z*7))); o.lerp(WD,smooth(-.55,-1.05,q.y)*.75); };
+  // rocks on its flanks (no colliders: the bar's own edge is the walk's edge), barnacled, weedy below the tide line
+  for(let k=0;k<44;k++){ const s=.04+r()*.92, p=at(s), side=r()<.5?-1:1, dd=side*(BW+.1+r()*1.8), x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.2+r()*.5, y=barY(s,BW)-.2-r()*.3;
+    parts.push({g:GE.blob(1,1,k*3.7,.32),m:GE.mat4(x,y,z,r()*.6,r()*3,r()*.6,sz*(1.1+r()*.6),sz*(.5+r()*.3),sz),c:rockC}); }
   // low ledges of rock breaking through the sand along the walk (flat: you can walk over them)
-  for(let k=0;k<12;k++){ const s=.12+r()*.8, p=at(s), dd=(r()-.5)*BW*1.4, x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.5+r()*.6;
-    parts.push({g:GE.blob(1,1,k*5.3,.22),m:GE.mat4(x,barY(s,Math.abs(dd))-.11,z,0,r()*3,0,sz*1.5,.13,sz),c:(q,n,o)=>{ o.copy(ROCK2).lerp(ROCK,.5*vnoise(q.x*3,q.z*3)).multiplyScalar(.85); o.lerp(WEED,.35*smooth(.4,.7,vnoise(q.x*2,q.z*2))); }}); }
+  for(let k=0;k<16;k++){ const s=.1+r()*.82, p=at(s), dd=(r()-.5)*BW*1.5, x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.45+r()*.65;
+    parts.push({g:GE.blob(1,1,k*5.3,.26),m:GE.mat4(x,barY(s,Math.abs(dd))-.1,z,0,r()*3,0,sz*(1.2+r()*.7),.13,sz),c:rockC}); }
+  // cobbles strewn over it, and wrack (kelp in dark heaps, lighter bladder-wrack) in patches
+  for(let k=0;k<54;k++){ const s=.03+r()*.94, p=at(s), dd=(r()-.5)*2*(BW+.3), x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.07+r()*.13;
+    parts.push({g:GE.blob(1,0,k*1.7,.3),m:GE.mat4(x,barY(s,Math.min(Math.abs(dd),BW))+sz*.2,z,r()*.4,r()*3,r()*.4,sz*1.3,sz*.6,sz),c:rockC}); }
+  for(let k=0;k<22;k++){ const s=.05+r()*.9, p=at(s), dd=(r()-.5)*2*(BW+.6), x=p.x+p.nx*dd, z=p.z+p.nz*dd, sz=.25+r()*.45, wc=t.copy(WD).lerp(WL,r()*.8).clone();
+    parts.push({g:GE.blob(1,1,k*2.9,.4),m:GE.mat4(x,barY(s,Math.min(Math.abs(dd),BW))+.005,z,0,r()*3,0,sz*1.6,.045,sz*.8),c:wc}); }
   const m=new THREE.Mesh(GE.mergeParts(parts.map(p=>p.c===null?{g:p.g,c:(q,n,o)=>o.setRGB(1,1,1)}:p)),G.toon('#ffffff',{vertexColors:true}));
   // (the ribbon's own colours: mergeParts drops them, so copy them back in)
   { const cc=m.geometry.attributes.color, n0=g.index.count; const src=g.attributes.color, I=g.index.array; for(let k=0;k<n0;k++){ const v=I[k]; cc.setXYZ(k,src.getX(v),src.getY(v),src.getZ(v)); } cc.needsUpdate=true; }
@@ -304,7 +321,8 @@ function buildCleft(GE,parts){
   const r=rnd(2290), K=CLEFT, ox=-K.ix, oz=-K.iz, sx=K.iz, sz=-K.ix;   // ox,oz: out to sea; sx,sz: along the cliff
   const stoneC=(seed)=>(p,n,o)=>{ o.copy(ROCK2).lerp(ROCK,vnoise(p.x*1.4+seed,p.z*1.4+p.y)*.8); if(n.y>.5)o.lerp(col('#5c6450'),.4*smooth(.45,.7,vnoise(p.x*3,p.z*3))); };
   const g0=H(K.x,K.z);
-  for(const [a,b,s,hy,seed] of [[.1,-1.8,1.6,1.3,1],[.1,1.8,1.55,1.2,2],[1.2,0,2.2,1.5,3],[1.9,-.6,1.6,1.0,4],[1.7,1.3,1.5,.9,5],[-.5,-2.6,1.2,.7,6],[-.3,2.7,1.1,.6,7]]){
+  for(const [a,b,s,hy,seed] of [[.1,-2.0,1.6,1.3,1],[.1,2.0,1.55,1.2,2],   // (the flanking two stand apart: the fissure between them, companions.js)
+      [1.2,0,2.2,1.5,3],[1.9,-.6,1.6,1.0,4],[1.7,1.3,1.5,.9,5],[-.5,-2.6,1.2,.7,6],[-.3,2.7,1.1,.6,7]]){
     const x=K.x+ox*a+sx*b, z=K.z+oz*a+sz*b, y=Math.min(H(x,z),g0+.3)+s*hy*.42;
     parts.push({g:GE.blob(1,1,seed*2.3,.24),m:GE.mat4(x,y,z,r()*.3,r()*3,r()*.3,s,s*hy*.75,s*.9),c:stoneC(seed)});
     G.addCollider({x,z,r:s*.88,y0:g0-3,y1:y+s*hy*.7}); }

@@ -161,6 +161,7 @@ async def run(pg,steps,fails):
       try:
         await pg.evaluate("(()=>{ const k=document.getElementById('keys'); if(k)k.style.visibility='hidden'; })()")
         await pg.evaluate(SHOTJS[ok]); await pg.evaluate("G.headless&&G.headless.draw&&G.headless.draw(3)"); await pg.wait_for_timeout(350)
+        await pg.evaluate("(()=>{ document.querySelectorAll('.caption.leaving').forEach(e=>e.remove()); (document.getAnimations?document.getAnimations():[]).forEach(a=>{ try{ if(a.effect&&a.effect.getTiming().iterations!==Infinity)a.finish(); }catch(_){} }); 0; })()")  # the HUD settled: captions advanced in the shot leave a sliding copy mid-animation
         path=os.path.join(SHOTS,'finds-'+ok+'.png'); await pg.screenshot(path=path,timeout=120000); print('shot',path)
         await pg.evaluate("(()=>{ G.scene.onBeforeRender=()=>{}; if(G.cine&&G.cine.on)G.cine.skip(); G.step(1/30,2); const k=document.getElementById('keys'); if(k)k.style.visibility=''; })()")
       except Exception as e: print('shot failed',ok,str(e)[:200])

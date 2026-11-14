@@ -564,29 +564,64 @@ const look={dirty:true};
 const _m4=new THREE.Matrix4(), _q4=new THREE.Quaternion(), _e4=new THREE.Euler(), _s4=new THREE.Vector3(), _p4=new THREE.Vector3();
 /** a matrix: translate, then yaw, then roll about the local long axis (x), then pitch (z): a hull lying in the sand */
 function boatMat(x,y,z,yaw,roll,pitch){ const m=new THREE.Matrix4().makeTranslation(x,y,z); m.multiply(new THREE.Matrix4().makeRotationY(yaw)); m.multiply(new THREE.Matrix4().makeRotationX(roll||0)); m.multiply(new THREE.Matrix4().makeRotationZ(pitch||0)); return m; }
-/** an open hull along local x, bow at +x, keel down, the transom closing the stern */
-function hullGeo(L,R){ const g=new THREE.CylinderGeometry(R,R,L,16,8,true,PI,PI); g.rotateZ(PI/2); const P=g.attributes.position;
-  for(let i=0;i<P.count;i++){ const hx=P.getX(i), t=clamp((hx+L/2)/L,0,1), y=P.getY(i), z=P.getZ(i), bow=smooth(.4,1,t), w=Math.max(.04,1-bow*bow*.96);
-    P.setXYZ(i,hx,y*.7*(1-.25*bow)+.32*bow*bow,z*w); }
-  g.computeVertexNormals(); return g; }
-function transomGeo(L,R){ const g=new THREE.CircleGeometry(R*.98,12,PI,PI); g.rotateY(PI/2); g.scale(1,.7,1); g.translate(-L/2+.02,0,0); return g; }
-const _inv=new THREE.Matrix4(), _lv=new THREE.Vector3();
-/** the hull's planking by strake: old and weathered, a band of paint, weed low down; with fresh planks let in aft on the
-    starboard side when it's being patched, the rest of that side still open to the ribs (dark) */
-function hullColour(M,R,patched){ const inv=new THREE.Matrix4().copy(M).invert(), old=col('#73604b'), old2=col('#4a3c2e'), paint=col('#5a6a3c'), fresh=col('#c7a77a'), fresh2=col('#a8875e'), gap=col('#17120e'), weed=col('#3c4b30');
-  return (p,n,o)=>{ _lv.copy(p).applyMatrix4(inv); const a=Math.atan2(-_lv.y,_lv.z), band=Math.floor(a/PI*9+9), stripe=band%2;
-    o.copy(old).lerp(old2,.25+.3*stripe+.2*vnoise(_lv.x*1.3,band*.7)); if(_lv.y>-R*.12)o.lerp(paint,.6);
-    const side=_lv.z*PATCH.side>.05, holed=side&&_lv.x>-.6&&_lv.x<1.9&&_lv.y<-R*.15&&_lv.y>-R*.6;
-    if(patched){ const edge=.2+.9*vnoise(band*1.7,3.1); if(_lv.x<edge-(side?0:.8))o.copy(fresh).lerp(fresh2,.3*stripe+.2*vnoise(_lv.x*2,band));
-      else if(holed&&band%3!==0)o.copy(gap); }
-    else{ if(holed&&band%3!==1)o.copy(gap); if(_lv.y<-R*.45)o.lerp(weed,.45); } }; }
+/* the wreck of ours (§9): a clinker-built boat in her own frame (local x along her, bow at +x; y up, the origin amidships at the
+   sheer; z across). A pointed bow with a raked stem, a sheer that sweeps up toward the bow, a keel, a square transom, five
+   lapped strakes a side over steamed ribs, a gunwale rail and two thwarts. mode 'patched': fresh planks let into her aft (more
+   on the side he works from), forward of them the strakes still open between the ribs; 'wreck': rotted and stove in, weed low. */
+const BOAT={B:PATCH.R*.95,D:PATCH.R*.7,N:5};
+const boatW=t=>t<.4?BOAT.B*(.8+.2*Math.sin(t/.4*PI/2)):BOAT.B*Math.pow(Math.max(0,Math.cos((t-.4)/.6*PI/2)),.8);
+const boatS=t=>t>.45?.46*Math.pow((t-.45)/.55,1.7):.13*Math.pow((.45-t)/.45,2);
+const boatK=t=>-BOAT.D+(t>.68?BOAT.D*.8*Math.pow((t-.68)/.32,2):0)+(t<.1?.1*(.1-t)/.1:0);
+/** a point on her skin: t along her (0 stern, 1 bow), u up the side (0 keel, 1 sheer), side +1/-1 (local z) */
+function boatP(L,t,u,side,out){ const a=u*PI/2, k=boatK(t), sh=boatS(t), w=boatW(t);
+  return out.set(-L/2+t*L, k+(sh-k)*(1-Math.cos(a)), side*w*Math.pow(Math.sin(a),.75)); }
+const _bp=new THREE.Vector3();
+function boatParts(parts,M,L,mode){
+  const N=BOAT.N, NT=22, inv=new THREE.Matrix4().copy(M).invert(), lv=new THREE.Vector3(), r=rnd(mode==='patched'?4417:4419), side=PATCH.side;
+  const OLD=[col('#7c6852'),col('#665441'),col('#73604c'),col('#5e4c37'),col('#6a7354')], PAINT=col('#4d5f63'), FRESH=col('#c9a97b'), FRESH2=col('#ae8d62'), WEEDC=col('#3c4b30'), WETC=col('#2e2620');
+  const at=(Mloc)=>new THREE.Matrix4().copy(M).multiply(Mloc);
+  const open=(i,j,sd)=>{ const t=(j+.5)/NT;
+    if(mode==='patched'){ if(sd!==side)return i>=1&&i<=2&&t>.56&&t<.8&&!(i===2&&t>.7); return i>=1&&i<=3&&t>.5&&t<.86&&!((i===2&&t<.6)||(i===3&&t>.78)); }
+    if(t>.3&&t<.64&&i>=1&&i<=3&&sd!==side)return (i+j)%3!==0;         // stove in on her upper side (she lies on his side, bilge to the beach)
+    return (i===N-1&&r()<.45)||(i===N-2&&r()<.2)||(i===1&&r()<.06); };
+  const fresh=(i,j,sd)=>mode==='patched'&&(j+.5)/NT<(sd===side?.5:.42)-.04*i;   // new wood aft on both sides (more on his side)
+  // the strakes: a ribbon each, its lower edge lapped out over the one below
+  for(const sd of [1,-1])for(let i=0;i<N;i++){ const pos=[], cl=[], idx=[];
+    for(let j=0;j<=NT;j++)for(let e=0;e<=2;e++){ const t=j/NT, u=(i+e/2)/N; boatP(L,t,u,sd,_bp); if(e===0&&i>0){ _bp.z*=1.035; _bp.y-=.012; } pos.push(_bp.x,_bp.y,_bp.z); }
+    for(let j=0;j<NT;j++){ if(open(i,j,sd))continue; for(let e=0;e<2;e++){ const a=j*3+e, b=a+3; idx.push(a,b,a+1,a+1,b,b+1); } }
+    if(!idx.length)continue;
+    const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); g.computeVertexNormals();
+    parts.push({g,m:M,c:(p,n,o)=>{ lv.copy(p).applyMatrix4(inv); const t=(lv.x+L/2)/L, j=Math.min(NT-1,Math.floor(t*NT));
+      if(fresh(i,j,sd))o.copy(FRESH).lerp(FRESH2,.25*(i%2)+.25*vnoise(lv.x*2,i));
+      else{ o.copy(OLD[(i*2+(sd>0?0:1))%OLD.length]).lerp(col('#2a241e'),.3*vnoise(lv.x*1.4+i,sd)); if(i===N-1)o.lerp(PAINT,.55);
+        if(mode!=='patched'){ o.lerp(WETC,smooth(-.2,-.9,lv.y)*.4); if(i===0)o.lerp(WEEDC,.5); } } }}); }
+  // ribs: steamed frames inside the planking, sheer to sheer under the keel (dark where the strakes are open, they show)
+  const ribC=(p,n,o)=>o.copy(col('#4a3a2b')).lerp(col('#2c241c'),.4*vnoise(p.x*3,p.y*3));
+  for(let q=0;q<10;q++){ const t=.08+q*.085; if(t>.9)break; const pts=[];
+    for(let k=0;k<=8;k++){ const u=1-k/8*2, sd=u<0?-1:1; boatP(L,t,Math.abs(u),sd,_bp); _bp.z*=.93; _bp.y+=.035; pts.push(_bp.clone()); }
+    if(mode!=='patched'&&q%3===1)pts.length=6;                          // a broken frame
+    parts.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),12,.032,3,false),m:M,c:ribC}); }
+  // the keel along her bottom and up the stem, its head standing proud of the sheer
+  { const pts=[]; for(let k=0;k<=8;k++){ const t=k/8*.96; pts.push(new THREE.Vector3(-L/2+t*L,boatK(t)-.05,0)); }
+    pts.push(new THREE.Vector3(L/2+.06,boatK(1)+.12,0),new THREE.Vector3(L/2+.12,(boatK(1)+boatS(1))/2+.06,0),new THREE.Vector3(L/2+.16,boatS(1)+.16,0));
+    parts.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts),24,.065,4,false),m:M,c:col('#3a2e24')}); }
+  // the gunwale rails (a run of one lost on a wreck)
+  for(const sd of [1,-1]){ const pts=[]; for(let k=0;k<=12;k++){ const t=k/12*.98; boatP(L,t,1,sd,_bp); _bp.y+=.02; pts.push(_bp.clone()); }
+    const use=mode!=='patched'&&sd!==side?pts.slice(0,7):pts; parts.push({g:new THREE.TubeGeometry(new THREE.CatmullRomCurve3(use),16,.045,4,false),m:M,c:col('#3e3127')}); }
+  // the transom: her square stern, closing the planking
+  { const sh=new THREE.Shape(); for(let k=0;k<=12;k++){ const u=1-k/12*2, sd=u<0?-1:1; boatP(L,0,Math.abs(u),sd,_bp); if(k===0)sh.moveTo(_bp.z,_bp.y); else sh.lineTo(_bp.z,_bp.y); }
+    const g=new THREE.ShapeGeometry(sh); g.rotateY(-PI/2); g.translate(-L/2-.01,0,0); parts.push({g,m:M,c:mode==='patched'?col('#5b4a38'):col('#43362a')});
+    parts.push({g:new THREE.BoxGeometry(.08,.1,2*boatW(0)+.08),m:at(new THREE.Matrix4().makeTranslation(-L/2-.02,boatS(0)-.02,0)),c:col('#3e3127')}); }
+  // two thwarts across her
+  for(const t of [.33,.58]){ const w=boatW(t)*.9, y=boatS(t)-.2; parts.push({g:new THREE.BoxGeometry(.24,.05,2*w),m:at(new THREE.Matrix4().makeTranslation(-L/2+t*L,y,0)),c:col('#5e4b39')}); }
+}
 function buildAfter(GE){
   const r=rnd(7727);
   /* ---- before 'lived' (and in 'died'): the loose stones on the path's upper legs; the wreck of ours lying canted in the sand ---- */
   { const parts=[];
     for(const s of LOOSE){ const y=H(s.x,s.z); parts.push({g:GE.blob(1,0,s.seed,.25),m:GE.mat4(s.x,y+s.s*.2,s.z,r()*.4,r()*TAU,r()*.4,s.s*1.25,s.s*.65,s.s),c:stoneC(Math.floor(s.seed*7))}); }
-    const gy=Math.max(H(PATCH.x,PATCH.z),.2), M=boatMat(PATCH.x,gy+PATCH.R*.05,PATCH.z,PATCH.yaw,.55,-.08);   // over on her side, half sunk in the sand
-    parts.push({g:hullGeo(PATCH.L,PATCH.R),m:M,c:hullColour(M,PATCH.R,false)}); parts.push({g:transomGeo(PATCH.L,PATCH.R),m:M,c:col('#43362a')});
+    const gy=Math.max(H(PATCH.x,PATCH.z),.2), M=boatMat(PATCH.x,gy+PATCH.R*.45,PATCH.z,PATCH.yaw,-.66,-.08);   // over on her side, her planked bilge and keel to the beach
+    boatParts(parts,M,PATCH.L,'wreck');
     for(let k=0;k<3;k++){ const lx=-1.5+k*1.4, lz=PATCH.side*(PATCH.R+.6+r()*.6), c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), x=PATCH.x+lx*c+lz*sn, z=PATCH.z-lx*sn+lz*c;
       parts.push({g:new THREE.BoxGeometry(1.4+r()*.8,.05,.17),m:GE.mat4(x,H(x,z)+.04,z,0,PATCH.yaw+(r()-.5)*.9,(r()-.5)*.1),c:col('#4a3b2d')}); }
     looseMesh=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); looseMesh.castShadow=true; looseMesh.receiveShadow=true; looseMesh.name='nisLoose'; root.add(looseMesh);
@@ -596,14 +631,27 @@ function buildAfter(GE){
   livedGroup=new THREE.Group(); livedGroup.name='nisLived'; livedGroup.visible=false; root.add(livedGroup);
   { const parts=[], glass=[], glow=[], IRON2=col('#262224');
     // the lanterns: at the foot of each readable cairn (the reader's side), a few others, and one on the sixth place's footing
-    const spots=[]; for(const m of MARKS){ const o=layout.out[m.id], c=o.cairn, a=o.yaw+.85; spots.push({x:c.x+Math.sin(a)*(c.r+.2),z:c.z+Math.cos(a)*(c.r+.2)}); }
-    const others=layout.cairns.filter(c=>!MARKS.some(m=>layout.out[m.id].cairn===c)&&!layout.crew.includes(c)); for(const k of [3,11,19,27,36]){ const c=others[k%others.length]; if(!c)continue; const a=r()*TAU; spots.push({x:c.x+Math.sin(a)*(c.r+.18),z:c.z+Math.cos(a)*(c.r+.18)}); }
+    // (each hangs from the arm of a driftwood post at the cairn's foot, so it sits up at knee-to-hip height and reads as a lantern
+    // from across the rise: an iron frame round a bright glass, a peaked cap and ring, and a broad warm halo)
+    const spots=[]; for(const m of MARKS){ const o=layout.out[m.id], c=o.cairn, a=o.yaw+.85; spots.push({x:c.x+Math.sin(a)*(c.r+.22),z:c.z+Math.cos(a)*(c.r+.22),ox:Math.sin(a),oz:Math.cos(a)}); }
+    const others=layout.cairns.filter(c=>!MARKS.some(m=>layout.out[m.id].cairn===c)&&!layout.crew.includes(c)); for(const k of [3,11,19,27,36]){ const c=others[k%others.length]; if(!c)continue; const a=r()*TAU; spots.push({x:c.x+Math.sin(a)*(c.r+.2),z:c.z+Math.cos(a)*(c.r+.2),ox:Math.sin(a),oz:Math.cos(a)}); }
     spots.push({x:SIXTH.x+.05,z:SIXTH.z+.02,on:.09});
-    for(const s of spots){ const y=H(s.x,s.z)+(s.on||0), yaw=r()*PI, L=(w,h,d,dx,dy,dz,c)=>parts.push({g:new THREE.BoxGeometry(w,h,d),m:GE.mat4(s.x+dx,y+dy,s.z+dz,0,yaw,0),c});
-      L(.17,.035,.17,0,.018,0,IRON2); for(const [dx,dz] of [[-.07,-.07],[.07,-.07],[-.07,.07],[.07,.07]])parts.push({g:new THREE.BoxGeometry(.02,.2,.02),m:GE.mat4(s.x+dx*Math.cos(yaw)+dz*Math.sin(yaw),y+.135,s.z-dx*Math.sin(yaw)+dz*Math.cos(yaw),0,yaw,0),c:IRON2});
-      L(.17,.03,.17,0,.25,0,IRON2); parts.push({g:new THREE.ConeGeometry(.11,.1,4),m:GE.mat4(s.x,y+.31,s.z,0,yaw+PI/4,0),c:IRON2});
-      parts.push({g:new THREE.TorusGeometry(.045,.009,4,10),m:GE.mat4(s.x,y+.39,s.z,0,yaw,0),c:IRON2});
-      glass.push({g:new THREE.BoxGeometry(.12,.18,.12),m:GE.mat4(s.x,y+.135,s.z,0,yaw,0)}); glow.push(s.x,y+.15,s.z); }
+    const POST=col('#5b5248'), POST2=col('#3e3832'), postC=(p,n,o)=>o.copy(POST).lerp(POST2,.35+.35*Math.sin(p.y*9+p.x*3));
+    const lantern=(x,y,z,yaw,k)=>{ const B=(w,h,d,dy,c)=>parts.push({g:new THREE.BoxGeometry(w*k,h*k,d*k),m:GE.mat4(x,y+dy*k,z,0,yaw,0),c}), cy=Math.cos(yaw), sy=Math.sin(yaw);
+      B(.24,.04,.24,.02,IRON2);                                                       // base
+      for(const [dx,dz] of [[-.1,-.1],[.1,-.1],[-.1,.1],[.1,.1]])parts.push({g:new THREE.BoxGeometry(.026*k,.3*k,.026*k),m:GE.mat4(x+(dx*cy+dz*sy)*k,y+.19*k,z+(-dx*sy+dz*cy)*k,0,yaw,0),c:IRON2});
+      for(const dy of [.13,.25])for(const [w,d] of [[.22,.012],[.012,.22]])B(w,.012,d,dy,IRON2);   // bands across the glass
+      B(.25,.035,.25,.35,IRON2); parts.push({g:new THREE.ConeGeometry(.17*k,.15*k,4),m:GE.mat4(x,y+.44*k,z,0,yaw+PI/4,0),c:IRON2});
+      parts.push({g:new THREE.TorusGeometry(.05*k,.011*k,4,10),m:GE.mat4(x,y+.55*k,z,0,yaw,0),c:IRON2});
+      glass.push({g:new THREE.BoxGeometry(.19*k,.29*k,.19*k),m:GE.mat4(x,y+.19*k,z,0,yaw,0)}); glow.push(x,y+.2*k,z); };
+    for(const s of spots){ const g=H(s.x,s.z);
+      if(s.on){ lantern(s.x,g+s.on,s.z,r()*PI,1.15); continue; }
+      // the post a little out from the cairn; its arm reaches back over the lantern, which hangs on a short chain
+      const px=s.x+s.ox*.3, pz=s.z+s.oz*.3, pg=H(px,pz), top=Math.max(pg,g)+1.35, lean=(r()-.5)*.06, yaw=Math.atan2(s.ox,s.oz);
+      parts.push({g:new THREE.CylinderGeometry(.03,.045,top-pg+.15,6),m:GE.mat4(px,(top+pg-.15)/2,pz,lean,0,-lean),c:postC});
+      parts.push({g:new THREE.BoxGeometry(.05,.05,.42),m:GE.mat4((px+s.x)/2,top-.04,(pz+s.z)/2,0,yaw,0),c:postC});
+      parts.push({g:new THREE.CylinderGeometry(.008,.008,.17,4),m:GE.mat4(s.x,top-.15,s.z,0,0,0),c:IRON2});
+      lantern(s.x,top-.86,s.z,yaw+r()*.4,1.05); }
     LANTERNS.length=0; for(const s of spots)LANTERNS.push({x:s.x,z:s.z});
     // his new logbook on the hut's shelf, a pencil beside it
     { const l=BI.log, x=BOTHY.x+l.x, y=BFY+l.y-.04, z=BOTHY.z-BH.IZ+.15;
@@ -621,12 +669,13 @@ function buildAfter(GE){
       const gS=H(W(-PATCH.L*.42,0).x,W(-PATCH.L*.42,0).z), gB=H(W(PATCH.L*.42,0).x,W(PATCH.L*.42,0).z), pitch=Math.atan2(gB-gS,PATCH.L*.84);
       const keelAt=lx=>Math.max(H(W(lx,0).x,W(lx,0).z)+.22,(gS+gB)/2+.3+Math.tan(pitch)*lx), keel=keelAt(0), y=keel+PATCH.R*.7;
       const M=boatMat(PATCH.x,y,PATCH.z,PATCH.yaw,0,pitch);
-      parts.push({g:hullGeo(PATCH.L,PATCH.R),m:M,c:hullColour(M,PATCH.R,true)}); parts.push({g:transomGeo(PATCH.L,PATCH.R),m:M,c:col('#43362a')});
+      boatParts(parts,M,PATCH.L,'patched');
       const DRIFT_=(p,n,o)=>o.copy(DRIFT).lerp(DRIFT2,.5+.5*Math.sin(p.y*14));
       const beam=(a,b,rad,cc)=>{ const d=new THREE.Vector3().subVectors(b,a), L=d.length(); d.normalize(); const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d);
         parts.push({g:new THREE.CylinderGeometry(rad*.85,rad,L,6),m:new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(.5),q,new THREE.Vector3(1,1,1)),c:cc}); };
-      for(const lx of [-PATCH.L*.32,PATCH.L*.18])for(const sd of [1,-1]){ const top=new THREE.Vector3(lx,-PATCH.R*.38,sd*PATCH.R*.9).applyMatrix4(M), f=W(lx,sd*(PATCH.R+.75));
-        beam(new THREE.Vector3(f.x,H(f.x,f.z)-.1,f.z),top,.06,DRIFT_); }
+      // driftwood shores along both sides, their heads under her bilge, their feet dug into the sand well out from her
+      for(const lx of [-PATCH.L*.33,-PATCH.L*.05,PATCH.L*.22])for(const sd of [1,-1]){ const t=(lx+PATCH.L/2)/PATCH.L, top=boatP(PATCH.L,t,.48,sd,new THREE.Vector3()).applyMatrix4(M), f=W(lx+(sd>0?.15:-.1),sd*(boatW(t)+.95));
+        beam(new THREE.Vector3(f.x,H(f.x,f.z)-.12,f.z),top,.075,DRIFT_); }
       for(const lx of [-PATCH.L*.28,PATCH.L*.12]){ const p=W(lx,0), g=H(p.x,p.z), h=keel+Math.tan(pitch)*lx-g+.05; parts.push({g:new THREE.BoxGeometry(.5,h,.4),m:GE.mat4(p.x,g+h/2-.05,p.z,0,PATCH.yaw,0),c:WOOD2}); }
       // a fresh plank leaning on her quarter, a stack of them on two chocks, the pitch pot and a mallet
       { const sd=PATCH.side, a=W(-1.2,sd*(PATCH.R+.9)), b=new THREE.Vector3(-1.6,-PATCH.R*.05,sd*PATCH.R*.95).applyMatrix4(M); const d=new THREE.Vector3(b.x-a.x,0,b.z-a.z), L=Math.hypot(b.x-a.x,b.y-H(a.x,a.z),b.z-a.z);
@@ -639,7 +688,9 @@ function buildAfter(GE){
     const fm=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); fm.castShadow=true; fm.receiveShadow=true; fm.name='nisLivedFrames'; livedGroup.add(fm);
     const gm=new THREE.Mesh(GE.mergeParts(glass),new THREE.MeshBasicMaterial({color:col('#ffd08a'),fog:true})); gm.name='nisLivedGlass'; livedGroup.add(gm);
     const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.Float32BufferAttribute(glow,3));
-    const pts=new THREE.Points(pg,new THREE.PointsMaterial({map:G.tex&&G.tex.soft,color:col('#ffb45a'),size:2.1,sizeAttenuation:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:true}));
+    // the halo per point: full for the lanterns, softer for the stove (the hut is small; a lantern's halo would fill it)
+    { const gc=[]; for(let i=0;i<glow.length/3;i++){ const k=i===glow.length/3-1?.45:1; gc.push(k,k,k); } pg.setAttribute('color',new THREE.Float32BufferAttribute(gc,3)); }
+    const pts=new THREE.Points(pg,new THREE.PointsMaterial({map:G.tex&&G.tex.soft,color:col('#ff9d42'),size:3.4,sizeAttenuation:true,vertexColors:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:true}));
     pts.name='nisLivedGlow'; livedGroup.add(pts);
     // two lights at most: one over the field (it reaches the corner), one in the hut by the stove
     const fl=new THREE.PointLight(col('#ffb25e'),1.25,26,1.6); fl.position.set(FIELD.x+1.5,H(FIELD.x,FIELD.z)+3.4,FIELD.z+2.5); fl.name='nisFieldLight'; livedGroup.add(fl);
@@ -659,7 +710,7 @@ const LANTERNS=[];
 const LEVEL=[[.44,.19,.38],[.39,.18,.34],[.35,.17,.3],[.3,.16,.26],[.25,.15,.22]];
 const SHORE_S=[.3,.13,.25];
 function cairnTop(n){ let y=H(SIXTH.x,SIXTH.z)+.1; for(let k=0;k<n;k++)y+=LEVEL[k][1]*1.55; return y; }
-function stoneSet(i,x,y,z,s,yaw){ _m4.compose(_p4.set(x,y,z),_q4.setFromEuler(_e4.set(0,yaw||0,0)),_s4.set(s[0],s[1],s[2])); stoneMesh.setMatrixAt(i,_m4); }
+function stoneSet(i,x,y,z,s,yaw,tilt){ _m4.compose(_p4.set(x,y,z),_q4.setFromEuler(_e4.set(tilt||0,yaw||0,(tilt||0)*.4,'YXZ')),_s4.set(s[0],s[1],s[2])); stoneMesh.setMatrixAt(i,_m4); }
 function stoneHide(i){ _m4.makeScale(0,0,0); stoneMesh.setMatrixAt(i,_m4); }
 function placeStones(){ if(!stoneMesh)return; const C=S.cairn;
   for(let i=0;i<NSTONES;i++){ const p=SHORE[i]; if(C.used.indexOf(i)<0&&!(carry.on&&carry.i===i))stoneSet(i,p.x,H(p.x,p.z)+.05,p.z,SHORE_S,i*1.3); else stoneHide(i); }
@@ -668,7 +719,9 @@ function placeStones(){ if(!stoneMesh)return; const C=S.cairn;
   if(!carry.on)stoneHide(NSTONES*2);
   stoneMesh.instanceMatrix.needsUpdate=true; }
 function carriedAt(){ const P=G.player; if(!P||!stoneMesh)return; const h=P.heading||0;
-  stoneSet(NSTONES*2,P.pos.x+Math.sin(h)*.34,P.pos.y+.84,P.pos.z+Math.cos(h)*.34,SHORE_S,h); stoneMesh.instanceMatrix.needsUpdate=true; }
+  // a chunky slab hugged to his chest between his forearms, tipped toward him (it reads as a stone held, not a plate)
+  stoneSet(NSTONES*2,P.pos.x+Math.sin(h)*.27,P.pos.y+.93,P.pos.z+Math.cos(h)*.27,CARRY_S,h+.35,-.42); stoneMesh.instanceMatrix.needsUpdate=true; }
+const CARRY_S=[.215,.19,.2];
 /** everything that shows the stage (and the cairn's progress) */
 function refreshLook(st){ st=st||stage();
   if(looseMesh)looseMesh.visible=st!=='lived';
