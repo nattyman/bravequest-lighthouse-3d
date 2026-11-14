@@ -81,9 +81,41 @@ function bothySolid(x,y,z){ const l=bl(x,z), m=.2;
   return true; }
 const _cd=new THREE.Vector3(), _cp=new THREE.Vector3();
 G.cameraConstrainers.push((cam,target)=>{ const P=G.player&&G.player.pos; if(!nearBothy(P))return;
-  _cd.copy(cam).sub(target); const L=_cd.length(); if(L<1e-4)return; let ok=0; const N=28;
+  _cd.copy(cam).sub(target); let L=_cd.length(); if(L<1e-4)return; let ok=0; const N=28;
+  // the player camera's own boom stops at the first wall collider (as close as .7 m): with the roof off, give it its length
+  // back and let the lift below take it up over the wall
+  if(!roofOn&&L<2.2){ _cd.multiplyScalar(3.4/L); L=3.4; cam.copy(target).add(_cd); }
   for(let i=1;i<=N;i++){ const s=i/N; _cp.copy(target).addScaledVector(_cd,s); if(bothySolid(_cp.x,_cp.y,_cp.z))break; ok=s; }
-  if(ok<1)cam.copy(target).addScaledVector(_cd,Math.max(ok,.12/L)); });
+  if(ok>=1)return;
+  // the roof is off while he's inside: rather than press into his hood when a wall is close behind him, the camera rises
+  // until it looks down into the hut over that wall (the same boom, raised)
+  if(!roofOn&&ok*L<1.6&&overWall(cam,target,bothySolid,4.4))return;
+  cam.copy(target).addScaledVector(_cd,Math.max(ok,.12/L)); });
+/** the boom raised (and shortened if it must be) until the line from his head to the camera clears solid(x,y,z);
+    true if it found one (cam is moved), false if not (cam untouched). Shorter booms are tried after the full one. */
+const _ow=new THREE.Vector3();
+function overWall(cam,target,solid,maxLift){
+  _ow.copy(cam).sub(target); const L=_ow.length(); if(L<1e-4)return false; const hx=_ow.x/L, hz=_ow.z/L, hy=_ow.y/L, N=30;
+  for(const d of [L,Math.min(L,3.4),Math.min(L,2.6)]){ for(let lift=.4;lift<=maxLift+1e-6;lift+=.4){ let clear=true;
+      for(let i=1;i<=N;i++){ const s=i/N; if(solid(target.x+hx*d*s,target.y+(hy*d+lift)*s,target.z+hz*d*s)){ clear=false; break; } }
+      if(clear){ cam.set(target.x+hx*d,target.y+hy*d+lift,target.z+hz*d); return true; } } }
+  return false; }
+// outside, close by: the hut is solid to the camera (the player camera's own boom only knows round colliders and the ground,
+// so turning the view with your back to a wall put the camera inside the hut, looking at the backs of its planks). If the
+// wall is right behind Rowan, the camera rises over his shoulder instead of pressing into his hood.
+function hutSolidOut(x,y,z){ const l=bl(x,z); if(Math.abs(l.z)>BH.OZ+.22||l.x<-BH.OX-.22||l.x>BH.OX+.22)return false;
+  const lz=Math.min(Math.abs(l.z),BH.RW), top=BFY+BH.WALL+(roofOn?BH.RH*Math.sqrt(Math.max(0,1-Math.pow(lz/BH.RW,2)))+.2:.1);
+  return y>BH.gLow-.8&&y<top; }
+function nearOutside(p){ if(!p||nearBothy(p)||Math.abs(p.y-BFY)>4)return false; return Math.hypot(p.x-BOTHY.x,p.z-BOTHY.z)<10; }
+G.cameraConstrainers.push((cam,target)=>{ const P=G.player&&G.player.pos; if(!nearOutside(P)||hutSolidOut(target.x,target.y,target.z))return;
+  _cd.copy(cam).sub(target); const L=_cd.length(); if(L<1e-4)return; let ok=0; const N=32;
+  for(let i=1;i<=N;i++){ const s=i/N; _cp.copy(target).addScaledVector(_cd,s); if(hutSolidOut(_cp.x,_cp.y,_cp.z))break; ok=s; }
+  if(ok>=1)return;
+  // first choice: the same boom, raised until it clears the roof (looking down over the hull at him)
+  if(overWall(cam,target,hutSolidOut,3.6))return;
+  const b=ok*L, k=1-smooth(.7,1.6,b);
+  cam.copy(target).addScaledVector(_cd,Math.max(ok,.35/L)); cam.y+=k*1.7;
+  for(let i=0;i<14&&hutSolidOut(cam.x,cam.y,cam.z);i++)cam.y+=.2; });
 // the things inside, in the hut's frame (x, z, height above the floor)
 const BI={tally:{x:-2.55,z:0,y:1},bunk:{x:1.35,z:-1.05,y:.5},stove:{x:2.05,z:.95,y:.6},chair:{x:.6,z:.55,y:.5},toy:{x:-1.55,z:1.2,y:.75},window:{x:.6,z:1.8,y:1.15}};
 const BW=k=>V(BOTHY.x+BI[k].x,BFY+BI[k].y,BOTHY.z+BI[k].z);
@@ -192,16 +224,35 @@ function read(id){
   const L=linesOf(id,st);
   L.forEach((l,i)=>say(l.t,l.who,i===0?{flush:true,key:'nis-'+id}:{key:'nis-'+id+i}));
   if(first){ const lg=R.log&&R.log[st]; if(lg)try{ G.ui.logLine&&G.ui.logLine(lg,'Found'); }catch(e){} }
+  // the chair's window shot waits for the line about the view (the first line once he knows); any other read cancels it
+  winPending=id==='chair'?{st,key:st==='before'?'nis-chair1':'nis-chair',until:G.time+16}:null;
   G.emit('northIsleStory:read',{id,stage:st,first});
   return L.map(l=>l.t);
+}
+/* the chair: a short held shot from where he sits, out of the south window and across the water to our lamp (onboarding.js
+   G.cine: letterboxed, skippable with any button, once per stage). The roof goes back on for it, so it frames the window. */
+function homeLamp(){ const L=G.world&&G.world.lighthouse; if(!L)return null; return L.lampCenter?L.lampCenter.clone():V(L.x,L.topY+1.6,L.z); }
+let winPending=null, winOn=false;
+function windowShot(st){
+  const C=G.cine, lamp=homeLamp(); if(!C||!C.play||!lamp||!isPlay()||!inBothy(G.player&&G.player.pos))return false;
+  const ch=BI.chair, w=BI.window, eye=V(BOTHY.x+ch.x,BFY+1.22,BOTHY.z+ch.z-.3), win=V(BOTHY.x+w.x,BFY+w.y,BOTHY.z+w.z);
+  // look through the middle of the window, aimed at the lamp: the window frames it
+  const dir=lamp.clone().sub(win).normalize(), far=win.clone().addScaledVector(dir,40);
+  const P=G.player, mv=!!(P&&P.model&&P.model.visible);   // he stands between the chair and the window: out of the shot
+  const ok=C.play('nisWindow:'+st,{dur:3.2,shot:(k,t,o)=>{ if(roof)roof.visible=true; if(P&&P.model)P.model.visible=false;
+      const e=smooth(0,1,k); o.cp.copy(eye).lerp(V(eye.x,eye.y-.04,eye.z+.55),e); o.lp.copy(win).lerp(far,.25+.75*smooth(0,.6,k)); o.fov=42; },
+    onEnd:()=>{ winOn=false; if(roof)roof.visible=roofOn; if(P&&P.model&&mv)P.model.visible=true; }});
+  if(ok){ winOn=true; if(roof)roof.visible=true; }
+  return ok;
 }
 const labelOf=id=>{ const R=READS[id]; return S.read[id+':'+stage()]?R.name:(R.label||R.name); };
 
 /* ================================================================ 5. BUILDING IT */
 let root=null, ember=null, emberMat=null, layout=null, roof=null, roofOn=true;
 const rnd=U.rng;
-const STONE=[col('#57554f'),col('#47474b'),col('#5f5a52'),col('#3e4046'),col('#67625a')], LICHEN=col('#7a7a4e'), MOSS=col('#3a4430');
-const WOOD=col('#7d6249'), WOOD2=col('#4a3929'), DRIFT=col('#8e8678'), DRIFT2=col('#6a6458'), IRON=col('#2a2729'), CLOTH=col('#5b5148');
+// weathered grey-brown field stone (it reads as old stone at dusk, under Rowan's lantern too), crusted with two lichens
+const STONE=[col('#373431'),col('#2f2f30'),col('#3c3631'),col('#2c2d30'),col('#423c36')], LICHEN=col('#70735f'), LICHEN2=col('#6c5f3c'), MOSS=col('#2e3828'), SOIL=col('#2c2622');
+const WOOD=col('#7d6249'), WOOD2=col('#4a3929'), DRIFT=col('#69645c'), DRIFT2=col('#4c4842'), IRON=col('#2a2729'), CLOTH=col('#5b5148');
 /* the atlas: marker faces, the Margery's cut stones, the two tallied door posts and the R in the toy's stern */
 const BOARDS=[['SWIFT','CARROW · SPRING'],['KITTIWAKE','SALTMOUTH · AUTUMN'],['ROSE OF ARDREY','WINTER'],['BRENNICK LASS','BRENNICK · SPRING'],
   ['PROVIDENCE','HOLLIN BAY · SUMMER'],['','WINTER'],
@@ -217,11 +268,11 @@ function drawAtlas(c,s){
   const scratch=(t,x,y,size,w)=>{ c.font='bold '+size+'px Georgia, serif'; c.textAlign='center'; c.textBaseline='middle';
     let fs=size; while(fs>12&&c.measureText(t).width>w){ fs-=2; c.font='bold '+fs+'px Georgia, serif'; }
     c.fillStyle='rgba(30,24,18,.55)'; c.fillText(t,x+1.5,y+1.5); c.fillStyle='#e2d9c3'; c.fillText(t,x,y); };
-  BOARDS.forEach((b,i)=>{ const R=cellRect(i); grainy(R.x,R.y,R.w,R.h,'#777062','#433d34');
+  BOARDS.forEach((b,i)=>{ const R=cellRect(i); grainy(R.x,R.y,R.w,R.h,'#625d55','#3a352e');
     if(b[0])scratch(b[0],R.x+R.w/2,R.y+R.h*.4,36,R.w-24); scratch(b[1],R.x+R.w/2,R.y+R.h*.76,20,R.w-30);
     if(!b[0]){ c.strokeStyle='#e2d9c3'; c.lineWidth=3; c.beginPath(); c.moveTo(R.x+R.w/2,R.y+60); c.lineTo(R.x+R.w/2,R.y+14); c.lineTo(R.x+R.w/2+22,R.y+30); c.moveTo(R.x+R.w/2-16,R.y+50); c.lineTo(R.x+R.w/2+16,R.y+50); c.stroke(); }
     c.globalCompositeOperation='destination-out'; for(let k=0;k<26;k++){ c.fillStyle='rgba(0,0,0,.25)'; c.fillRect(R.x+r()*R.w,R.y+r()*R.h,2+r()*8,1+r()*2); } c.globalCompositeOperation='source-over'; });
-  CREW.forEach((n,i)=>{ const R=cellRect(BOARDS.length+i); c.fillStyle='#585a5f'; c.fillRect(R.x,R.y,R.w,R.h); for(let k=0;k<40;k++){ c.fillStyle=`rgba(${r()<.5?30:200},${r()<.5?30:200},${r()<.5?40:190},.08)`; c.fillRect(R.x+r()*R.w,R.y+r()*R.h,6+r()*20,4+r()*10); }
+  CREW.forEach((n,i)=>{ const R=cellRect(BOARDS.length+i); c.fillStyle='#74767b'; c.fillRect(R.x,R.y,R.w,R.h); for(let k=0;k<40;k++){ c.fillStyle=`rgba(${r()<.5?30:200},${r()<.5?30:200},${r()<.5?40:190},.08)`; c.fillRect(R.x+r()*R.w,R.y+r()*R.h,6+r()*20,4+r()*10); }
     c.textAlign='center'; c.textBaseline='middle'; let fs=34; c.font='bold '+fs+'px Georgia, serif'; while(c.measureText(n).width>R.w-26){ fs-=2; c.font='bold '+fs+'px Georgia, serif'; }
     c.fillStyle='rgba(235,235,230,.35)'; c.fillText(n,R.x+R.w/2+1,R.y+R.h*.4+1.5); c.fillStyle='#26272b'; c.fillText(n,R.x+R.w/2,R.y+R.h*.4);
     c.font='bold 18px Georgia, serif'; c.fillStyle='rgba(235,235,230,.35)'; c.fillText('MARGERY',R.x+R.w/2+1,R.y+R.h*.76+1); c.fillStyle='#26272b'; c.fillText('MARGERY',R.x+R.w/2,R.y+R.h*.76); });
@@ -231,15 +282,20 @@ function drawAtlas(c,s){
       for(let k=0;k<4;k++){ c.strokeStyle='#2a2018'; c.lineWidth=3.2; c.beginPath(); c.moveTo(R.x+12,y0+k*9+r()*1.5); c.lineTo(R.x+R.w-12,y0+k*9+r()*1.5); c.stroke(); }
       c.strokeStyle=last?'#d9c7a2':'#2a2018'; c.lineWidth=last?3.8:3.2; c.beginPath(); c.moveTo(R.x+10,y0+31); c.lineTo(R.x+R.w-10,y0-4); c.stroke(); }
     c.restore(); });
-  c.fillStyle='#8a6e52'; c.fillRect(RCELL.x,RCELL.y,RCELL.w,RCELL.h); c.font='bold 96px Georgia, serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillStyle='#2e2218'; c.fillText('R',RCELL.x+64,RCELL.y+70);
+  // the R: cut deep (a dark letter with a pale lit lip), filling the transom
+  c.fillStyle='#c9a77a'; c.fillRect(RCELL.x,RCELL.y,RCELL.w,RCELL.h); c.font='bold 118px Georgia, serif'; c.textAlign='center'; c.textBaseline='middle';
+  c.fillStyle='#f0dcb4'; c.fillText('R',RCELL.x+66,RCELL.y+72); c.fillStyle='#24180f'; c.fillText('R',RCELL.x+64,RCELL.y+69);
 }
 /** a plane w x h whose uvs are the atlas rect R (canvas pixels) */
 function atlasPlane(w,h,R){ const g=new THREE.PlaneGeometry(w,h), uv=g.attributes.uv; const u0=R.x/AT,u1=(R.x+R.w)/AT,v1=1-R.y/AT,v0=1-(R.y+R.h)/AT;
   for(let i=0;i<uv.count;i++)uv.setXY(i,u0+uv.getX(i)*(u1-u0),v0+uv.getY(i)*(v1-v0)); return g; }
 
 /* ---- cairns ---- */
-function stoneC(seed){ const base=STONE[seed%STONE.length]; return (p,n,o)=>{ o.copy(base).lerp(STONE[(seed+2)%STONE.length],vnoise(p.x*3.1+seed,p.z*3.1+p.y*2)*.6);
-  if(n.y>.5)o.lerp(LICHEN,.25*smooth(.55,.8,vnoise(p.x*5+seed*.3,p.z*5))); else if(n.y<-.2)o.lerp(MOSS,.3); }; }
+function stoneC(seed){ const base=STONE[seed%STONE.length], g0=H; return (p,n,o)=>{ o.copy(base).lerp(STONE[(seed+2)%STONE.length],vnoise(p.x*3.1+seed,p.z*3.1+p.y*2)*.6);
+  // lichen in blotches on the tops and the weather sides; moss and peat splash low down and underneath
+  const up=smooth(-.1,.6,n.y), lw=smooth(.5,.72,vnoise(p.x*4.3+seed*.31,p.z*4.3+p.y*3.7)), lo=smooth(.56,.74,vnoise(p.x*6.1-seed*.17,p.y*5.3+p.z*6.1+3));
+  o.lerp(LICHEN,.55*lw*up); o.lerp(LICHEN2,.45*lo*(.4+.6*up)*(1-lw));
+  if(n.y<-.2)o.lerp(MOSS,.35); o.lerp(SOIL,.45*(1-smooth(.05,.35,p.y-g0(p.x,p.z)))); }; }
 function cairn(parts,GE,r,x,z,o){
   o=o||{}; const g=H(x,z), n=o.n||(2+Math.floor(r()*3)), r0=o.r||(.4+r()*.22); let y=g-.1, top=g;
   for(let i=0;i<n;i++){ const k=i/n, rr=r0*(1-k*.5)*(.86+r()*.28), jx=i?(r()-.5)*r0*.35:0, jz=i?(r()-.5)*r0*.35:0, sy=o.neat?.5:.42+r()*.2;
@@ -300,7 +356,7 @@ function buildGraveyard(GE){
   const crew=[]; CREW.forEach((nm,i)=>{ const a=PI*(.15+i*.175), x=CORNER.x+Math.cos(a)*2.55, z=CORNER.z+Math.sin(a)*2.55;   // the southern half (+z is south)
     const c=cairn(parts,GE,r,x,z,{n:5,r:.62,neat:true}); cairns.push(c);
     const fa=Math.atan2(CORNER.x-x,CORNER.z-z), sx=x+Math.sin(fa)*(c.r+.12), sz=z+Math.cos(fa)*(c.r+.12), g=H(sx,sz);   // the cut stone faces the middle
-    parts.push({g:new THREE.BoxGeometry(.58,.7,.12),m:GE.mat4(sx,g+.3,sz,-.06,fa,0),c:col('#6e7074')});
+    parts.push({g:new THREE.BoxGeometry(.58,.7,.12),m:GE.mat4(sx,g+.3,sz,-.06,fa,0),c:col('#86878a')});   // cut and dressed: lighter than the field stone
     faces.push({g:atlasPlane(.54,.21,cellRect(BOARDS.length+i)),m:GE.mat4(sx+Math.sin(fa)*.065,g+.48,sz+Math.cos(fa)*.065,-.06,fa,0)});
     crew.push(c); });
   for(let k=0;k<26;k++){ const a=k/26*TAU; if(Math.abs(U.angDiff(a,-PI/2))<.5)continue; const rr=.2+r()*.1, x=CORNER.x+Math.cos(a)*(CORNER.r+.1), z=CORNER.z+Math.sin(a)*(CORNER.r+.1);
@@ -362,11 +418,15 @@ function buildBothy(GE,faces){
   { const c=BI.chair; B(.46,.05,.44,c.x,.46,c.z,WOOD); for(const [dx,dz] of [[-.19,-.18],[.19,-.18],[-.19,.18],[.19,.18]])B(.05,.46,.05,c.x+dx,.23,c.z+dz,WOOD2);
     B(.46,.52,.05,c.x,.74,c.z-.21,WOOD,-.12,0,0); }
   { const t=BI.toy; B(.8,.05,.55,t.x,.7,t.z,plank(WOOD)); for(const [dx,dz] of [[-.34,-.22],[.34,-.22],[-.34,.22],[.34,.22]])B(.05,.68,.05,t.x+dx,.34,t.z+dz,WOOD2);
-    const hg=new THREE.CylinderGeometry(.075,.075,.34,10,1,false,PI,PI); hg.rotateZ(PI/2); parts.push({g:hg,m:GE.mat4(X+t.x,F+.8,Z+t.z,PI,.4,0,1,.9,1),c:(p,n,o)=>o.copy(col('#b08a60')).lerp(col('#d2b48a'),p.x>X+t.x?.5:0)});
+    // TY: the hull's yaw (its X flip turns the yaw over: the stern points along -cos TY, -sin TY), the stern toward the reader
+    const TY=1.1, sx=-Math.cos(TY), sz=-Math.sin(TY);
+    const hg=new THREE.CylinderGeometry(.075,.075,.34,10,1,false,PI,PI); hg.rotateZ(PI/2); parts.push({g:hg,m:GE.mat4(X+t.x,F+.8,Z+t.z,PI,TY,0,1,.9,1),c:(p,n,o)=>o.copy(col('#b08a60')).lerp(col('#d2b48a'),p.x>X+t.x?.5:0)});
     B(.06,.08,.02,t.x-.12,.8,t.z+.04,col('#c9a77a'),0,.4,0);
     for(let k=0;k<6;k++)B(.06,.008,.025,t.x+.12+r()*.2,.73,t.z-.1+r()*.2,col('#d8c09a'),0,r()*3,0);
     B(.16,.008,.025,t.x-.25,.73,t.z-.16,col('#9a9ca2'),0,.8,0); B(.09,.02,.03,t.x-.33,.735,t.z-.23,col('#4a3424'),0,.8,0);
-    faces.push({g:atlasPlane(.07,.07,RCELL),m:GE.mat4(X+t.x+Math.cos(.4)*-.171,F+.8,Z+t.z+Math.sin(.4)*.171,0,-PI/2+.4,0)}); }
+    // a squared-off transom at the stern, the R cut big across it (readable from where you stand to look at it)
+    B(.012,.12,.17,t.x+sx*.166,.8,t.z+sz*.166,col('#c9a77a'),0,-TY,0);
+    faces.push({g:atlasPlane(.12,.12,RCELL),m:GE.mat4(X+t.x+sx*.174,F+.8,Z+t.z+sz*.174,0,Math.atan2(sx,sz),0)}); }
   // a coat on a peg by the door, a coil of rope, a lamp hook
   parts.push({g:GE.blob(1,1,7,.12),m:GE.mat4(X-BH.IX+.18,F+1.05,Z-1.15,0,0,0,.12,.45,.26),c:col('#3a3632')});
   parts.push({g:new THREE.TorusGeometry(.22,.06,5,14),m:GE.mat4(X-BH.IX+.5,F+.06,Z+1.35,PI/2,0,0),c:col('#8a7a5a')});
@@ -439,6 +499,10 @@ G.system('northIsleStory',{order:86,modes:['play','paused','dead','title'],
     // the roof lifts away while Rowan is in the hut (back on once he's out of the doorway)
     { const P0=G.player&&G.player.pos, want=!(P0&&inBothy(P0)); if(want!==roofOn&&!(want&&nearBothy(P0))){ roofOn=want; if(roof)roof.visible=roofOn; } }
     const st=stage(); applyStage(st);
+    if(winPending){ const P0=G.player&&G.player.pos, cap=G.ui&&G.ui.captions&&G.ui.captions(), k=cap&&cap.cur&&cap.cur.key;
+      if(G.time>winPending.until||!inBothy(P0)||winPending.st!==st)winPending=null;
+      else if(k===winPending.key&&isPlay()){ const w=winPending; winPending=null; windowShot(w.st); } }
+    if(winOn&&G.cine&&G.cine.on&&!inBothy(G.player&&G.player.pos))G.cine.skip();
     if(root&&root.visible&&ember&&ember.visible){ const t=G.time||0; emberMat.opacity=.55+.2*Math.sin(t*3.1)*Math.sin(t*1.7+1); }
     if(G.state.mode!=='play'||!onIsle())return;
     const P=G.player.pos;

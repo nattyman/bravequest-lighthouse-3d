@@ -101,9 +101,10 @@ const mat4=(x,y,z,rx,ry,rz,sx,sy,sz)=>new THREE.Matrix4().compose(_p.set(x,y,z),
 
 /* ================================================================ 3. GRASS AND HEATHER */
 function tuftGeo(){
-  // five long blades combed flat along local +x (the instance turns +x downwind)
-  const pos=[], cl=[], idx=[], r=U.rng(311), base=[.62,.64,.55], mid=[.9,.92,.8], tip=[1.06,1.05,.9];
-  for(let b=0;b<8;b++){ const sa=(r()-.5)*1.3, ox=(r()-.5)*.42, oz=(r()-.5)*.5, h=.22+r()*.22, lean=.32+r()*.28, w=.05+r()*.02;
+  // seven blades combed flat along local +x (the instance turns +x downwind): low and broad at the foot, so neighbouring tufts
+  // run together over the sward tint laid on the ground under them (see tintGround)
+  const pos=[], cl=[], idx=[], r=U.rng(311), base=[.56,.6,.5], mid=[.8,.84,.72], tip=[.93,.93,.8];
+  for(let b=0;b<7;b++){ const sa=(r()-.5)*1.3, ox=(r()-.5)*.5, oz=(r()-.5)*.55, h=.16+r()*.18, lean=.34+r()*.3, w=.065+r()*.025;
     const dx=Math.cos(sa), dz=Math.sin(sa), px=-dz*w, pz=dx*w, o=pos.length/3;
     pos.push(ox-px,-.05,oz-pz, ox+px,-.05,oz+pz, ox+dx*lean*.45-px*.6,h*.62,oz+dz*lean*.45-pz*.6, ox+dx*lean*.45+px*.6,h*.62,oz+dz*lean*.45+pz*.6, ox+dx*lean,h,oz+dz*lean);
     for(const c of [base,base,mid,mid,tip])cl.push(c[0],c[1],c[2]);
@@ -112,12 +113,13 @@ function tuftGeo(){
   g.setAttribute('normal',new THREE.Float32BufferAttribute(pos.map((_,i)=>i%3===1?1:0),3)); g.setAttribute('color',new THREE.Float32BufferAttribute(cl,3)); g.setIndex(idx); return g;
 }
 function heatherGeo(){
-  // a low woody cushion with stiff upright sprigs, purple at the tips
-  const GE=G.world.geo, dk=col('#3e322d'), mid=col('#5b4a52'), top=col('#a7849f'), r=U.rng(4402);
-  const cush=GE.mergeParts([{g:GE.blob(.24,0,1.3,.3),m:mat4(0,.02,0,0,0,0,1.15,.42,1),c:(p,n,o)=>o.copy(dk).lerp(mid,clamp(n.y,0,1)*.7)}]);
+  // a low, spreading woody cushion with short stiff sprigs, the flowers at the tips (neutral here: the instance colour
+  // makes it mauve). Instances are packed close inside a patch, so the cushions merge into a mat.
+  const GE=G.world.geo, dk=col('#4a4048'), mid=col('#7a6a78'), top=col('#cdb2cf'), r=U.rng(4402);
+  const cush=GE.mergeParts([{g:GE.blob(.26,0,1.3,.3),m:mat4(0,-.01,0,0,0,0,1.3,.3,1.15),c:(p,n,o)=>o.copy(dk).lerp(mid,clamp(n.y,0,1)*.8).lerp(top,smooth(.04,.1,p.y)*.35)}]);
   const pos=[], cl=[];
-  for(let b=0;b<9;b++){ const a=r()*TAU, d=Math.sqrt(r())*.24, ox=Math.cos(a)*d, oz=Math.sin(a)*d, h=.16+r()*.16, w=.035, la=r()*TAU, lx=Math.cos(la)*.05, lz=Math.sin(la)*.05, ca=Math.cos(a+1.3)*w, sa=Math.sin(a+1.3)*w;
-    pos.push(ox-ca,0,oz-sa, ox+ca,0,oz+sa, ox+lx,h,oz+lz); cl.push(dk.r,dk.g,dk.b, dk.r,dk.g,dk.b, top.r,top.g,top.b); }
+  for(let b=0;b<8;b++){ const a=r()*TAU, d=Math.sqrt(r())*.26, ox=Math.cos(a)*d, oz=Math.sin(a)*d, h=.12+r()*.1, w=.04, la=r()*TAU, lx=Math.cos(la)*.05, lz=Math.sin(la)*.05, ca=Math.cos(a+1.3)*w, sa=Math.sin(a+1.3)*w;
+    pos.push(ox-ca,.02,oz-sa, ox+ca,.02,oz+sa, ox+lx,h,oz+lz); cl.push(mid.r,mid.g,mid.b, mid.r,mid.g,mid.b, top.r,top.g,top.b); }
   const g=new THREE.BufferGeometry(), n0=cush.attributes.position.count, n=n0+pos.length/3;
   const P=new Float32Array(n*3), N=new Float32Array(n*3), Cc=new Float32Array(n*3);
   P.set(cush.attributes.position.array); N.set(cush.attributes.normal.array); Cc.set(cush.attributes.color.array);
@@ -125,40 +127,67 @@ function heatherGeo(){
   g.setAttribute('position',new THREE.BufferAttribute(P,3)); g.setAttribute('normal',new THREE.BufferAttribute(N,3)); g.setAttribute('color',new THREE.BufferAttribute(Cc,3));
   return g;
 }
+/** what grows at (x,z), without the dice: d = how thickly (0..~1.5), hk = how far inside a heather patch (0..1) */
+function vegAt(x,z){
+  const N=NI(), din=inland(x,z), h=N.height(x,z);
+  if(din<2.5||h<1.9)return {d:0,hk:0,h};
+  const sl=slope(x,z), dT=towerD(x,z), ho=hollow(x,z);
+  let d=1.2*(1-smooth(.5,1.05,sl))*smooth(2.5,8,din)*lerp(.18,1,smooth(10,34,dT))*(.45+1.25*smooth(-.4,1.6,ho))*(.55+.9*vnoise(x*.09+11,z*.09-3));
+  if(N.coveK(x,z)>.5&&h<5)d*=.35;   // the cove's dunes: only a little
+  // heather grows in patches on the higher, drier ground (a coarse noise, cut sharply, so there are clear gaps of sward
+  // between the patches), seldom in the wet hollows
+  const pf=.62*vnoise(x*.075+5.3,z*.075-9.1)+.38*vnoise(x*.21-2.2,z*.21+4.7)+.06*smooth(.4,-.8,ho)-.08*smooth(.3,1.4,ho);
+  const hk=smooth(.6,.665,pf)*(1-smooth(.6,1,sl));
+  return {d,hk,h};
+}
 function buildPlants(root,placed){
   const N=NI(), B=N.box, r=U.rng(9021), gr=[], ht=[];
   const SP=.82;
   for(let z=B.z0;z<B.z1;z+=SP)for(let x=B.x0;x<B.x1;x+=SP){
     const px=x+r()*SP, pz=z+r()*SP, roll=r(), kind=r(), rot=r(), sc=r();
-    const din=inland(px,pz); if(din<2.5)continue;
-    const h=N.height(px,pz); if(h<1.9)continue;
-    const sl=slope(px,pz); if(sl>1.05)continue;
-    const dT=towerD(px,pz), ho=hollow(px,pz);
-    let d=1.2*(1-smooth(.5,1.05,sl))*smooth(2.5,8,din)*lerp(.18,1,smooth(10,34,dT))*(.45+1.25*smooth(-.4,1.6,ho))*(.55+.9*vnoise(px*.09+11,pz*.09-3));
-    if(N.coveK(px,pz)>.5&&h<5)d*=.35;   // the cove's dunes: only a little
-    if(roll>d)continue;
+    const v=vegAt(px,pz); if(v.d<=0)continue;
+    // inside a patch the heather packs close (a mat of cushions); at its ragged edge a few strays; grass between
+    const inP=v.hk>.5, dd=inP?Math.min(.8,v.d*1.1+.2):v.d;
+    if(roll>dd)continue;
     if(!clear(px,pz,.25,.25))continue;
     if(inRock(px,pz,.1))continue;
-    // heather on the higher, drier ground; grass in the hollows and along the slopes
-    const hk=clamp(.12+.45*smooth(.4,-.8,ho)+.35*(vnoise(px*.05-7,pz*.05+2)-.5),0,.75);
-    (kind<hk?ht:gr).push([px,h,pz,rot,sc]);
+    const isH=inP?kind<.88:(v.hk>.08&&kind<v.hk*.6);
+    (isH?ht:gr).push([px,v.h,pz,rot,sc,v.hk]);
   }
   // shuffle (seeded) so a lower instance count thins the whole island evenly (the Saver preset)
   const shuf=(a,s)=>{ const q=U.rng(s); for(let i=a.length-1;i>0;i--){ const j=Math.floor(q()*(i+1)); const t=a[i]; a[i]=a[j]; a[j]=t; } return a; };
   shuf(gr,77); shuf(ht,78);
-  const grassC=[col('#66633f'),col('#79714a'),col('#525a3a'),col('#857c55')], heathC=[col('#c9b2c4'),col('#d6bccd'),col('#b8aa9a'),col('#dcc0d6')];
-  const mk=(list,geo,mat,palette,name,scl)=>{
+  const grassC=[col('#5f6440'),col('#6e6c46'),col('#4f5a3a'),col('#7a7450')], heathC=[col('#968490'),col('#8a7b90'),col('#a0909c'),col('#807584'),col('#99868a')];
+  const mk=(list,geo,mat,palette,name,scl,flat)=>{
     const mesh=new THREE.InstancedMesh(geo,mat,Math.max(1,list.length)); mesh.name=name; mesh.frustumCulled=false; mesh.receiveShadow=true; mesh.castShadow=false;
     const base=new Float32Array(list.length*3), w=new Float32Array(list.length);
-    list.forEach((p,i)=>{ const [x,y,z,rot,sc]=p; const ld=leanDir(x,z), yaw=Math.atan2(-ld.z,ld.x)+(rot-.5)*.8, s=scl[0]+sc*scl[1];
-      mesh.setMatrixAt(i,mat4(x,y-.02,z,0,yaw,0,s,s*(.8+rot*.4),s));
+    list.forEach((p,i)=>{ const [x,y,z,rot,sc,hk]=p; const ld=leanDir(x,z), yaw=Math.atan2(-ld.z,ld.x)+(rot-.5)*(flat?3:.8);
+      // heather: bigger cushions deep in a patch, small ones at the edge; grass: a little taller in the hollows
+      const s=flat?(scl[0]+sc*scl[1])*(.55+.75*smooth(.45,1,hk)):scl[0]+sc*scl[1];
+      mesh.setMatrixAt(i,flat?mat4(x,y-.03,z,0,yaw,0,s*(1+rot*.5),s*(.7+sc*.5),s):mat4(x,y-.02,z,0,yaw,0,s,s*(.75+rot*.35),s));
       _c.copy(palette[Math.floor(vnoise(x*.13,z*.13)*palette.length*.999)]).lerp(palette[(i*7)%palette.length],.3).multiplyScalar(.85+sc*.3);
       base[i*3]=_c.r; base[i*3+1]=_c.g; base[i*3+2]=_c.b; w[i]=tintW(x,z); mesh.setColorAt(i,_c); });
     mesh.count=list.length; mesh.instanceMatrix.needsUpdate=true; if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
     mesh.userData={base,w,full:list.length}; root.add(mesh); return mesh; };
-  L.grass=mk(gr,tuftGeo(),swayMat({amp:.11}),grassC,'northLifeGrass',[1.15,.9]);
-  L.heather=mk(ht,heatherGeo(),swayMat({amp:.04}),heathC,'northLifeHeather',[.9,.9]);
+  L.grass=mk(gr,tuftGeo(),swayMat({amp:.11}),grassC,'northLifeGrass',[1.05,.85],false);
+  L.heather=mk(ht,heatherGeo(),swayMat({amp:.03}),heathC,'northLifeHeather',[1.05,.75],true);
   placed.grass=gr.map(p=>[p[0],p[2]]); placed.heather=ht.map(p=>[p[0],p[2]]);
+  tintGround();
+}
+/* the ground under the plants: a windswept sward tint where grass grows, a dark peaty mauve under the heather patches.
+   Baked into the island terrain's own vertex colours (northisle.js's 'northTerrain'), so it costs no draw call. */
+function tintGround(){
+  const ter=G.scene.getObjectByName('northTerrain'); if(!ter||!ter.geometry.attributes.color)return;
+  const N=NI(), P=ter.geometry.attributes.position, C=ter.geometry.attributes.color, _sw=new THREE.Color(), sward=col('#4f5637'), sward2=col('#5d5e3c'), peat=col('#3a3038');
+  if(!ter.userData.baseColor)ter.userData.baseColor=Float32Array.from(C.array);
+  const b=ter.userData.baseColor;
+  for(let i=0;i<P.count;i++){ const x=P.getX(i), z=P.getZ(i); _c.setRGB(b[i*3],b[i*3+1],b[i*3+2]);
+    const v=vegAt(x,z); if(v.d>0){
+      const pd=N.pathDist(x,z), off=smooth(N.pathW+.2,N.pathW+1.4,pd), k=clamp(v.d*1.3,0,1)*off;
+      _sw.copy(sward).lerp(sward2,vnoise(x*.19+1,z*.19-4)); _c.lerp(_sw,.62*k*(1-v.hk));
+      _c.lerp(peat,.55*k*v.hk); }
+    C.setXYZ(i,_c.r,_c.g,_c.b); }
+  C.needsUpdate=true;
 }
 
 /* ================================================================ 4. SALT-KILLED TREES */
@@ -423,43 +452,62 @@ function buildFog(root,placed){
     if(!clear(x,z,ext,w*.25))continue; if(spots.some(s=>Math.hypot(s.x-x,s.z-z)<13))continue; if(towerD(x,z)<16)continue;
     spots.push({x,z,w,drift,ext,h:N.height(x,z)}); }
   const n=spots.length*2; if(!n){ placed.fog=[]; return; }
+  // the island's ground as a small height map (one byte a texel, ~.22 m steps): each fog fragment fades out as it nears the
+  // ground under it, so a billboard never cuts a hard line where it meets a slope (a depth fade without a depth texture)
+  const HG=1.5, B=N.box, hx=Math.ceil((B.x1-B.x0)/HG)+1, hz=Math.ceil((B.z1-B.z0)/HG)+1, HMIN=-8, HMAX=48, hd=new Uint8Array(hx*hz*4);
+  for(let j=0;j<hz;j++)for(let i=0;i<hx;i++){ const v=Math.round(clamp((N.height(B.x0+i*HG,B.z0+j*HG)-HMIN)/(HMAX-HMIN),0,1)*255), o=(j*hx+i)*4; hd[o]=v; hd[o+1]=v; hd[o+2]=v; hd[o+3]=255; }
+  const htex=new THREE.DataTexture(hd,hx,hz,THREE.RGBAFormat,THREE.UnsignedByteType); htex.magFilter=THREE.LinearFilter; htex.minFilter=THREE.LinearFilter; htex.generateMipmaps=false; htex.flipY=false; htex.needsUpdate=true;
   const geo=new THREE.PlaneGeometry(1,1), att=new Float32Array(n*4);
   const mesh=new THREE.InstancedMesh(geo,null,n);
-  let i=0; for(const s of spots)for(let k=0;k<2;k++){ const w=s.w*(k?.75:1), hh=w*(.28+rr()*.1), ox=(rr()-.5)*4, oz=(rr()-.5)*4;
-    mesh.setMatrixAt(i,mat4(s.x+ox,s.h+hh*.32+.3,s.z+oz,0,0,0,w,hh,1)); att[i*4]=rr()*TAU; att[i*4+1]=.2+rr()*.12; att[i*4+2]=s.drift; att[i*4+3]=tintW(s.x,s.z); i++; }
+  // low and wide: they lie in the hollows (the ground fade trims whatever would sink into the slopes)
+  let i=0; for(const s of spots)for(let k=0;k<2;k++){ const w=s.w*(k?.75:1), hh=w*(.2+rr()*.07), ox=(rr()-.5)*4, oz=(rr()-.5)*4;
+    mesh.setMatrixAt(i,mat4(s.x+ox,s.h+hh*.22+.35,s.z+oz,0,0,0,w,hh,1)); att[i*4]=rr()*TAU; att[i*4+1]=.22+rr()*.12; att[i*4+2]=s.drift; att[i*4+3]=tintW(s.x,s.z); i++; }
   geo.setAttribute('aFog',new THREE.InstancedBufferAttribute(att,4));
   mesh.material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,fog:true,
-    uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{uTime:{value:0},uMap:{value:G.tex.soft},uCol:{value:col('#aaa6c0')},uTint:{value:new THREE.Color()},uTintK:{value:0},uWind:{value:new THREE.Vector2(WIND.x,WIND.z)}}]),
-    vertexShader:`attribute vec4 aFog; uniform float uTime; uniform vec2 uWind; varying vec2 vUv; varying float vA; varying float vT;
+    uniforms:THREE.UniformsUtils.merge([THREE.UniformsLib.fog,{uTime:{value:0},uMap:{value:G.tex.soft},uH:{value:htex},uHBox:{value:new THREE.Vector4(B.x0,B.z0,1/((hx)*HG),1/((hz)*HG))},uHRange:{value:new THREE.Vector2(HMIN,HMAX-HMIN)},
+      uCol:{value:col('#aaa6c0')},uTint:{value:new THREE.Color()},uTintK:{value:0},uWind:{value:new THREE.Vector2(WIND.x,WIND.z)}}]),
+    vertexShader:`attribute vec4 aFog; uniform float uTime; uniform vec2 uWind; varying vec2 vUv; varying float vA; varying float vT; varying vec3 vW;
 #include <fog_pars_vertex>
 void main(){ vUv=uv; vec3 c=vec3(instanceMatrix[3][0],instanceMatrix[3][1],instanceMatrix[3][2]);
   float sx=length(instanceMatrix[0].xyz), sy=length(instanceMatrix[1].xyz), ph=aFog.x;
   float lp=fract(uTime*.012+ph/6.2832); c.xz+=uWind*(lp-.5)*aFog.z*2.+vec2(sin(uTime*.05+ph),cos(uTime*.037+ph*1.3))*aFog.z*.5;
   vec4 mvPosition=viewMatrix*vec4(c,1.); mvPosition.xy+=position.xy*vec2(sx,sy);
+  // the fragment's place in the world (the camera's right and up are the view matrix's first two rows)
+  vW=c+vec3(viewMatrix[0][0],viewMatrix[1][0],viewMatrix[2][0])*position.x*sx+vec3(viewMatrix[0][1],viewMatrix[1][1],viewMatrix[2][1])*position.y*sy;
   float dc=length(mvPosition.xyz);
-  vA=aFog.y*smoothstep(3.,11.,dc)*sin(lp*3.14159)*(.8+.2*sin(uTime*.21+ph*2.)); vT=aFog.w;
+  // seen from well above, a screen-facing sheet stops reading as a bank lying in the hollow: thin it out
+  vec3 V=normalize(c-cameraPosition); float steep=smoothstep(.45,.85,-V.y);
+  vA=aFog.y*smoothstep(3.,11.,dc)*sin(lp*3.14159)*(.8+.2*sin(uTime*.21+ph*2.))*(1.-.65*steep); vT=aFog.w;
   gl_Position=projectionMatrix*mvPosition;
 #include <fog_vertex>
 }`,
-    fragmentShader:`uniform sampler2D uMap; uniform vec3 uCol; uniform vec3 uTint; uniform float uTintK; varying vec2 vUv; varying float vA; varying float vT;
+    fragmentShader:`uniform sampler2D uMap; uniform sampler2D uH; uniform vec4 uHBox; uniform vec2 uHRange; uniform vec3 uCol; uniform vec3 uTint; uniform float uTintK; varying vec2 vUv; varying float vA; varying float vT; varying vec3 vW;
 #include <fog_pars_fragment>
-void main(){ float a=texture2D(uMap,vUv).a*2.*vA*smoothstep(.0,.4,vUv.y); vec3 c=mix(uCol,uTint,clamp(vT*uTintK*.9,0.,.75));
+void main(){ vec2 huv=(vW.xz-uHBox.xy)*uHBox.zw+.5*vec2(uHBox.z,uHBox.w)*${HG.toFixed(2)};
+  float gh=texture2D(uH,huv).r*uHRange.y+uHRange.x;
+  float above=vW.y-gh;
+  float a=texture2D(uMap,vUv).a*2.*vA*smoothstep(.0,.4,vUv.y)*smoothstep(.0,1.8,above);
+  if(a<.003)discard;
+  vec3 c=mix(uCol,uTint,clamp(vT*uTintK*.9,0.,.75));
   gl_FragColor=vec4(c,a);
 #include <fog_fragment>
 }`});
   mesh.material.uniforms.uMap.value=G.tex.soft;   // (merge clones textures; the clone would never upload)
+  mesh.material.uniforms.uH.value=htex;
   mesh.name='northLifeFog'; mesh.frustumCulled=false; mesh.renderOrder=3; root.add(mesh); L.fogMesh=mesh;
   placed.fog=spots.map(s=>[s.x,s.z,+s.ext.toFixed(2)]);
 }
 
 /* ================================================================ 8. THE FIRE'S COLOUR NEAR THE TOWER */
 function buildWash(root){
-  const N=NI(), T=N.tower, pos=[], cl=[], idx=[], RINGS=14, SEG=40;
-  for(let i=0;i<=RINGS;i++){ const rr=i/RINGS*TINT_R; for(let k=0;k<SEG;k++){ const a=k/SEG*TAU, x=T.x+Math.cos(a)*rr, z=T.z+Math.sin(a)*rr, f=(1-smooth(4,TINT_R,rr))*(i===RINGS?0:1);
-      pos.push(x,N.height(x,z)+.12,z); cl.push(f,f,f); if(i===0)break; } }
-  // ring 0 is a single centre vertex
-  for(let k=0;k<SEG;k++)idx.push(0,1+((k+1)%SEG),1+k);
-  for(let i=1;i<RINGS;i++)for(let k=0;k<SEG;k++){ const a=1+(i-1)*SEG+k, b=1+(i-1)*SEG+(k+1)%SEG, c=a+SEG, d=b+SEG; idx.push(a,b,c,b,d,c); }
+  // the island's own terrain triangles within reach of the fire, re-used vertex for vertex (so the wash lies exactly on the
+  // ground: a coarser mesh of its own would bridge the cliff faces as flat pale sheets); faded out on the steep faces
+  const N=NI(), T=N.tower, ter=G.scene.getObjectByName('northTerrain'); if(!ter)return;
+  const tg=ter.geometry, P=tg.attributes.position, I=tg.index.array, R2=(TINT_R+2)*(TINT_R+2), remap=new Map(), pos=[], cl=[], idx=[];
+  const near=v=>{ const dx=P.getX(v)-T.x, dz=P.getZ(v)-T.z; return dx*dx+dz*dz<R2; };
+  const vtx=v=>{ let o=remap.get(v); if(o!=null)return o; const x=P.getX(v), y=P.getY(v), z=P.getZ(v), rr=Math.hypot(x-T.x,z-T.z);
+    const f=(1-smooth(4,TINT_R,rr))*(1-smooth(.75,1.25,slope(x,z))); o=pos.length/3; pos.push(x,y+.02,z); cl.push(f,f,f); remap.set(v,o); return o; };
+  for(let t=0;t<I.length;t+=3){ const a=I[t], b=I[t+1], c=I[t+2]; if(!near(a)||!near(b)||!near(c))continue; idx.push(vtx(a),vtx(b),vtx(c)); }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(cl,3)); g.setIndex(idx); g.computeBoundingSphere();
   const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.DoubleSide,transparent:true,opacity:.1,blending:THREE.AdditiveBlending,depthWrite:false,fog:true,polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-4}));
   m.name='northLifeWash'; m.renderOrder=1; root.add(m); L.wash=m;
