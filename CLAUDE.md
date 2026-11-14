@@ -1,5 +1,8 @@
 # Notes for agents working on this repo
 
+Read `DEVELOPMENT.md` for the full working process (decisions, delegation, git, PRs, testing, CI,
+publishing) and `CONTRACT.md` for the engine API before writing code.
+
 ## Testing
 - Run the browser suites yourself, in your own environment: serve the repo with
   `python3 -m http.server <port>`, build `dev.html` with `python test/build_dev.py`, and run
