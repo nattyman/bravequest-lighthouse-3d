@@ -16,7 +16,11 @@
      'lived' / 'died'  after the fire room (northfire.js outcome): a line or two that know it; per-outcome hooks for later
    Each read is an interaction, captions in group 'nis' (a new read supersedes the last one's waiting lines), a log line,
    and a persisted read flag per stage. Optional: nothing here touches the quest.
-   G.northIsleStory = { state, sites, stage(), outcome:{lived(),died()}, debug:{ read(id), stage(), lines(id,stage), ids } }
+   Slice 5 (§9), the island after the ending: 'lived' (lanterns by the cairns, the stove lit, his new logbook, the path
+   cleared, a wreck in the cove propped up and half patched) and 'died' (the sixth cairn: the toy boat taken from the hut,
+   five flat stones carried up from the cove to the gap he left in the Margery's kerb, the toy set on top, a held shot home).
+   G.northIsleStory = { state, sites, stage(), outcome:{lived(),died()}, debug:{ read(id), stage(), lines(id,stage), ids,
+     carry, pick(i), set(), drop(why), finish(), takeToy(), stonePos(i), toyOnTable(), save(), load(d), cairnOf(d) } }
    Save: G.persist 'northIsleStory'. Keep-clear circles go into G.isleKeepClear at evaluation time (northisle_life.js).
    ===================================================================== */
 (function(){
@@ -46,13 +50,31 @@ const MARKS=[
   {id:'providence',x:176.5,z:-703.2,token:'doll',    board:4},
   {id:'noname',    x:168.5,z:-707,  token:'bottle',  board:5}];
 
+/* after the ending (slice 5, §9): the sixth place in the Margery's kerb (its open north side: the gap he left), the flat
+   stones on the cove's upper beach that Rowan carries up to it ('died'), a wreck of our own on the cove's sand west of the
+   landing (lying canted in the sand; after 'lived' propped up and half patched), and the loose stones on the path's upper legs
+   (cleared and stacked at the side after 'lived') */
+const SIXTH={x:CORNER.x,z:CORNER.z-2.55};
+const SHORE=[{x:169.0,z:-659.8},{x:170.7,z:-661.4},{x:168.1,z:-662.2},{x:171.7,z:-663.3},{x:169.6,z:-664.1}];
+const PATCH={x:164.6,z:-651.6,yaw:PI/2,L:5.4,R:1.3,side:-1};   // west of the landing, along the beach's contour (bow inland); side: the side he works from (local z: uphill, dry)
+const LOOSE=[], HEAPS=[];
+{ const NI=G.northIsle, PTH=NI&&NI.path, r=U.rng(6612); if(PTH&&NI.pathDist){
+    for(let i=2;i<PTH.length-1;i++){ const a=PTH[i], b=PTH[i+1], dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz), nx=-dz/L, nz=dx/L;
+      for(let k=0;k<4;k++){ const t=.12+r()*.76, o=(r()-.5)*2.6; LOOSE.push({x:a[0]+dx*t+nx*o,z:a[1]+dz*t+nz*o,s:.09+r()*.13,seed:r()*99}); }
+      if(i<PTH.length-2){ const t=.5, x0=a[0]+dx*t, z0=a[1]+dz*t; let best=null;
+        for(const sd of [1,-1]){ const x=x0+nx*sd*(NI.pathW+.85), z=z0+nz*sd*(NI.pathW+.85); if(NI.pathDist(x,z)<NI.pathW+.45)continue; const h=H(x,z); if(!best||h<best.h)best={x,z,h}; }
+        if(best)HEAPS.push({x:best.x,z:best.z,seed:r()*99}); } } } }
+
 /* keep-clear: every site's footprint, so the island's dressing (northisle_life.js) leaves them open */
 G.isleKeepClear=G.isleKeepClear||[];
 G.isleKeepClear.push(
   {x:FIELD.x,z:FIELD.z,r:13.5,why:'story: the drowned graveyard'},
   {x:CORNER.x,z:CORNER.z,r:5.6,why:'story: the Margery’s corner'},
   {x:BOTHY.x+.4,z:BOTHY.z,r:4.9,why:'story: the bothy'},
-  {x:BOTHY.x-BH.OX-1.4,z:BOTHY.z,r:1.9,why:'story: the bothy door'});
+  {x:BOTHY.x-BH.OX-1.4,z:BOTHY.z,r:1.9,why:'story: the bothy door'},
+  {x:PATCH.x,z:PATCH.z,r:3.9,why:'story: the wreck he patches'});
+for(const s of SHORE)G.isleKeepClear.push({x:s.x,z:s.z,r:1.1,why:'story: a flat stone on the beach'});
+for(const h of HEAPS)G.isleKeepClear.push({x:h.x,z:h.z,r:1.2,why:'story: the path’s stones, stacked'});
 
 /* ================================================================ 2. THE BOTHY'S FLOOR, WALLS AND CAMERA (evaluation) */
 const bl=(x,z)=>({x:x-BOTHY.x,z:z-BOTHY.z});
@@ -117,11 +139,15 @@ G.cameraConstrainers.push((cam,target)=>{ const P=G.player&&G.player.pos; if(!ne
   cam.copy(target).addScaledVector(_cd,Math.max(ok,.35/L)); cam.y+=k*1.7;
   for(let i=0;i<14&&hutSolidOut(cam.x,cam.y,cam.z);i++)cam.y+=.2; });
 // the things inside, in the hut's frame (x, z, height above the floor)
-const BI={tally:{x:-2.55,z:0,y:1},bunk:{x:1.35,z:-1.05,y:.5},stove:{x:2.05,z:.95,y:.6},chair:{x:.6,z:.55,y:.5},toy:{x:-1.55,z:1.2,y:.75},window:{x:.6,z:1.8,y:1.15}};
+const BI={tally:{x:-2.55,z:0,y:1},bunk:{x:1.35,z:-1.05,y:.5},stove:{x:2.05,z:.95,y:.6},chair:{x:.6,z:.55,y:.5},toy:{x:-1.55,z:1.2,y:.75},window:{x:.6,z:1.8,y:1.15},
+  log:{x:-.85,z:-1.52,y:1.34}};   // a shelf on the north wall, west of the bunk ('lived': his new logbook lies on it)
 const BW=k=>V(BOTHY.x+BI[k].x,BFY+BI[k].y,BOTHY.z+BI[k].z);
 
 /* ================================================================ 3. STATE AND STAGE */
-const S={v:1,read:{},seen:{},hooks:{}};
+// cairn: the sixth cairn ('died'): toy taken from the bothy, stones set (count, and which shore stones), toy set on top, scene played
+const CAIRN0=()=>({toy:0,stones:0,used:[],done:0,scene:0});
+const S={v:2,read:{},seen:{},hooks:{},cairn:CAIRN0()};
+const NSTONES=SHORE.length;
 const isPlay=()=>G.state.mode==='play';
 function caveS(){ const C=G.northCave; return (C&&C.state)||null; }
 function outcome(){ try{ const F=G.northFire, o=F&&F.state&&F.state.outcome; return o==='lived'||o==='died'?o:null; }catch(e){ return null; } }
@@ -140,8 +166,9 @@ const READS={
   field:{site:'field',auto:true,name:'The cairns',
     lines:{before:['Cairns. Dozens of them, all across the top of the rise.','Someone carried every one of these stones up from the shore.'],
       known:['This is where he put them. Whatever the fire left him.','Not all of them. There aren’t that many stones on this rock.'],
-      lived:['He buried them himself. Every one he could find.','He’ll walk past them every day he keeps that light.'],
-      died:['He buried them himself. Every one he could find.','Nobody left to carry the stones up now.']},
+      lived:['He buried them himself. Every one he could find.','He’s set a lantern by every one he could put a name to. And a few he couldn’t.','He’ll walk past them every day he keeps that light.'],
+      died:()=>S.cairn.done?['He buried them himself. Every one he could find.','Those were the last stones anyone will carry up here.']
+                           :['He buried them himself. Every one he could find.','Nobody left to carry the stones up now.']},
     log:{before:'A field of cairns on the north island, on the rise east of the tower.',known:'His cairns: the drowned, buried on the rise east of the tower.'}},
   /* ---- the readable markers ---- */
   swift:{site:'field',label:'Read the marker',name:'The Swift’s cairn',
@@ -177,7 +204,8 @@ const READS={
       known:()=>{ const L=['His own crew. He buried them first, up here where they can see home.','Five cairns. He never built the sixth.'];
         if(ledger())L.push('He let the Pellow boys go by on the Gannet. Their father’s up here.'); return L; },
       lived:['His own crew. He buried them first, up here where they can see home.','Five cairns. The sixth man is keeping a light for them now.'],
-      died:['His own crew. He buried them first, up here where they can see home.','There should be six now.','There’s nothing of him left to put under it. I’ll build it anyway.']},
+      died:()=>S.cairn.done?['His own crew. He buried them first, up here where they can see home.','Six now. The skipper’s back with his men.','Nobody at home will ring the bell for him. Nobody will know to.']
+                           :['His own crew. He buried them first, up here where they can see home.','There should be six now.','There’s nothing of him left to put under it. I’ll build it anyway.']},
     log:{before:'Five cairns set apart, for the Margery’s men, with Wickham’s End names.',known:'Five cairns for the Margery’s men. He buried his own crew first.'}},
   /* ---- the bothy (arriving at the door) ---- */
   bothy:{site:'bothy',auto:true,name:'The bothy',
@@ -213,8 +241,34 @@ const READS={
       known:()=>caveToy()?['The same boat as the blue one in the cave. The same R.','He keeps carving it. This one he never finished.']
                           :['He made me one like this, the winter before the Margery went out.','He’s carving it again. Twenty years, and he hasn’t finished it.'],
       lived:['He made me one like this, the winter before the Margery went out.','I’ll leave it. He might finish this one.'],
-      died:['He made me one like this, the winter before the Margery went out.','I’m taking it home.']},
-    log:{before:'A toy boat in the bothy, half carved, with an R cut in the stern.',known:'A toy boat in his hut, half carved, with my initial in the stern.'}}};
+      died:['He made me one like this, the winter before the Margery went out.','There’s nothing of him to bury. This will have to do.','He carried flat stones up from the shore for his men. I’ll carry up his.']},
+    // after the ending where he died, the toy is taken from the table to start the sixth cairn (§9)
+    labelFn:st=>st==='died'&&!S.cairn.toy?'Take the toy boat':null, hide:st=>st==='died'&&!!S.cairn.toy, after:st=>{ if(st==='died')takeToy(); },
+    log:{before:'A toy boat in the bothy, half carved, with an R cut in the stern.',known:'A toy boat in his hut, half carved, with my initial in the stern.',died:'His toy boat, taken from the bothy for the sixth cairn.'}},
+  /* ---- after the ending where he lives (§9): only in 'lived' ---- */
+  logbook:{site:'bothy',only:['lived'],label:'Read the logbook',name:'The new logbook',
+    lines:{lived:[N_('A new logbook on the shelf, the first pages filled. Wind, weather, what passed.'),
+        N_('“Wind north-east, falling. A Carrow lugger at dusk, well out. Showed her the rocks. She dipped her lamp to me.”'),
+        'The same hand as the ledger in the cave.','No more of the other kind.']},
+    log:{lived:'His new logbook in the bothy: wind, weather, what passed.'}},
+  patched:{site:'cove',only:['lived'],label:'Look at the boat',name:'The patched boat',
+    lines:{lived:[N_('One of the wrecks, up off the sand on driftwood shores. New planks let into her side, pale against the old, and a pot of pitch by her keel.'),
+        'He’s patching her. To give back.','It won’t bring anyone home. He knows that.']},
+    log:{lived:'A wreck in the cove, propped up and half patched. He means to give her back.'}},
+  path:{site:'path',auto:true,only:['lived'],name:'The path',
+    lines:{lived:['He’s cleared the path. The loose stones are all stacked at the side.','So nobody coming up it in the dark breaks their neck.']},
+    log:{lived:'The path up from the cove, cleared, its loose stones stacked at the side.'}},
+  /* ---- after the ending where he dies (§9): only in 'died' ---- */
+  sixth:{site:'corner',only:['died'],label:'Look at the sixth place',name:'The sixth place',
+    lines:{died:()=>S.cairn.done?[N_('Five flat stones from the cove, none of them cut, and a toy boat on top with an R in the stern.'),'He’d have built it better.']
+                               :[N_('The kerb is left open on the north side. A flat stone is laid in the gap, with nothing on it.'),'He left room for himself.']},
+    labelFn:()=>carry.on?'Set the stone down':S.cairn.done?'The sixth cairn':S.cairn.toy&&S.cairn.stones>=NSTONES?'Set the toy boat on top':null,
+    use:()=>sixthUse(),
+    log:{died:'A sixth place left open in the kerb at the Margery’s corner.'}}};
+/* the sixth cairn's own lines (§9): setting the stones, a dropped stone, and the toy on top (the scene) */
+const CAIRN_LINES={first:'He carried up every stone on this rise. Twenty years of it.',last:'That’s enough stone. Now the boat.',drop:'Back down for it, then.',
+  scene:['Six.','You can see our light from here. You always could.','Something honest to steer by, Da. I heard you.'],
+  log:'The sixth cairn, at the Margery’s corner: stones from the cove, and his toy boat on top.'};
 const IDS=Object.keys(READS);
 function linesOf(id,st){ const R=READS[id]; if(!R)return []; st=st||stage(); let L=R.lines[st]; if(L==null&&(st==='lived'||st==='died'))L=R.lines.known; if(typeof L==='function')L=L();
   return (L||[]).map(l=>typeof l==='string'?{t:l,who:'Rowan'}:{t:l.t,who:l.who==null?null:l.who}); }
@@ -227,6 +281,7 @@ function read(id){
   // the chair's window shot waits for the line about the view (the first line once he knows); any other read cancels it
   winPending=id==='chair'?{st,key:st==='before'?'nis-chair1':'nis-chair',until:G.time+16}:null;
   G.emit('northIsleStory:read',{id,stage:st,first});
+  if(R.after)try{ R.after(st); }catch(e){ console.error(e); }
   return L.map(l=>l.t);
 }
 /* the chair: a short held shot from where he sits, out of the south window and across the water to our lamp (onboarding.js
@@ -245,7 +300,9 @@ function windowShot(st){
   if(ok){ winOn=true; if(roof)roof.visible=true; }
   return ok;
 }
-const labelOf=id=>{ const R=READS[id]; return S.read[id+':'+stage()]?R.name:(R.label||R.name); };
+const labelOf=id=>{ const R=READS[id], st=stage(); const f=R.labelFn&&R.labelFn(st); if(f)return f; return S.read[id+':'+st]?R.name:(R.label||R.name); };
+/** is this read on offer now (a stage-only read outside its stages, or the toy once it has gone to the cairn, is not) */
+const offered=(id,st)=>{ const R=READS[id]; st=st||stage(); if(R.only&&R.only.indexOf(st)<0)return false; if(R.hide&&R.hide(st))return false; return true; };
 
 /* ================================================================ 5. BUILDING IT */
 let root=null, ember=null, emberMat=null, layout=null, roof=null, roofOn=true;
@@ -361,16 +418,30 @@ function buildGraveyard(GE){
     crew.push(c); });
   for(let k=0;k<26;k++){ const a=k/26*TAU; if(Math.abs(U.angDiff(a,-PI/2))<.5)continue; const rr=.2+r()*.1, x=CORNER.x+Math.cos(a)*(CORNER.r+.1), z=CORNER.z+Math.sin(a)*(CORNER.r+.1);
     parts.push({g:GE.blob(1,0,k*1.7,.18),m:GE.mat4(x,H(x,z)+rr*.2,z,0,a,0,rr*1.5,rr*.8,rr*1.1),c:stoneC(k)}); }
+  // the sixth place: in the kerb's open north side, a flat footing stone laid ready, with nothing on it (he left room)
+  { const g=H(SIXTH.x,SIXTH.z); parts.push({g:GE.blob(1,1,4.4,.08),m:GE.mat4(SIXTH.x,g+.02,SIXTH.z,0,.3,0,.62,.09,.52),c:(p,n,o)=>o.copy(col('#6f6e6c')).lerp(col('#575552'),vnoise(p.x*5,p.z*5)*.7).lerp(SOIL,.5*(1-smooth(-.02,.06,p.y-g)))}); }
   const stones=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true})); stones.castShadow=true; stones.receiveShadow=true; stones.name='nisGraveyard'; root.add(stones);
   return {cairns,out,crew,faces};
 }
+/* ---- the toy boat: half carved, an R cut in the stern. In the hut on the table; after the ending where he died, on the
+   sixth cairn (the same parts round its own origin). TY: the hull's yaw (its X flip turns the yaw over: the stern points along
+   -cos TY, -sin TY), the stern toward the reader ---- */
+function toyParts(GE,ox,oy,oz,list,flist){ const TY=1.1, sx=-Math.cos(TY), sz=-Math.sin(TY);
+  const hg=new THREE.CylinderGeometry(.075,.075,.34,10,1,false,PI,PI); hg.rotateZ(PI/2); list.push({g:hg,m:GE.mat4(ox,oy,oz,PI,TY,0,1,.9,1),c:(p,n,o)=>o.copy(col('#b08a60')).lerp(col('#d2b48a'),p.x>ox?.5:0)});
+  list.push({g:new THREE.BoxGeometry(.06,.08,.02),m:GE.mat4(ox-.12,oy,oz+.04,0,.4,0),c:col('#c9a77a')});
+  // a squared-off transom at the stern, the R cut big across it (readable from where you stand to look at it)
+  list.push({g:new THREE.BoxGeometry(.012,.12,.17),m:GE.mat4(ox+sx*.166,oy,oz+sz*.166,0,-TY,0),c:col('#c9a77a')});
+  flist.push({g:atlasPlane(.12,.12,RCELL),m:GE.mat4(ox+sx*.174,oy,oz+sz*.174,0,Math.atan2(sx,sz),0)}); }
+const TOYV={bothy:0,face:0}; let bothyMesh=null, facesMesh=null;
+/** the toy on the hut's table drawn or not: the tail of the hut's mesh and the last quad of the faces mesh */
+function toyShown(on){ for(const [m,n] of [[bothyMesh,TOYV.bothy],[facesMesh,TOYV.face]]){ if(!m)continue; const c=m.geometry.attributes.position.count; m.geometry.setDrawRange(0,on?c:c-n); } }
 /* ---- the bothy ---- */
 function halfTube(L,x0,nx,na,wAt,hAt){ const pos=[], idx=[];
   for(let i=0;i<=nx;i++){ const x=x0+L*i/nx, w=wAt(x), hh=hAt(x); for(let j=0;j<=na;j++){ const a=PI*j/na; pos.push(x,Math.sin(a)*BH.RH*hh,Math.cos(a)*BH.RW*w); } }
   for(let i=0;i<nx;i++)for(let j=0;j<na;j++){ const a=i*(na+1)+j, b=a+na+1; idx.push(a,b,a+1,a+1,b,b+1); }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); g.computeVertexNormals(); return g; }
 function buildBothy(GE,faces){
-  const parts=[], X=BOTHY.x, Z=BOTHY.z, F=BFY, r=rnd(3301);
+  const parts=[], toyP=[], rFace=[], X=BOTHY.x, Z=BOTHY.z, F=BFY, r=rnd(3301);
   const B=(w,h,d,x,y,z,c,rx,ry,rz)=>parts.push({g:new THREE.BoxGeometry(w,h,d),m:GE.mat4(X+x,F+y,Z+z,rx||0,ry||0,rz||0),c});
   const plank=(base)=>(p,n,o)=>{ o.copy(base).lerp(WOOD2,.25+.25*Math.sin(p.x*7+p.z*7+vnoise(p.x*.9,p.y*3)*4)); };
   const strake=[col('#5a4c40'),col('#4c4036'),col('#62564a'),col('#54483c'),col('#3b3f5a')];
@@ -418,22 +489,24 @@ function buildBothy(GE,faces){
   { const c=BI.chair; B(.46,.05,.44,c.x,.46,c.z,WOOD); for(const [dx,dz] of [[-.19,-.18],[.19,-.18],[-.19,.18],[.19,.18]])B(.05,.46,.05,c.x+dx,.23,c.z+dz,WOOD2);
     B(.46,.52,.05,c.x,.74,c.z-.21,WOOD,-.12,0,0); }
   { const t=BI.toy; B(.8,.05,.55,t.x,.7,t.z,plank(WOOD)); for(const [dx,dz] of [[-.34,-.22],[.34,-.22],[-.34,.22],[.34,.22]])B(.05,.68,.05,t.x+dx,.34,t.z+dz,WOOD2);
-    // TY: the hull's yaw (its X flip turns the yaw over: the stern points along -cos TY, -sin TY), the stern toward the reader
-    const TY=1.1, sx=-Math.cos(TY), sz=-Math.sin(TY);
-    const hg=new THREE.CylinderGeometry(.075,.075,.34,10,1,false,PI,PI); hg.rotateZ(PI/2); parts.push({g:hg,m:GE.mat4(X+t.x,F+.8,Z+t.z,PI,TY,0,1,.9,1),c:(p,n,o)=>o.copy(col('#b08a60')).lerp(col('#d2b48a'),p.x>X+t.x?.5:0)});
-    B(.06,.08,.02,t.x-.12,.8,t.z+.04,col('#c9a77a'),0,.4,0);
+    // the toy itself goes in last (toyP, rFace): after the ending where he died it is taken to the cairn, and the hut's merged
+    // mesh simply stops drawing its tail (setDrawRange) instead of costing a draw call of its own
     for(let k=0;k<6;k++)B(.06,.008,.025,t.x+.12+r()*.2,.73,t.z-.1+r()*.2,col('#d8c09a'),0,r()*3,0);
     B(.16,.008,.025,t.x-.25,.73,t.z-.16,col('#9a9ca2'),0,.8,0); B(.09,.02,.03,t.x-.33,.735,t.z-.23,col('#4a3424'),0,.8,0);
-    // a squared-off transom at the stern, the R cut big across it (readable from where you stand to look at it)
-    B(.012,.12,.17,t.x+sx*.166,.8,t.z+sz*.166,col('#c9a77a'),0,-TY,0);
-    faces.push({g:atlasPlane(.12,.12,RCELL),m:GE.mat4(X+t.x+sx*.174,F+.8,Z+t.z+sz*.174,0,Math.atan2(sx,sz),0)}); }
+    toyParts(GE,X+t.x,F+.8,Z+t.z,toyP,rFace); }
+  // a shelf on the north wall, west of the bunk: a tin and a bottle (and after 'lived' his new logbook, §9)
+  { const l=BI.log; B(1.0,.04,.26,l.x,l.y-.06,-BH.IZ+.13,plank(WOOD)); for(const dx of [-.4,.4])B(.04,.16,.2,l.x+dx,l.y-.16,-BH.IZ+.11,WOOD2,.5,0,0);
+    parts.push({g:new THREE.CylinderGeometry(.05,.05,.12,8),m:GE.mat4(X+l.x+.33,F+l.y,Z-BH.IZ+.14,0,0,0),c:col('#5d5a52')});
+    parts.push({g:new THREE.CylinderGeometry(.03,.04,.16,7),m:GE.mat4(X+l.x-.36,F+l.y+.02,Z-BH.IZ+.12,0,0,0),c:col('#33483c')}); }
   // a coat on a peg by the door, a coil of rope, a lamp hook
   parts.push({g:GE.blob(1,1,7,.12),m:GE.mat4(X-BH.IX+.18,F+1.05,Z-1.15,0,0,0,.12,.45,.26),c:col('#3a3632')});
   parts.push({g:new THREE.TorusGeometry(.22,.06,5,14),m:GE.mat4(X-BH.IX+.5,F+.06,Z+1.35,PI/2,0,0),c:col('#8a7a5a')});
   // the tally marks: the inside faces of both door posts
   for(const [sz,j] of [[-1,0],[1,1]]){ const z=Z+sz*(BH.DOORZ+.0); faces.push({g:atlasPlane(.15,1.3,JAMB[j]),m:GE.mat4(X-BH.OX+.1,F+.82,z-sz*.004,0,sz<0?0:PI,0)}); }
+  faces.push(...rFace);                              // the R in the toy's stern: the faces mesh's last quad (see toyShown)
   const bm=G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide});
-  const mesh=new THREE.Mesh(GE.mergeParts(parts),bm); mesh.castShadow=true; mesh.receiveShadow=true; mesh.name='nisBothy'; root.add(mesh);
+  const mesh=new THREE.Mesh(GE.mergeParts(parts.concat(toyP)),bm); mesh.castShadow=true; mesh.receiveShadow=true; mesh.name='nisBothy'; root.add(mesh);
+  bothyMesh=mesh; TOYV.bothy=GE.mergeParts(toyP).attributes.position.count; TOYV.face=GE.mergeParts(rFace,{uv:'keep'}).attributes.position.count;
   // the roof is its own mesh: it lifts away while Rowan is inside, so the camera can look down into the hut
   roof=new THREE.Mesh(GE.mergeParts(roofParts),bm); roof.castShadow=true; roof.receiveShadow=true; roof.name='nisBothyRoof'; root.add(roof);
   // furniture colliders (the walls are boxes, evaluation-time)
@@ -453,35 +526,231 @@ function build(){
   const atlas=G.canvasTex(AT,drawAtlas,true);
   if(atlas){ atlas.anisotropy=4; }
   const fm=new THREE.Mesh(GE.mergeParts(gy.faces,{uv:'keep'}),G.toon('#ffffff',{map:atlas,side:THREE.DoubleSide})); fm.name='nisFaces'; fm.receiveShadow=true; root.add(fm);
+  facesMesh=fm; faceMat=fm.material;
+  try{ buildAfter(GE); }catch(e){ console.error('northIsleStory after',e); }
   // where each readable thing is read from
   for(const m of MARKS)SITES.reads[m.id]=gy.out[m.id].pos;
   SITES.reads.margery=V(CORNER.x,H(CORNER.x,CORNER.z)+.4,CORNER.z);
   for(const k of ['tally','bunk','stove','chair','toy'])SITES.reads[k]=BW(k);
+  SITES.reads.logbook=BW('log'); SITES.reads.sixth=V(SIXTH.x,H(SIXTH.x,SIXTH.z)+.4,SIXTH.z);
+  { const c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), lx=-.4, lz=PATCH.side*(PATCH.R+.35); SITES.reads.patched=V(PATCH.x+lx*c+lz*sn,H(PATCH.x,PATCH.z)+1,PATCH.z-lx*sn+lz*c); }
   // where a reader stands for each (tests and the map): a step in front of each marker, the middle of the corner, a spot in the hut
   for(const m of MARKS){ const o=gy.out[m.id]; SITES.stands[m.id]=V(o.pos.x+Math.sin(o.yaw)*1.15,0,o.pos.z+Math.cos(o.yaw)*1.15); }
   SITES.stands.margery=V(CORNER.x,0,CORNER.z-.6);
-  for(const [k,x,z] of [['tally',-2.0,-.3],['bunk',1.7,-.35],['stove',1.55,1.3],['chair',.6,1.2],['toy',-1.5,.4]])SITES.stands[k]=V(BOTHY.x+x,0,BOTHY.z+z);
+  SITES.stands.sixth=V(SIXTH.x+.15,0,SIXTH.z-1.05);
+  { const c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), lx=-.4, lz=PATCH.side*(PATCH.R+1.25); SITES.stands.patched=V(PATCH.x+lx*c+lz*sn,0,PATCH.z-lx*sn+lz*c); }
+  for(const [k,x,z] of [['tally',-2.0,-.3],['bunk',1.7,-.35],['stove',1.55,1.3],['chair',.6,1.2],['toy',-1.5,.4],['logbook',-.85,-.75]])SITES.stands[k]=V(BOTHY.x+x,0,BOTHY.z+z);
   for(const k in SITES.stands){ const v=SITES.stands[k]; v.y=G.floorAt(v.x,v.z,H(v.x,v.z)+3); }
   SITES.cairns=gy.cairns.length; SITES.crew=gy.crew.map(c=>({x:c.x,z:c.z}));
 }
 const SITES={field:{x:FIELD.x,z:FIELD.z,rx:FIELD.rx,rz:FIELD.rz},corner:{x:CORNER.x,z:CORNER.z,r:CORNER.r},
   bothy:{x:BOTHY.x,z:BOTHY.z,floorY:BFY,inner:{hx:BH.IX,hz:BH.IZ},door:V(BOTHY.x-BH.OX,BFY,BOTHY.z),doorOut:V(BOTHY.x-BH.OX-1.6,BH.gDoor,BOTHY.z),inside:inBothy,near:nearBothy},
-  reads:{},stands:{},cairns:0,crew:[]};
+  reads:{},stands:{},cairns:0,crew:[],
+  sixth:{x:SIXTH.x,z:SIXTH.z}, shore:SHORE.map(p=>({x:p.x,z:p.z})), patched:{x:PATCH.x,z:PATCH.z,yaw:PATCH.yaw}, heaps:HEAPS, loose:LOOSE};
+
+/* ================================================================ 9. AFTER THE ENDING (slice 5)
+   'lived': his father keeps a true light now and is making amends. Small lanterns by the cairns (one merged mesh for the
+   frames, one for the glass, one Points for the glow, one point light over the field and one in the hut), the stove lit and a
+   new logbook on the hut's shelf, the path's loose stones stacked at the side, and the wreck of ours in the cove propped up on
+   shores and half patched. He stays in the fire room: nothing of him on the surface.
+   'died': the island dark and quiet, and the sixth cairn. "Take the toy boat" in the hut starts it; flat stones on the cove's
+   upper beach (one InstancedMesh: five on the beach, five in the cairn, one in his arms) are carried up one at a time to the
+   sixth place in the Margery's kerb. Carrying one slows him, and he can't strike or roll with it: a roll, or a blow that lands,
+   drops it and it is back on the beach. Five trips; then the toy goes on top, and a short held shot over the six cairns
+   toward our light, three lines, a log line. All of it persisted (S.cairn). */
+let sixthEntry=null;
+let faceMat=null, looseMesh=null, livedGroup=null, stoneMesh=null, toyCairn=null, stoveLight=null;
+const look={dirty:true};
+const _m4=new THREE.Matrix4(), _q4=new THREE.Quaternion(), _e4=new THREE.Euler(), _s4=new THREE.Vector3(), _p4=new THREE.Vector3();
+/** a matrix: translate, then yaw, then roll about the local long axis (x), then pitch (z): a hull lying in the sand */
+function boatMat(x,y,z,yaw,roll,pitch){ const m=new THREE.Matrix4().makeTranslation(x,y,z); m.multiply(new THREE.Matrix4().makeRotationY(yaw)); m.multiply(new THREE.Matrix4().makeRotationX(roll||0)); m.multiply(new THREE.Matrix4().makeRotationZ(pitch||0)); return m; }
+/** an open hull along local x, bow at +x, keel down, the transom closing the stern */
+function hullGeo(L,R){ const g=new THREE.CylinderGeometry(R,R,L,16,8,true,PI,PI); g.rotateZ(PI/2); const P=g.attributes.position;
+  for(let i=0;i<P.count;i++){ const hx=P.getX(i), t=clamp((hx+L/2)/L,0,1), y=P.getY(i), z=P.getZ(i), bow=smooth(.4,1,t), w=Math.max(.04,1-bow*bow*.96);
+    P.setXYZ(i,hx,y*.7*(1-.25*bow)+.32*bow*bow,z*w); }
+  g.computeVertexNormals(); return g; }
+function transomGeo(L,R){ const g=new THREE.CircleGeometry(R*.98,12,PI,PI); g.rotateY(PI/2); g.scale(1,.7,1); g.translate(-L/2+.02,0,0); return g; }
+const _inv=new THREE.Matrix4(), _lv=new THREE.Vector3();
+/** the hull's planking by strake: old and weathered, a band of paint, weed low down; with fresh planks let in aft on the
+    starboard side when it's being patched, the rest of that side still open to the ribs (dark) */
+function hullColour(M,R,patched){ const inv=new THREE.Matrix4().copy(M).invert(), old=col('#73604b'), old2=col('#4a3c2e'), paint=col('#5a6a3c'), fresh=col('#c7a77a'), fresh2=col('#a8875e'), gap=col('#17120e'), weed=col('#3c4b30');
+  return (p,n,o)=>{ _lv.copy(p).applyMatrix4(inv); const a=Math.atan2(-_lv.y,_lv.z), band=Math.floor(a/PI*9+9), stripe=band%2;
+    o.copy(old).lerp(old2,.25+.3*stripe+.2*vnoise(_lv.x*1.3,band*.7)); if(_lv.y>-R*.12)o.lerp(paint,.6);
+    const side=_lv.z*PATCH.side>.05, holed=side&&_lv.x>-.6&&_lv.x<1.9&&_lv.y<-R*.15&&_lv.y>-R*.6;
+    if(patched){ const edge=.2+.9*vnoise(band*1.7,3.1); if(_lv.x<edge-(side?0:.8))o.copy(fresh).lerp(fresh2,.3*stripe+.2*vnoise(_lv.x*2,band));
+      else if(holed&&band%3!==0)o.copy(gap); }
+    else{ if(holed&&band%3!==1)o.copy(gap); if(_lv.y<-R*.45)o.lerp(weed,.45); } }; }
+function buildAfter(GE){
+  const r=rnd(7727);
+  /* ---- before 'lived' (and in 'died'): the loose stones on the path's upper legs; the wreck of ours lying canted in the sand ---- */
+  { const parts=[];
+    for(const s of LOOSE){ const y=H(s.x,s.z); parts.push({g:GE.blob(1,0,s.seed,.25),m:GE.mat4(s.x,y+s.s*.2,s.z,r()*.4,r()*TAU,r()*.4,s.s*1.25,s.s*.65,s.s),c:stoneC(Math.floor(s.seed*7))}); }
+    const gy=Math.max(H(PATCH.x,PATCH.z),.2), M=boatMat(PATCH.x,gy+PATCH.R*.05,PATCH.z,PATCH.yaw,-.5,-.08);   // over on her side, half sunk in the sand
+    parts.push({g:hullGeo(PATCH.L,PATCH.R),m:M,c:hullColour(M,PATCH.R,false)}); parts.push({g:transomGeo(PATCH.L,PATCH.R),m:M,c:col('#43362a')});
+    for(let k=0;k<3;k++){ const lx=-1.5+k*1.4, lz=PATCH.side*(PATCH.R+.6+r()*.6), c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), x=PATCH.x+lx*c+lz*sn, z=PATCH.z-lx*sn+lz*c;
+      parts.push({g:new THREE.BoxGeometry(1.4+r()*.8,.05,.17),m:GE.mat4(x,H(x,z)+.04,z,0,PATCH.yaw+(r()-.5)*.9,(r()-.5)*.1),c:col('#4a3b2d')}); }
+    looseMesh=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); looseMesh.castShadow=true; looseMesh.receiveShadow=true; looseMesh.name='nisLoose'; root.add(looseMesh);
+    // the same footprint either way (canted in the sand, or up on its shores)
+    { const c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw); for(const lx of [-PATCH.L*.3,0,PATCH.L*.28])G.addCollider({x:PATCH.x+lx*c,z:PATCH.z-lx*sn,r:PATCH.R*(lx>1?.75:.95),y0:-6,y1:gy+2.4}); } }
+  /* ---- 'lived' ---- */
+  livedGroup=new THREE.Group(); livedGroup.name='nisLived'; livedGroup.visible=false; root.add(livedGroup);
+  { const parts=[], glass=[], glow=[], IRON2=col('#262224');
+    // the lanterns: at the foot of each readable cairn (the reader's side), a few others, and one on the sixth place's footing
+    const spots=[]; for(const m of MARKS){ const o=layout.out[m.id], c=o.cairn, a=o.yaw+.85; spots.push({x:c.x+Math.sin(a)*(c.r+.2),z:c.z+Math.cos(a)*(c.r+.2)}); }
+    const others=layout.cairns.filter(c=>!MARKS.some(m=>layout.out[m.id].cairn===c)&&!layout.crew.includes(c)); for(const k of [3,11,19,27,36]){ const c=others[k%others.length]; if(!c)continue; const a=r()*TAU; spots.push({x:c.x+Math.sin(a)*(c.r+.18),z:c.z+Math.cos(a)*(c.r+.18)}); }
+    spots.push({x:SIXTH.x+.05,z:SIXTH.z+.02,on:.09});
+    for(const s of spots){ const y=H(s.x,s.z)+(s.on||0), yaw=r()*PI, L=(w,h,d,dx,dy,dz,c)=>parts.push({g:new THREE.BoxGeometry(w,h,d),m:GE.mat4(s.x+dx,y+dy,s.z+dz,0,yaw,0),c});
+      L(.17,.035,.17,0,.018,0,IRON2); for(const [dx,dz] of [[-.07,-.07],[.07,-.07],[-.07,.07],[.07,.07]])parts.push({g:new THREE.BoxGeometry(.02,.2,.02),m:GE.mat4(s.x+dx*Math.cos(yaw)+dz*Math.sin(yaw),y+.135,s.z-dx*Math.sin(yaw)+dz*Math.cos(yaw),0,yaw,0),c:IRON2});
+      L(.17,.03,.17,0,.25,0,IRON2); parts.push({g:new THREE.ConeGeometry(.11,.1,4),m:GE.mat4(s.x,y+.31,s.z,0,yaw+PI/4,0),c:IRON2});
+      parts.push({g:new THREE.TorusGeometry(.045,.009,4,10),m:GE.mat4(s.x,y+.39,s.z,0,yaw,0),c:IRON2});
+      glass.push({g:new THREE.BoxGeometry(.12,.18,.12),m:GE.mat4(s.x,y+.135,s.z,0,yaw,0)}); glow.push(s.x,y+.15,s.z); }
+    LANTERNS.length=0; for(const s of spots)LANTERNS.push({x:s.x,z:s.z});
+    // his new logbook on the hut's shelf, a pencil beside it
+    { const l=BI.log, x=BOTHY.x+l.x, y=BFY+l.y-.04, z=BOTHY.z-BH.IZ+.15;
+      parts.push({g:new THREE.BoxGeometry(.22,.045,.16),m:GE.mat4(x,y+.023,z,0,.12,0),c:col('#4a2e22')}); parts.push({g:new THREE.BoxGeometry(.205,.032,.15),m:GE.mat4(x+.012,y+.024,z,0,.12,0),c:col('#d8ceb4')});
+      parts.push({g:new THREE.CylinderGeometry(.006,.006,.15,5),m:GE.mat4(x+.17,y+.006,z+.02,0,.5,PI/2),c:col('#8a6a3a')}); }
+    // the stove lit: a glow at its door (and the hut's light)
+    glow.push(BOTHY.x+BI.stove.x-.36,BFY+.36,BOTHY.z+BI.stove.z);
+    // the path's loose stones, stacked in neat heaps at its side
+    for(const h of HEAPS){ const g=H(h.x,h.z), rr=U.rng(Math.floor(h.seed*1000)); let y=g;
+      for(let k=0;k<8;k++){ const lay=k<5?0:k<7?1:2, a=k/5*TAU+rr()*.5, d=lay===0?.42:lay===1?.2:0, s=lay===0?.27:lay===1?.23:.19, x=h.x+Math.cos(a)*d, z=h.z+Math.sin(a)*d;
+        parts.push({g:GE.blob(1,0,k+h.seed,.22),m:GE.mat4(x,g+lay*.26+s*.4,z,rr()*.3,rr()*TAU,rr()*.3,s*1.2,s*.7,s),c:stoneC(k+3)}); } }
+    // the wreck of ours, propped up level on driftwood shores and half patched: fresh planks let in aft, a pot of pitch, a stack of planks
+    { const c=Math.cos(PATCH.yaw), sn=Math.sin(PATCH.yaw), W=(lx,lz)=>({x:PATCH.x+lx*c+lz*sn,z:PATCH.z-lx*sn+lz*c});
+      // her keel a hand's breadth over the sand along her length (pitched to the beach's slope, as on a slip)
+      const gS=H(W(-PATCH.L*.42,0).x,W(-PATCH.L*.42,0).z), gB=H(W(PATCH.L*.42,0).x,W(PATCH.L*.42,0).z), pitch=Math.atan2(gB-gS,PATCH.L*.84);
+      const keelAt=lx=>Math.max(H(W(lx,0).x,W(lx,0).z)+.22,(gS+gB)/2+.3+Math.tan(pitch)*lx), keel=keelAt(0), y=keel+PATCH.R*.7;
+      const M=boatMat(PATCH.x,y,PATCH.z,PATCH.yaw,0,pitch);
+      parts.push({g:hullGeo(PATCH.L,PATCH.R),m:M,c:hullColour(M,PATCH.R,true)}); parts.push({g:transomGeo(PATCH.L,PATCH.R),m:M,c:col('#43362a')});
+      const DRIFT_=(p,n,o)=>o.copy(DRIFT).lerp(DRIFT2,.5+.5*Math.sin(p.y*14));
+      const beam=(a,b,rad,cc)=>{ const d=new THREE.Vector3().subVectors(b,a), L=d.length(); d.normalize(); const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),d);
+        parts.push({g:new THREE.CylinderGeometry(rad*.85,rad,L,6),m:new THREE.Matrix4().compose(a.clone().add(b).multiplyScalar(.5),q,new THREE.Vector3(1,1,1)),c:cc}); };
+      for(const lx of [-PATCH.L*.32,PATCH.L*.18])for(const sd of [1,-1]){ const top=new THREE.Vector3(lx,-PATCH.R*.38,sd*PATCH.R*.9).applyMatrix4(M), f=W(lx,sd*(PATCH.R+.75));
+        beam(new THREE.Vector3(f.x,H(f.x,f.z)-.1,f.z),top,.06,DRIFT_); }
+      for(const lx of [-PATCH.L*.28,PATCH.L*.12]){ const p=W(lx,0), g=H(p.x,p.z), h=keel+Math.tan(pitch)*lx-g+.05; parts.push({g:new THREE.BoxGeometry(.5,h,.4),m:GE.mat4(p.x,g+h/2-.05,p.z,0,PATCH.yaw,0),c:WOOD2}); }
+      // a fresh plank leaning on her quarter, a stack of them on two chocks, the pitch pot and a mallet
+      { const sd=PATCH.side, a=W(-1.2,sd*(PATCH.R+.9)), b=new THREE.Vector3(-1.6,-PATCH.R*.05,sd*PATCH.R*.95).applyMatrix4(M); const d=new THREE.Vector3(b.x-a.x,0,b.z-a.z), L=Math.hypot(b.x-a.x,b.y-H(a.x,a.z),b.z-a.z);
+        parts.push({g:new THREE.BoxGeometry(.18,L,.04),m:new THREE.Matrix4().compose(new THREE.Vector3((a.x+b.x)/2,(H(a.x,a.z)+b.y)/2,(a.z+b.z)/2),new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),new THREE.Vector3(b.x-a.x,b.y-H(a.x,a.z),b.z-a.z).normalize()),new THREE.Vector3(1,1,1)),c:col('#c7a77a')}); }
+      { const sd=PATCH.side, p=W(.6,sd*(PATCH.R+1.45)), g=H(p.x,p.z); for(const dz of [-.5,.5]){ const q=W(.6+dz,sd*(PATCH.R+1.45)); parts.push({g:new THREE.BoxGeometry(.14,.12,.5),m:GE.mat4(q.x,H(q.x,q.z)+.05,q.z,0,PATCH.yaw,0),c:WOOD2}); }
+        for(let k=0;k<4;k++)parts.push({g:new THREE.BoxGeometry(2.3,.04,.19),m:GE.mat4(p.x+(r()-.5)*.05,g+.13+k*.045,p.z+(r()-.5)*.05,0,PATCH.yaw+(r()-.5)*.06,0),c:k%2?col('#c2a277'):col('#b8976c')}); }
+      { const sd=PATCH.side, p=W(-2.1,sd*(PATCH.R+1.2)), g=H(p.x,p.z); parts.push({g:new THREE.CylinderGeometry(.17,.14,.24,10),m:GE.mat4(p.x,g+.12,p.z,0,0,0),c:IRON}); parts.push({g:new THREE.CylinderGeometry(.155,.155,.02,10),m:GE.mat4(p.x,g+.235,p.z,0,0,0),c:col('#0e0c0c')});
+        parts.push({g:new THREE.CylinderGeometry(.012,.012,.5,5),m:GE.mat4(p.x+.05,g+.36,p.z,.35,0,.2),c:WOOD2});
+        const q=W(-1.5,sd*(PATCH.R+1.45)), gq=H(q.x,q.z); parts.push({g:new THREE.BoxGeometry(.2,.1,.1),m:GE.mat4(q.x,gq+.05,q.z,0,1.1,0),c:WOOD}); parts.push({g:new THREE.CylinderGeometry(.018,.018,.34,5),m:GE.mat4(q.x+.12,gq+.03,q.z+.08,0,1.1,PI/2),c:WOOD2}); } }
+    const fm=new THREE.Mesh(GE.mergeParts(parts),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); fm.castShadow=true; fm.receiveShadow=true; fm.name='nisLivedFrames'; livedGroup.add(fm);
+    const gm=new THREE.Mesh(GE.mergeParts(glass),new THREE.MeshBasicMaterial({color:col('#ffd08a'),fog:true})); gm.name='nisLivedGlass'; livedGroup.add(gm);
+    const pg=new THREE.BufferGeometry(); pg.setAttribute('position',new THREE.Float32BufferAttribute(glow,3));
+    const pts=new THREE.Points(pg,new THREE.PointsMaterial({map:G.tex&&G.tex.soft,color:col('#ffb45a'),size:2.1,sizeAttenuation:true,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:true}));
+    pts.name='nisLivedGlow'; livedGroup.add(pts);
+    // two lights at most: one over the field (it reaches the corner), one in the hut by the stove
+    const fl=new THREE.PointLight(col('#ffb25e'),1.25,26,1.6); fl.position.set(FIELD.x+1.5,H(FIELD.x,FIELD.z)+3.4,FIELD.z+2.5); fl.name='nisFieldLight'; livedGroup.add(fl);
+    stoveLight=new THREE.PointLight(col('#ff9a4a'),.9,6,1.6); stoveLight.position.set(BOTHY.x+BI.stove.x-.6,BFY+.55,BOTHY.z+BI.stove.z-.1); stoveLight.name='nisStoveLight'; livedGroup.add(stoveLight); }
+  /* ---- 'died': the stones, and the toy on the finished cairn ---- */
+  { const geo=GE.blob(1,1,2.2,.2); stoneMesh=new THREE.InstancedMesh(geo,G.toon('#ffffff'),NSTONES*2+1); stoneMesh.name='nisCairnStones';
+    stoneMesh.frustumCulled=false; stoneMesh.castShadow=true; stoneMesh.receiveShadow=true; stoneMesh.visible=false;
+    const pale=[col('#7c776e'),col('#726e67'),col('#837c72'),col('#78746c'),col('#878077')];   // sea-washed: paler than the field's stone, not cut
+    for(let i=0;i<NSTONES*2+1;i++)stoneMesh.setColorAt(i,pale[i%pale.length]);
+    if(stoneMesh.instanceColor)stoneMesh.instanceColor.needsUpdate=true; root.add(stoneMesh);
+    const tp=[], tf=[]; toyParts(GE,0,0,0,tp,tf); toyCairn=new THREE.Group(); toyCairn.name='nisToyCairn'; toyCairn.visible=false;
+    const tm=new THREE.Mesh(GE.mergeParts(tp),G.toon('#ffffff',{vertexColors:true,side:THREE.DoubleSide})); tm.castShadow=true; toyCairn.add(tm);
+    toyCairn.add(new THREE.Mesh(GE.mergeParts(tf,{uv:'keep'}),faceMat)); root.add(toyCairn); }
+}
+const LANTERNS=[];
+/* where each stone lies: on the beach (a shore spot), in the cairn (by its level), or in his arms */
+const LEVEL=[[.44,.19,.38],[.39,.18,.34],[.35,.17,.3],[.3,.16,.26],[.25,.15,.22]];
+const SHORE_S=[.3,.13,.25];
+function cairnTop(n){ let y=H(SIXTH.x,SIXTH.z)+.1; for(let k=0;k<n;k++)y+=LEVEL[k][1]*1.55; return y; }
+function stoneSet(i,x,y,z,s,yaw){ _m4.compose(_p4.set(x,y,z),_q4.setFromEuler(_e4.set(0,yaw||0,0)),_s4.set(s[0],s[1],s[2])); stoneMesh.setMatrixAt(i,_m4); }
+function stoneHide(i){ _m4.makeScale(0,0,0); stoneMesh.setMatrixAt(i,_m4); }
+function placeStones(){ if(!stoneMesh)return; const C=S.cairn;
+  for(let i=0;i<NSTONES;i++){ const p=SHORE[i]; if(C.used.indexOf(i)<0&&!(carry.on&&carry.i===i))stoneSet(i,p.x,H(p.x,p.z)+.05,p.z,SHORE_S,i*1.3); else stoneHide(i); }
+  let y=H(SIXTH.x,SIXTH.z)+.1;
+  for(let k=0;k<NSTONES;k++){ if(k<C.stones){ const s=LEVEL[k]; stoneSet(NSTONES+k,SIXTH.x+(k%2?.03:-.03),y+s[1]*.8,SIXTH.z+(k%3-1)*.03,s,k*1.9+.4); y+=s[1]*1.55; } else stoneHide(NSTONES+k); }
+  if(!carry.on)stoneHide(NSTONES*2);
+  stoneMesh.instanceMatrix.needsUpdate=true; }
+function carriedAt(){ const P=G.player; if(!P||!stoneMesh)return; const h=P.heading||0;
+  stoneSet(NSTONES*2,P.pos.x+Math.sin(h)*.34,P.pos.y+.84,P.pos.z+Math.cos(h)*.34,SHORE_S,h); stoneMesh.instanceMatrix.needsUpdate=true; }
+/** everything that shows the stage (and the cairn's progress) */
+function refreshLook(st){ st=st||stage();
+  if(looseMesh)looseMesh.visible=st!=='lived';
+  if(livedGroup)livedGroup.visible=st==='lived';
+  if(stoneMesh){ stoneMesh.visible=st==='died'; placeStones(); }
+  toyShown(!(st==='died'&&S.cairn.toy));
+  if(toyCairn){ toyCairn.visible=st==='died'&&!!S.cairn.done; toyCairn.position.set(SIXTH.x,cairnTop(NSTONES)+.06,SIXTH.z); toyCairn.rotation.set(0,-.5,0); } }
+
+/* ---- carrying a stone ---- */
+const carry={on:false,i:-1,t:0,set:false,last:null,after:0};
+const CARRY={slow:.55,lock:.05};
+function cairnOn(){ return stage()==='died'&&!!S.cairn.toy&&!S.cairn.done; }
+function pickStone(i){ if(carry.on||!cairnOn()||S.cairn.used.indexOf(i)>=0||S.cairn.stones>=NSTONES)return false; const P=G.player;
+  carry.on=true; carry.i=i; carry.t=0; carry.after=0; try{ P.sheathe&&P.sheathe(); }catch(e){}
+  holdOn(); placeStones(); carriedAt(); knock(.14); G.emit('northIsleStory:stone',{phase:'pick',i}); return true; }
+function holdOn(){ const P=G.player; if(!P)return; P.speedMul=Math.min(P.speedMul==null?1:P.speedMul,CARRY.slow); P.actionLock=Math.max(P.actionLock||0,CARRY.lock); carry.set=true; }
+function holdOff(){ const P=G.player; if(!P||!carry.set)return; carry.set=false; if(!(P.actionLock>CARRY.lock+.01)){ P.actionLock=0; P.speedMul=1; } }
+/** the stone goes back to the beach (a roll, a blow, leaving, a load) */
+function dropStone(why){ if(!carry.on)return false; const i=carry.i; carry.last=why; carry.on=false; carry.i=-1; holdOff(); placeStones();
+  // a roll lets the stone go instead of rolling: hold his hands a moment longer, so the buffered roll (player.js) runs out
+  if(why==='roll'){ const P=G.player; if(P){ P.actionLock=Math.max(P.actionLock||0,CARRY.lock); carry.set=true; carry.after=.22; } }
+  if(why==='roll'||why==='hit'){ if(!S.seen['cairn:drop']){ S.seen['cairn:drop']=1; say(CAIRN_LINES.drop,'Rowan',{flush:true,key:'nis-cairn-drop'}); } }
+  G.emit('northIsleStory:stone',{phase:'drop',i,why}); return true; }
+function setStone(){ if(!carry.on)return false; const C=S.cairn, i=carry.i; carry.on=false; carry.i=-1; holdOff();
+  if(C.used.indexOf(i)<0)C.used.push(i); C.stones=Math.min(NSTONES,C.used.length); placeStones();
+  if(C.stones===1)say(CAIRN_LINES.first,'Rowan',{flush:true,key:'nis-cairn-1'}); else if(C.stones===NSTONES)say(CAIRN_LINES.last,'Rowan',{flush:true,key:'nis-cairn-last'});
+  knock(.32);
+  G.emit('northIsleStory:stone',{phase:'set',i,n:C.stones}); autosave(); return true; }
+function takeToy(){ if(S.cairn.toy||stage()!=='died')return; S.cairn.toy=1; look.dirty=true;
+  try{ G.ui.toast&&G.ui.toast('The sixth cairn','Flat stones from the cove, up to the Margery’s corner'); }catch(e){}
+  G.emit('northIsleStory:cairn',{phase:'start'}); autosave(); }
+function sixthUse(){ const C=S.cairn;
+  if(carry.on)return setStone();
+  if(C.toy&&C.stones>=NSTONES&&!C.done)return finishCairn();
+  return read('sixth'); }
+/** stone on stone (the synth's thud: no recording of it) */
+function knock(g){ const A=G.audio; if(!A||!A.ready||!A.S||!A.context)return; try{ A.S.thud(A.context.currentTime,{g,f0:170,f1:70,dur:.16}); }catch(e){} }
+const autosave=()=>{ try{ if(G.flow&&G.flow.writeSave)setTimeout(()=>{ if(isPlay())G.flow.writeSave(); },600); }catch(e){} };
+/* the toy goes on top; the held shot over the six cairns toward our light */
+let sceneOn=false;
+function finishCairn(){ const C=S.cairn; if(C.done)return false; C.done=1; look.dirty=true; applyStage(stage());
+  G.emit('northIsleStory:cairn',{phase:'done'}); playScene(); autosave(); return true; }
+function playScene(){ const C=S.cairn; if(C.scene)return false; C.scene=1;
+  CAIRN_LINES.scene.forEach((t,i)=>say(t,'Rowan',i===0?{flush:true,key:'nis-sixth0'}:{key:'nis-sixth'+i}));
+  try{ G.ui.logLine&&G.ui.logLine(CAIRN_LINES.log,'Found'); }catch(e){}
+  const Cn=G.cine, lamp=homeLamp(), P=G.player; let ok=false;
+  if(Cn&&Cn.play&&lamp&&isPlay()){
+    // Rowan to one side of it, looking home with them; the camera behind the sixth, low, then up over the five toward our lamp
+    try{ const sx=SIXTH.x-1.05, sz=SIXTH.z-.75; P.teleport(sx,G.floorAt(sx,sz,H(sx,sz)+2),sz,Math.atan2(lamp.x-sx,lamp.z-sz)); }catch(e){}
+    const top=cairnTop(NSTONES)+.12, toy=V(SIXTH.x,top,SIXTH.z), dir=lamp.clone().sub(toy).setY(0).normalize();
+    const c0=V(SIXTH.x+.9-dir.x*2.1,top+.35,SIXTH.z-dir.z*2.1), c1=V(SIXTH.x+.5-dir.x*5.6,top+1.7,SIXTH.z-dir.z*5.6);
+    // the end of the hold: the six in the lower part of the frame, the water, and our light on the far shore above them
+    const end=V(c1.x+dir.x*30,c1.y-3.3,c1.z+dir.z*30);
+    ok=Cn.play('nisSixth',{dur:9,shot:(k,t,o)=>{ const e=smooth(0,1,k); o.cp.copy(c0).lerp(c1,e); o.lp.copy(toy).lerp(end,smooth(.12,.8,k)); o.fov=44-4*e; },
+      onEnd:()=>{ sceneOn=false; G.emit('northIsleStory:scene',{on:false}); }}); }
+  sceneOn=!!ok; G.emit('northIsleStory:scene',{on:sceneOn}); return ok; }
+/** his arms round the stone, held against his chest */
+function carryPose(T){ if(!carry.on)return; T.shLX=-1.05; T.shRX=-1.05; T.shLZ=.32; T.shRZ=-.32; T.shLY=-.25; T.shRY=.25; T.elL=-1.25; T.elR=-1.25; T.wrLX=.2; T.wrRX=.2; T.spX=(T.spX||0)-.06; return 12; }
 
 /* ================================================================ 6. AFTER THE FIRE ROOM: one hook per outcome (the island
    changing after the ending is a later slice). Each runs once when the outcome is first seen (on the island or at a load). */
 const OUTCOME={
-  lived(){ /* later slice: Tobias keeps the true light; he may be found at the bothy by day. For now: the stove stays warm. */ if(ember)ember.visible=true; },
-  died(){ /* later slice: the sixth cairn (Rowan builds it), the toy boat taken home. For now: the stove goes cold. */ if(ember)ember.visible=false; }};
+  /** his father lives and keeps a true light: lanterns by the cairns, the stove lit and his new logbook on the shelf, the path
+      cleared, one of the cove's wrecks propped up and half patched. He stays where he is (the fire room), not on the surface. */
+  lived(){ if(ember)ember.visible=true; look.dirty=true; },
+  /** his father died: the island dark and quiet (no lanterns, the stove cold), and the sixth cairn for Rowan to build */
+  died(){ if(ember)ember.visible=false; look.dirty=true; }};
 let lastStage=null;
-function applyStage(st){ if(st===lastStage)return; lastStage=st; if(ember)ember.visible=st!=='died';
-  if((st==='lived'||st==='died')&&OUTCOME[st]){ const first=!S.hooks[st]; S.hooks[st]=1; try{ OUTCOME[st](first); }catch(e){ console.error(e); } } }
+function applyStage(st){ if(st!==lastStage){ lastStage=st; look.dirty=true; if(ember)ember.visible=st!=='died';
+    if((st==='lived'||st==='died')&&OUTCOME[st]){ const first=!S.hooks[st]; S.hooks[st]=1; try{ OUTCOME[st](first); }catch(e){ console.error(e); } } }
+  if(look.dirty){ look.dirty=false; try{ refreshLook(st); }catch(e){ console.error(e); } } }
 
 /* ================================================================ 7. SAVE */
-function load(d){ if(!d||typeof d!=='object')return; S.read=Object.assign({},d.read||{}); S.seen=Object.assign({},d.seen||{}); S.hooks=Object.assign({},d.hooks||{}); lastStage=null; }
-const reg=()=>G.persist&&G.persist.register&&G.persist.register('northIsleStory',{save:()=>({v:1,read:Object.assign({},S.read),seen:Object.assign({},S.seen),hooks:Object.assign({},S.hooks)}),load});
+function cairnOf(d){ const c=CAIRN0(); if(!d||typeof d!=='object')return c;
+  c.toy=d.toy?1:0; c.used=Array.isArray(d.used)?d.used.filter((i,k,a)=>Number.isInteger(i)&&i>=0&&i<NSTONES&&a.indexOf(i)===k):[];
+  c.stones=Math.min(NSTONES,c.used.length); c.done=d.done&&c.stones>=NSTONES?1:0; c.scene=d.scene&&c.done?1:0; if(c.stones)c.toy=1; return c; }
+function load(d){ if(!d||typeof d!=='object')return; S.read=Object.assign({},d.read||{}); S.seen=Object.assign({},d.seen||{}); S.hooks=Object.assign({},d.hooks||{});
+  S.cairn=cairnOf(d.cairn); dropStone('load'); lastStage=null; look.dirty=true; }
+const saveData=()=>({v:2,read:Object.assign({},S.read),seen:Object.assign({},S.seen),hooks:Object.assign({},S.hooks),cairn:Object.assign({},S.cairn,{used:S.cairn.used.slice()})});
+const reg=()=>G.persist&&G.persist.register&&G.persist.register('northIsleStory',{save:saveData,load});
 if(G.persist&&G.persist.register)reg(); else G.on('ready',reg);
-G.on('game:reset',()=>{ S.read={}; S.seen={}; S.hooks={}; lastStage=null; });
+G.on('game:reset',()=>{ S.read={}; S.seen={}; S.hooks={}; S.cairn=CAIRN0(); dropStone('reset'); lastStage=null; look.dirty=true; });
 
 /* ================================================================ 8. WIRING */
 G.system('northIsleStory',{order:86,modes:['play','paused','dead','title'],
@@ -490,7 +759,14 @@ G.system('northIsleStory',{order:86,modes:['play','paused','dead','title'],
     const IA=G.interact, en=()=>isPlay()&&onIsle()&&!(G.northIsle&&G.northIsle.crossing);
     for(const id of IDS){ const R=READS[id]; if(R.auto)continue;
       const inside=R.site==='bothy';
-      IA.add({pos:()=>SITES.reads[id]||null,radius:id==='margery'?3.2:inside?1.25:1.9,priority:inside?5:4,label:()=>labelOf(id),enabled:en,use:()=>read(id)}); }
+      const rad=id==='margery'?3.2:id==='patched'?2.8:id==='sixth'?1.7:inside?1.25:1.9, pri=id==='sixth'?6:inside?5:4;
+      const e=IA.add({pos:()=>SITES.reads[id]||null,radius:rad,priority:pri,label:()=>labelOf(id),enabled:()=>en()&&offered(id),use:()=>R.use?R.use():read(id)}); if(id==='sixth')sixthEntry=e; }
+    // the flat stones on the beach ('died', once the toy is taken): pick one up
+    SHORE.forEach((p,i)=>{ const pos=V(p.x,H(p.x,p.z)+.15,p.z);
+      IA.add({pos,radius:1.35,priority:4,label:'Pick up the flat stone',enabled:()=>en()&&cairnOn()&&!carry.on&&S.cairn.used.indexOf(i)<0,use:()=>pickStone(i)}); });
+    if(G.player&&G.player.poseHooks)G.player.poseHooks.push(carryPose);
+    G.on('player:hurt',()=>{ if(carry.on)dropStone('hit'); });
+    G.on('map:travel',()=>{ if(carry.on)dropStone('away'); });
   },
   update(dt){
     for(let i=timers.length-1;i>=0;i--){ if(G.time>=timers[i].t){ const f=timers[i].fn; timers.splice(i,1); try{ f(); }catch(e){ console.error(e); } } }
@@ -503,7 +779,18 @@ G.system('northIsleStory',{order:86,modes:['play','paused','dead','title'],
       if(G.time>winPending.until||!inBothy(P0)||winPending.st!==st)winPending=null;
       else if(k===winPending.key&&isPlay()){ const w=winPending; winPending=null; windowShot(w.st); } }
     if(winOn&&G.cine&&G.cine.on&&!inBothy(G.player&&G.player.pos))G.cine.skip();
-    if(root&&root.visible&&ember&&ember.visible){ const t=G.time||0; emberMat.opacity=.55+.2*Math.sin(t*3.1)*Math.sin(t*1.7+1); }
+    if(root&&root.visible&&ember&&ember.visible){ const t=G.time||0, f=Math.sin(t*3.1)*Math.sin(t*1.7+1);
+      if(st==='lived'){ emberMat.opacity=.9+.1*f; ember.scale.set(1.25,1.3,1); if(stoveLight)stoveLight.intensity=.85+.15*f; } else { emberMat.opacity=.55+.2*f; ember.scale.set(1,1,1); } }
+    // carrying a stone ('died'): slow, no strikes or rolls; a roll (or a blow, see init) drops it back on the beach
+    if(!carry.on&&carry.after>0){ carry.after-=dt; if(carry.after<=0)holdOff(); else if(G.player)G.player.actionLock=Math.max(G.player.actionLock||0,CARRY.lock); }
+    if(carry.on){ const P1=G.player;
+      if(!P1||!P1.alive||!onIsle()||(G.northIsle&&G.northIsle.crossing)||st!=='died'||S.cairn.done)dropStone('away');
+      else if(isPlay()){ holdOn(); carriedAt(); carry.t+=dt;
+        // his hands are full: the lantern's own prompt (player.js) can't be acted on while he carries it, so it goes
+        for(let i=G.hints.length-1;i>=0;i--)if(G.hints[i].label==='Set the lantern down')G.hints.splice(i,1);
+        G.hint('C','Drop the stone');
+        if(G.input.pressed('roll'))dropStone('roll');
+        else if(G.input.pressed('interact')&&sixthEntry&&G.interact.current===sixthEntry)setStone(); } }
     if(G.state.mode!=='play'||!onIsle())return;
     const P=G.player.pos;
     // arriving: the rise and the hut each have a few lines of their own, once per stage
@@ -511,11 +798,19 @@ G.system('northIsleStory',{order:86,modes:['play','paused','dead','title'],
     if(inField&&!S.seen['field:'+st]){ S.seen['field:'+st]=1; read('field'); }
     const nb=Math.hypot(P.x-BOTHY.x,P.z-BOTHY.z)<6.5&&Math.abs(P.y-BFY)<2.5;
     if(nb&&!S.seen['bothy:'+st]){ S.seen['bothy:'+st]=1; read('bothy'); }
+    // 'lived': walking up past the stacked stones, the cleared path has its own two lines, once
+    if(st==='lived'&&!S.seen['path:lived']&&HEAPS.some(h=>Math.hypot(P.x-h.x,P.z-h.z)<4.5)){ S.seen['path:lived']=1; read('path'); }
   }
 });
 
 G.northIsleStory={state:S,sites:SITES,stage,outcome:OUTCOME,keepClear:G.isleKeepClear,
   debug:{ read:id=>read(id), stage, lines:(id,st)=>linesOf(id,st).map(l=>l.t), ids:IDS.slice(), reads:READS, label:labelOf,
     all(){ const o={}; for(const id of IDS){ o[id]={}; for(const st of ['before','known','lived','died'])o[id][st]=linesOf(id,st).map(l=>l.t); } return o; },
-    get layout(){ return layout; }, BH, BI, inBothy, nearBothy }};
+    get layout(){ return layout; }, BH, BI, inBothy, nearBothy,
+    // the sixth cairn ('died'): carry state, the stones' places, and shortcuts for tests (pick(i), set(), drop(why), finish())
+    carry, cairnLines:CAIRN_LINES, lanterns:LANTERNS, get sceneOn(){ return sceneOn; }, cairnTop,
+    save:()=>JSON.parse(JSON.stringify(saveData())), load:d=>load(d), cairnOf,
+    pick:i=>pickStone(i), set:()=>setStone(), drop:why=>dropStone(why||'debug'), finish:()=>finishCairn(), takeToy:()=>takeToy(),
+    stonePos(i){ if(!stoneMesh)return null; stoneMesh.getMatrixAt(i,_m4); const p=new THREE.Vector3(), q=new THREE.Quaternion(), sc=new THREE.Vector3(); _m4.decompose(p,q,sc); return {x:p.x,y:p.y,z:p.z,shown:sc.x>0}; },
+    toyOnTable:()=>!!(bothyMesh&&bothyMesh.geometry.drawRange.count===Infinity||bothyMesh&&bothyMesh.geometry.drawRange.count>=bothyMesh.geometry.attributes.position.count) }};
 })();

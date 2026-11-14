@@ -41,7 +41,8 @@ const shardN=()=>count(S.shards);
 const heartN=()=>count(S.hearts)+Math.floor(shardN()/SHARDS_PER_HEART);
 const wingN=()=>Math.min(4,Math.floor(S.freed/WING_EVERY));
 let heldHp=0; // a heart being lifted overhead fills in when the moment ends, not when it is picked up
-const maxHp=()=>Math.min(20,BASE_HP+2*heartN())-heldHp;
+// 22: the Margery's heart (north island, slice 5) is an eleventh past the five bosses' and the shards' three
+const maxHp=()=>Math.min(22,BASE_HP+2*heartN())-heldHp;
 
 /* ---------------------------------------------------------------- upgrades (the Temper tab) */
 const UPGRADES=[
@@ -350,7 +351,8 @@ function dropHeart(src,pos,o){
 }
 function updateDrops(dt,p){
   for(const src in drops){ const d=drops[src]; d.t+=dt; d.mesh.rotation.y+=dt*1.4; d.mesh.position.y=d.pos.y+.75+Math.sin(d.t*2.2)*.1;
-    d.mesh.visible=d.interior==='undercroft'?inUndercroft():d.interior==='temple'?inTemple():d.interior==='northFire'?inNorthFire():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave)&&!inTemple()&&!inNorthFire();
+    if(d.interior==='northIsle'&&S.hearts[src]){ root.remove(d.mesh); delete drops[src]; continue; }   // a load that already has it
+    d.mesh.visible=d.interior==='undercroft'?inUndercroft():d.interior==='temple'?inTemple():d.interior==='northFire'?inNorthFire():d.interior==='northIsle'?onNorthIsle():(!!d.cave)===!!(G.cave&&G.cave.inside)&&!(inUndercroft()&&!d.cave)&&!inTemple()&&!inNorthFire();
     if(isPlay()&&p.alive&&d.mesh.visible&&Math.hypot(d.pos.x-p.pos.x,d.pos.z-p.pos.z)<1.3&&Math.abs(d.pos.y-p.pos.y)<1.8){
       root.remove(d.mesh); delete drops[src]; const o=d.o;
       const h=grantHeart(src), m=grantMarks(src,o.marks); if(h)heldHp+=2;
@@ -400,6 +402,14 @@ function onGiant(e){
     desc:e.outcome==='died'?'In the ash where it fell, something red and warm that the fire never got. Your heart grows by one.'
       :'In the rubble where it fell, something red and warm that the fire never got. Your heart grows by one.'});
 }
+/* the north island: the Margery's Keeper's Heart (+1 Mark), lying in her hold out on the reef (northisle_finds.js asks
+   for it with northFinds:heart {pos} while you're on the island and it isn't yours yet) */
+function onNorthIsle(){ const N=G.northIsle, p=P(); return !!(N&&N.inBox&&p&&p.pos&&N.inBox(p.pos.x,p.pos.z)&&!inNorthFire()&&!(G.northCave&&G.northCave.inside)); }
+function onMargery(e){
+  if(!e||!e.pos||S.hearts.margery||drops.margery)return;
+  dropHeart('margery',V(e.pos.x,e.pos.y,e.pos.z),{marks:1,interior:'northIsle',eyebrow:'The Margery',
+    desc:'In the Margery’s hold, under twenty years of weed, something red and warm the sea never took. Your heart grows by one.'});
+}
 function onFreed(e){
   const before=wingN(); S.freed=Math.max(S.freed+1,(e&&e.freed)|0,G.state.freed|0); const n=wingN();
   if(n>before){ G.emit('progress:wing',{n});
@@ -423,6 +433,8 @@ function reconcile(quiet){
   const TB=G.templeBoss; if(((TB&&TB.defeated)||G.flag('answerDead'))&&!drops.answer){ if(grantHeart('answer'))got.push('a Keeper’s Heart'); if(grantMarks('answer',2))got.push('2 Marks'); }
   // the Wreck Giant: not while you're still in the fire room, where its heart is lying there to pick up
   const NF=G.northFire; if(((NF&&NF.state&&NF.state.done)||G.flag('giantDead'))&&!drops.giant&&!inNorthFire()){ if(grantHeart('giant'))got.push('a Keeper’s Heart'); if(grantMarks('giant',2))got.push('2 Marks'); }
+  // the Margery's heart: found already (the finds' own record, or the flag) but missing here
+  const NF2=G.northIsleFinds; if(NF2&&NF2.state&&NF2.state.heart&&!drops.margery){ if(grantHeart('margery'))got.push('a Keeper’s Heart'); if(grantMarks('margery',1))got.push('a Mark'); }
   const fr=G.state.freed|0; if(fr>S.freed){ const w0=wingN(); S.freed=fr; if(wingN()>w0)got.push((wingN()-w0)+' Moth '+(wingN()-w0>1?'Wings':'Wing')); }
   for(const b of (G.blights||[])) if(b&&b.cured&&grantMarks('blight:'+b.id,1))got.push('a Mark');
   apply();
@@ -762,7 +774,9 @@ function journalData(){
   return {hearts:maxHp()/2, shardsInto:shardN()%SHARDS_PER_HEART, shards:shardN(), shardTotal:SPOTS.length||12, wings:wingN(), marks:marksHeld(), earned:marksEarned(), spent:S.spent,
     upgrades:UPGRADES.filter(u=>owns(u.id)).map(u=>u.id), caches:count(S.caches), cacheTotal:CACHES.length||8, freed:negs, freedTotal:negTotal,
     blights:bl.map(b=>({id:b.id,name:b.name,cured:!!b.cured})),
-    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)},{id:'answer',name:'The Answer',done:!!((G.templeBoss&&G.templeBoss.defeated)||S.hearts.answer)},{id:'giant',name:'The Wreck Giant',done:!!((G.northFire&&G.northFire.state&&G.northFire.state.done)||S.hearts.giant)}]};
+    bosses:[{id:'stag',name:'The Hollow Stag',done:!!(F.stagDead||S.hearts.stag)},{id:'gloaming',name:'The Gloaming',done:!!(F.bossDead||S.marks.gloaming)},{id:'undertow',name:'The Undertow',done:!!((G.caveBoss&&G.caveBoss.defeated)||S.hearts.undertow)},{id:'crane',name:'Aldous Crane, the Tithe-Keeper',done:!!((G.undercroftBoss&&G.undercroftBoss.defeated)||S.hearts.crane)},{id:'answer',name:'The Answer',done:!!((G.templeBoss&&G.templeBoss.defeated)||S.hearts.answer)},{id:'giant',name:'The Wreck Giant',done:!!((G.northFire&&G.northFire.state&&G.northFire.state.done)||S.hearts.giant)}],
+    // Keeper's Hearts found, not won: the Margery's (shown once you've been to the north island)
+    found:(G.northIsle&&G.northIsle.landed)||S.hearts.margery?[{id:'margery',name:'The Margery’s hold',done:!!S.hearts.margery}]:[]};
 }
 function renderJournal(){
   const d=journalData(), el=$('journalBody'); if(!el)return;
@@ -779,7 +793,8 @@ function renderJournal(){
   </div>
   <span class="eyebrow sec">Tempered</span><div class="jr-list">${UPGRADES.map(u=>`<span class="${owns(u.id)?'on':''}">${ICON[u.id]}${esc(u.name)}</span>`).join('')}</div>
   <span class="eyebrow sec">Blights cured</span><div class="jr-list">${d.blights.map(b=>`<span class="${b.cured?'on':''}">${b.cured?check:''}${esc(b.name)}</span>`).join('')}</div>
-  <span class="eyebrow sec">Bosses</span><div class="jr-list">${d.bosses.map(b=>`<span class="${b.done?'on':''}">${b.done?check:''}${esc(b.name)}</span>`).join('')}</div>`;
+  <span class="eyebrow sec">Bosses</span><div class="jr-list">${d.bosses.map(b=>`<span class="${b.done?'on':''}">${b.done?check:''}${esc(b.name)}</span>`).join('')}</div>${d.found.length?`
+  <span class="eyebrow sec">Keeper’s Hearts at sea</span><div class="jr-list">${d.found.map(b=>`<span class="${b.done?'on':''}">${b.done?check:ICON.heart}${esc(b.name)}</span>`).join('')}</div>`:''}`;
 }
 
 /* ---------------------------------------------------------------- teaching the glide (Jacob never found it on his own)
@@ -866,6 +881,7 @@ G.system('progress',{order:62,modes:'always',
     G.on('undercroft:bossDead',onCrane);
     G.on('temple:bossDead',onAnswer);
     G.on('north:giantDead',onGiant);
+    G.on('northFinds:heart',onMargery);
     G.on('negative:freed',onFreed);
     G.on('blight:cured',onBlight);
     G.on('inv:change',()=>{ if(tab==='temper')renderTemper(); });

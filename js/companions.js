@@ -11,9 +11,10 @@
      finale. Neither can be hurt: no hurtbox, never targeted; a blow that would land makes them hop / flap aside.
    - Commands: R / D-pad left / the fox button — Ember go (at a fox spot) or heel; T / D-pad right / the raven button — Corvin go
      (at a raven spot) or scout (circles once at ~30 m, pins shards, caches and companion spots within 40 m; 45 s cooldown).
-   - Six optional spots (§4): the hollow log, the cottage grate (→ Hesper's key → her sea-chest: a Heart Shard), the sea-cave
+   - Eight optional spots (§4): the hollow log, the cottage grate (→ Hesper's key → her sea-chest: a Heart Shard), the sea-cave
      crack (→ a rope ladder to a ledge with a bundle), the chapel bell (an echo of Wren, a candle lights itself), the hanging
-     bundle in the dead tree, the north-cliff nest (a new Heart Shard).
+     bundle in the dead tree, the north-cliff nest (a new Heart Shard); on the north island (northisle_finds.js), the cleft over
+     the grotto (Ember: a bottle with a note) and the gull stack (Corvin: a child's ribbon).
    - Fights (§5): Ember's nip breaks a wind-up (6 s), Corvin's dive delays an attack 0.8 s (10 s); no damage, nothing on bosses.
      In the dark Corvin caws when something hostile comes within 15 m.
    - Budget: each companion is one skinned toon mesh + one skinned outline (rigid skinning, one draw each); the spot set pieces
@@ -170,6 +171,7 @@ function carryItem(kind){
   let o=R.carryItems[kind];
   if(!o){
     if(kind==='key'){ o=new THREE.Mesh(mergeStatic([{geo:new THREE.TorusGeometry(.035,.009,5,12),m:M4(-.07,0,0,0,PI/2,0)},{geo:box(.11,.012,.012,'#6f8f7a'),m:M4(0,0,0)},{geo:box(.012,.03,.012,'#6f8f7a'),m:M4(.045,-.018,0)}].map(p=>{ if(!p.geo.attributes.color)paintGeo(p.geo,'#6f8f7a'); return p; })),G.toon('#ffffff',{vertexColors:true})); o.rotation.y=PI/2; }
+    else if(kind==='bottle'){ o=new THREE.Mesh(mergeStatic([{geo:cyl(.026,.03,.11,'#3d5a48',8),m:M4(0,0,0,0,0,PI/2)},{geo:cyl(.011,.016,.05,'#3d5a48',6),m:M4(.075,0,0,0,0,PI/2)},{geo:cyl(.013,.013,.02,'#c9a77a',6),m:M4(.105,0,0,0,0,PI/2)}]),G.toon('#ffffff',{vertexColors:true})); }
     else if(kind==='rope'){ o=new THREE.Mesh(mergeStatic([{geo:cyl(.012,.012,.32,'#b59b6a',6),m:M4(0,0,0,0,0,PI/2)}]),G.toon('#ffffff',{vertexColors:true})); }
     else { o=new THREE.Mesh(mergeStatic([{geo:ell(.1,.075,.085,'#a8855a',(x,y,z,c)=>{ if(y>.03)c.multiplyScalar(.85); }),m:M4(0,-.03,.04)},{geo:cone(.03,.06,'#8a6a46',6),m:M4(0,.035,.04)}]),G.toon('#ffffff',{vertexColors:true})); }
     o.castShadow=true; R.carry.add(o); R.carryItems[kind]=o;
@@ -287,8 +289,14 @@ const SPOTS=[
   {id:'bundle',who:'corvin',place:'island',name:'The bundle in the dead tree',prompt:'Send Corvin up',
     c:V(4,H(4,9),9)},
   {id:'nest',who:'corvin',place:'island',name:'The raven’s nest',prompt:'Send Corvin down to the nest',
-    at:V(NEST.x,NEST.y+.12,NEST.z),stand:V(NEST.x,42,-44.4),r:5.2}
+    at:V(NEST.x,NEST.y+.12,NEST.z),stand:V(NEST.x,42,-44.4),r:5.2},
+  /* the north island (northisle_finds.js builds the ground and says what they find; the spots' places come from it at init) */
+  {id:'grotto',who:'ember',place:'island',name:'The cleft over the grotto',prompt:'Send Ember through the gap',north:true,
+    at:V(1e5,-1e4,1e5),stand:V(1e5,-1e4,1e5),when:()=>NORTH.ok},
+  {id:'stack',who:'corvin',place:'island',name:'The gull stack',prompt:'Send Corvin out to the stack',north:true,
+    at:V(1e5,-1e4,1e5),stand:V(1e5,-1e4,1e5),r:5.5,when:()=>NORTH.ok}
 ];
+const NORTH={ok:false};
 const SP={}; SPOTS.forEach(s=>SP[s.id]=s);
 // derived points for the two built from a centre
 { const L=SP.log, fx=Math.sin(L.yaw), fz=Math.cos(L.yaw); L.end=V(L.c.x+fx*1.75,L.c.y,L.c.z+fz*1.75);
@@ -391,6 +399,30 @@ function buildIsland(){
     addPiece(list,'island',V(n.x,n.y,n.z),140);
     const s=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:0xb48cff,transparent:true,opacity:.6,depthWrite:false,blending:THREE.AdditiveBlending}));
     s.scale.setScalar(.9); s.position.set(n.x,n.y+.24,n.z); G.scene.add(s); DYN.nestGlint=s; }
+}
+/* the north island's two: the cleft at the foot of an outcrop on the north cliffs (a fox marker: scratches, a red tuft), and
+   an old gull's nest on the tall stack off the south-west cliffs with a ribbon woven through it (raven marker: streaks down
+   the stack's landward face, a black feather on a thread) */
+function buildNorth(){
+  const F=G.northIsleFinds, CS=F&&F.companionSpots; if(!CS||!CS.grotto||!CS.stack)return;
+  const g=SP.grotto, k=SP.stack; g.at.copy(CS.grotto.at); g.stand.copy(CS.grotto.stand); k.at.copy(CS.stack.at); k.stand.copy(CS.stack.stand); NORTH.ok=true;
+  { const list=[], a=g.at, o=CS.grotto.out, yaw=Math.atan2(o.x,o.z), sx=Math.cos(yaw), sz=-Math.sin(yaw);   // o: from the rock face toward the island
+    // the cleft: a tall black wedge into the rock, a fox's width at the foot
+    list.push({geo:paintGeo(new THREE.ConeGeometry(.34,1.25,4),'#040304'),m:M4(a.x-o.x*.12,a.y+.32,a.z-o.z*.12,0,yaw+PI/4,0,1,1,.42)});
+    list.push({geo:box(.46,.36,.22,'#040304'),m:M4(a.x-o.x*.1,a.y-.1,a.z-o.z*.1,0,yaw,0)});
+    scratches(list,V(a.x+sx*.42+o.x*.06,a.y+.18,a.z+sz*.42+o.z*.06),yaw+PI/2,{len:.26,tilt:.15}); furTuft(list,V(a.x-sx*.3+o.x*.08,a.y-.18,a.z-sz*.3+o.z*.08));
+    addPiece(list,'island',a,120); }
+  { const list=[], n=k.at, f=CS.stack.face, L=Math.hypot(f.x,f.z)||1, fx=f.x/L, fz=f.z/L, yaw=Math.atan2(fx,fz);   // f: from the stack toward the cliff
+    list.push({geo:paintGeo(new THREE.DodecahedronGeometry(1,1),'#5f5b57',(x,y,z,c)=>{ c.lerp(U.col('#4e5a3a'),smooth(.2,.9,y)*.5); c.multiplyScalar(.85+.3*U.vnoise(x*3,z*3)); }),m:M4(n.x,n.y-.42,n.z,0,.3,0,1.35,.5,1.25)});
+    for(let i=0;i<24;i++){ const a=i/24*TAU, l=.4+(i%3)*.08; list.push({geo:cyl(.016,.012,l,i%2?'#6d6152':'#8a7c66',4),m:M4(n.x+Math.cos(a)*.36,n.y+.05+(i%3)*.03,n.z+Math.sin(a)*.36,PI/2,a+PI/2+.35,(i%5-2)*.12)}); }
+    list.push({geo:ell(.36,.08,.36,'#4a4034'),m:M4(n.x,n.y+.03,n.z)});
+    for(const [dx,dz] of [[.7,.5],[-.8,.2],[.1,-.9]])list.push({geo:ell(.07,.05,.07,'#e8e4da',null,6),m:M4(n.x+dx,n.y-.1,n.z+dz)});   // old gull eggshell, white on the rock
+    streaks(list,V(n.x+fx*1.05,n.y-.35,n.z+fz*1.05),yaw+PI/2,2.4,6);
+    dangle(list,V(n.x+fx*.4-fz*.3,n.y+.08,n.z+fz*.4+fx*.3),.32,.8);
+    addPiece(list,'island',n,130);
+    // the ribbon, woven through the rim (it goes when Corvin takes it)
+    const rb=new THREE.Mesh(mergeStatic([{geo:box(.34,.012,.05,'#b0442e'),m:M4(0,0,0,0,.3,.15)},{geo:box(.2,.012,.045,'#9a3a28'),m:M4(.22,-.04,.06,0,-.6,-.5)},{geo:box(.16,.012,.045,'#b0442e'),m:M4(-.2,-.02,-.05,0,.9,.4)}]),VC());
+    rb.position.set(n.x+.12,n.y+.12,n.z+.1); G.scene.add(rb); DYN.ribbon=rb; }
 }
 function buildCave(){
   if(!CAVE)return;
@@ -932,7 +964,7 @@ function taskStepEmber(dt){
   else if(k.phase==='in'){ E.heading=U.dampAngle(E.heading,Math.atan2(s.at.x-E.pos.x,s.at.z-E.pos.z),10,dt); E.k.squeeze=Math.min(1,E.k.squeeze+dt*3);
     if(k.t>.35){ E.pos.x+=(s.at.x-E.pos.x)*Math.min(1,dt*2.2); E.pos.z+=(s.at.z-E.pos.z)*Math.min(1,dt*2.2); E.fade=0; }
     if(k.t>1.4){ k.phase='inside'; k.t=0; sfx('scrabble',s.at); } }
-  else if(k.phase==='inside'){ E.fade=0; if(k.t>1.8){ k.phase='out'; k.t=0; E.carry=s.id==='log'?'bundle':s.id==='grate'?'key':'rope'; E.heading+=PI; E.fade=1; if(s.id==='log'&&DYN.bundleLog)DYN.bundleLog.visible=false; } }
+  else if(k.phase==='inside'){ E.fade=0; if(k.t>1.8){ k.phase='out'; k.t=0; E.carry=s.id==='log'?'bundle':s.id==='grate'?'key':s.id==='grotto'?'bottle':'rope'; E.heading+=PI; E.fade=1; if(s.id==='log'&&DYN.bundleLog)DYN.bundleLog.visible=false; } }
   else if(k.phase==='out'){ E.fade=1; E.k.squeeze=Math.max(0,1-k.t*1.6); E.pos.x+=(k.door.x-E.pos.x)*Math.min(1,dt*3); E.pos.z+=(k.door.z-E.pos.z)*Math.min(1,dt*3);
     if(s.id==='crack'){ ladderDrop(k.t); }
     if(k.t>1){ k.phase=s.id==='crack'?'ret':'bring'; k.t=0; if(s.id==='crack'){ E.carry=null; spotDone(s); G.ui.say('Somewhere above, a rope gives. A rolled rope ladder tumbles off the ledge and hangs to the sand.',NM.ember,{key:'ladder'}); } } }
@@ -968,7 +1000,7 @@ function taskStepRaven(dt){
     const peck=Math.max(0,Math.sin(k.t*14))**3;
     if(s.id==='bell'){ C.heading=U.dampAngle(C.heading,-PI/2,6,dt); if(k.t>.4&&!k.rang){ k.rang=1; bellRing(); } if(k.t>2.6){ k.phase='back'; k.t=0; spotDone(s); spotReward(s); } }
     else if(s.id==='bundle'){ C.heading=U.dampAngle(C.heading,PI/2,6,dt); if(k.t>1.5&&!k.cut){ k.cut=1; sfx('snip',C.pos); bundleFall(); } if(k.t>2.1){ k.phase='back'; k.t=0; spotDone(s); } }
-    else { C.heading=U.dampAngle(C.heading,PI,6,dt); if(k.t>1.6&&!k.got){ k.got=1; if(DYN.nestGlint)DYN.nestGlint.visible=false; sfx('caw',C.pos,.6); } if(k.t>2){ k.phase='bring'; k.t=0; C.sat=false; C.vel.set(0,6,2); } }
+    else { C.heading=U.dampAngle(C.heading,PI,6,dt); if(k.t>1.6&&!k.got){ k.got=1; const tk=s.id==='stack'?DYN.ribbon:DYN.nestGlint; if(tk)tk.visible=false; sfx('caw',C.pos,.6); } if(k.t>2){ k.phase='bring'; k.t=0; C.sat=false; C.vel.set(0,6,2); } }
     C.k.peck=peck; }
   else if(k.phase==='bring'){ shoulderPos(_b); _b.y+=.35; const d=C.pos.distanceTo(_b); if(d>2.5){ _c.copy(_b); _c.y+=1.5; fly(dt,_c,T.flySpeed); } else fly(dt,_b,Math.max(2,d*3),true);
     scoutGlint(C.pos,1,k.t);
@@ -1027,6 +1059,7 @@ function spotReward(s){
     G.emit('companion:echo',{id:'wren'}); }
   else if(s.id==='nest'){ if(G.progress&&G.progress.grantShard)G.progress.grantShard('nest'); G.ui.say(NM.corvin+' drops something warm into your hand and looks very satisfied with himself.',NM.corvin,{key:'nestShard'}); }
   else if(s.id==='bundleOpen')giveBundle({ichor:2,brine:1,glowcap:1},{name:'A bundle from the tree',eyebrow:NM.corvin+' · the dead tree',desc:'Snagged in the branches since some storm. The twine is pecked clean through.'});
+  else if(s.id==='grotto'||s.id==='stack'){ if(G.northIsleFinds&&G.northIsleFinds.companionFind)G.northIsleFinds.companionFind(s.id); }
   else if(s.id==='ledge')giveBundle({vial:1,pearl:1},{name:'A keeper’s bundle',eyebrow:NM.ember+' · the cave ledge',desc:'Left high and dry on a ledge by a keeper who knew the tide.'});
 }
 function openSeaChest(){
@@ -1155,8 +1188,8 @@ function uiStep(){ if(ravenBtn&&!ravenBtn.hidden){ const cd=clamp(S.cd/T.scoutCD
 function mapMarkers(){
   if(!G.map||!G.map.addMarker)return;
   for(const s of SPOTS){
-    const pos=s.place==='cave'?()=>{ const m=LM().caveMouth; return m?{x:m.x-1,z:m.z+5}:null; }:s.place==='undercroft'?()=>{ const d=LM().undercroftDoor; return d?{x:d.x+2,z:d.z+2}:null; }:{x:s.at.x,z:s.at.z};
-    G.map.addMarker({id:'comp:'+s.id,kind:s.who==='ember'?'fox':'raven',label:(s.who==='ember'?NM.ember:NM.corvin)+': '+s.name.replace(/^The /,'the ')+(s.place==='cave'?' (in the sea cave)':s.place==='undercroft'?' (in the Undercroft)':''),pos,
+    const pos=s.north?{x:s.who==='ember'?146:156,z:-113}:s.place==='cave'?()=>{ const m=LM().caveMouth; return m?{x:m.x-1,z:m.z+5}:null; }:s.place==='undercroft'?()=>{ const d=LM().undercroftDoor; return d?{x:d.x+2,z:d.z+2}:null; }:{x:s.at.x,z:s.at.z};
+    G.map.addMarker({id:'comp:'+s.id,kind:s.who==='ember'?'fox':'raven',label:(s.who==='ember'?NM.ember:NM.corvin)+': '+s.name.replace(/^The /,'the ')+(s.north?' (on the north island)':s.place==='cave'?' (in the sea cave)':s.place==='undercroft'?' (in the Undercroft)':''),pos,
       item:{done:()=>!!S.spots[s.id],doneLabel:s.name+' (done)'},visible:()=>!!S[s.who]&&(!!S.seen[s.id]||(G.map.isSeen&&G.map.isSeen('comp:'+s.id)))});
   }
 }
@@ -1191,6 +1224,7 @@ function applySpots(){
   if(DYN.ladder)ladderDrop(S.spots.crack?2:0);
   if(DYN.ledgeBundle)DYN.ledgeBundle.visible=!S.spots.ledge;
   if(DYN.nestGlint)DYN.nestGlint.visible=!S.spots.nest;
+  if(DYN.ribbon)DYN.ribbon.visible=!S.spots.stack;
   if(DYN.lid)DYN.lid.rotation.x=S.chest?-1.9:0;
 }
 /** an old save: a fox already freed means Ember is already yours (quietly); the raven negative's index keeps Corvin's */
@@ -1222,6 +1256,8 @@ if(G.devtools){
   const isl=s=>()=>{ const p=s.stand; return [p.x,null,p.z,Math.atan2(s.at.x-p.x,s.at.z-p.z)]; };
   tp('log',NM.ember+': hollow log',isl(SP.log)); tp('grate',NM.ember+': cottage grate',isl(SP.grate)); tp('bundle',NM.corvin+': dead tree',isl(SP.bundle)); tp('nest',NM.corvin+': north-cliff nest',isl(SP.nest));
   tp('crack',NM.ember+': cave crack',()=>({cave:'mouth',pos:SP.crack.stand,yaw:-PI/2}));
+  const nth=s=>()=>{ const N=G.northIsle; if(N&&N.at!=='north'&&N.debug&&N.debug.arrive)N.debug.arrive('north'); return isl(s)(); };
+  tp('grotto',NM.ember+': north-island cleft',nth(SP.grotto)); tp('stack',NM.corvin+': north-island gull stack',nth(SP.stack));
   tp('bell',NM.corvin+': chapel bell',()=>({undercroft:'chapel',pos:SP.bell.stand,yaw:PI}));
 }
 
@@ -1231,6 +1267,7 @@ G.system('companions',{order:46,modes:['play','dead'],
     try{ buildIsland(); }catch(e){ console.error('companions island',e); }
     try{ buildCave(); }catch(e){ console.error('companions cave',e); }
     try{ buildUndercroft(); }catch(e){ console.error('companions undercroft',e); }
+    try{ buildNorth(); }catch(e){ console.error('companions north',e); }
     try{ ravenNegInit(); }catch(e){ console.error('companions raven',e); }
     for(let i=0;i<10;i++){ const s=new THREE.Sprite(new THREE.SpriteMaterial({map:G.tex.soft,color:0xd8c4ff,transparent:true,opacity:0,depthWrite:false,blending:THREE.AdditiveBlending})); s.visible=false; s.userData={t:0,life:1}; G.scene.add(s); glints.push(s); }
     mountUI(); wrapStrike(); built=true;
@@ -1271,7 +1308,8 @@ G.system('companions',{order:46,modes:['play','dead'],
     // show each place's set pieces only where you are
     const place=placeNow();
     for(const pc of pieces){ const vis=pc.place===place&&Math.abs(pc.near.x-p.pos.x)<pc.r&&Math.abs(pc.near.z-p.pos.z)<pc.r; if(pc.mesh.visible!==vis)pc.mesh.visible=vis; }
-    if(DYN.bell)DYN.bell.visible=place==='undercroft'; if(DYN.ladder)DYN.ladder.visible=place==='cave'; if(DYN.ledgeBundle)DYN.ledgeBundle.visible=place==='cave'&&!S.spots.ledge;
+    if(DYN.bell)DYN.bell.visible=place==='undercroft';
+    if(DYN.ribbon)DYN.ribbon.visible=!S.spots.stack&&place==='island'&&Math.abs(DYN.ribbon.position.x-p.pos.x)<130&&Math.abs(DYN.ribbon.position.z-p.pos.z)<130;   // the north island's: nothing drawn from home if(DYN.ladder)DYN.ladder.visible=place==='cave'; if(DYN.ledgeBundle)DYN.ledgeBundle.visible=place==='cave'&&!S.spots.ledge;
     seeSpots(dt); uiStep();
     reconT-=dt; if(reconT<=0){ reconT=1; reconcile(); }
   }
