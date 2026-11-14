@@ -141,6 +141,7 @@ const STARTS=[
   {id:'north-landing',name:'The north beach',sub:'Just landed in the cove · the wrecks, and the tower up the path',group:'The north island'},
   {id:'north-cave',name:'The sea cave, low tide',sub:'The tower door tried and barred · at the cave mouth under the cliffs',group:'The north island'},
   {id:'north-cave-in',name:'Inside the sea cave',sub:'Just inside: the store, the ledger and the flooded way on',group:'The north island'},
+  {id:'north-isle-known',name:'The island, knowing',sub:'Ledger read, sluice drained, not yet met · back out on the surface at the wrecker’s bothy: his places read as his',group:'The north island'},
   {id:'north-hoist',name:'The hoist',sub:'Ledger read, sluice drained · at the hoist up into the tower',group:'The north island'},
   {id:'north-father',name:'Rowan’s father',sub:'At the top of the hoist, the foot of the tower · he comes down the stair',group:'The north island'},
   {id:'north-met',name:'After the meeting',sub:'He’s gone back up and barred the trapdoor · the fire is about to say Rowan’s name',group:'The north island'},
@@ -209,8 +210,11 @@ const NORTH_STEP={
   boat:['boat:patch','Patch your boat','You have everything. Back to the wreck'],
   'north-sail':['boat:ready','Sail north','Your boat is waiting in the shallows by the wreck']
 };   // on the island, northisle.js / northcave.js set their own objective (northEnter)
+/* start points on the north island that aren't a step of the story: a step's state, somewhere else (northisle_story.js) */
+const NORTH_ALIAS={'north-isle-known':'north-hoist'};
+const northK=id=>NORTH_ORDER.indexOf(NORTH_ALIAS[id]||id), isNorth=id=>NORTH_ORDER.includes(id)||!!NORTH_ALIAS[id];
 function northSave(id){
-  const k=NORTH_ORDER.indexOf(id), s=templeSave('temple-boss');
+  const k=northK(id), s=templeSave('temple-boss');
   s.mods.lens={v:1,owned:true,range:20,said:['first']};
   s.mods.templeBoss={v:1,defeated:true,reward:'lens',said:[]};
   s.mods.undercroftBoss={v:1,defeated:true,ledger:true,pageRead:true,bossSeen:true,said:[]};
@@ -238,10 +242,13 @@ function northSave(id){
     s.mods.northFireStory={v:1,introSeen:k>=10,attempt:0,keeperTalks:0};
     if(out)s.flags.giantDead=true; }
   const st=NORTH_STEP[id]; if(st){ s.step=st[0]; s.objective=st[1]; s.sub=st[2]; s.target=null; s.targetName=''; }
+  if(id==='north-isle-known'){ // out of the cave again, outside the bothy door, facing in
+    const B=G.northIsleStory&&G.northIsleStory.sites.bothy; if(B){ const d=B.doorOut; s.pos=[d.x,G.floorAt(d.x,d.z,d.y+2)+.05,d.z]; s.yaw=PI/2; } }
   return s;
 }
 function northEnter(id){
-  const k=NORTH_ORDER.indexOf(id), NC=G.northCave;
+  if(NORTH_ALIAS[id]){ setTide('low'); if(G.northIsle)G.northIsle.setQuest(); if(G.northCave)G.northCave.setQuest(); if(G.player.aimCamera)G.player.aimCamera(PI/2,.3); return; }
+  const k=northK(id), NC=G.northCave;
   if(k>=3)setTide('low');
   if(G.northIsle&&k>=2)G.northIsle.setQuest();
   if(k>=4&&NC){ const S=NC.debug.S; S.trans=null; NC.enter({instant:true,at:k>=6?'foot':'mouth'});
@@ -271,14 +278,14 @@ function caveSwarmAndEnter(room){
    and the west tip. 'late' keeps progression.js's lateGame() (everything). */
 const ROUTE_ACT1=['needle','outcrop','attic','hounds'], ROUTE_LOOP=ROUTE_ACT1.concat(['stones','spire','roots','west']);
 function progressFor(id){
-  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id)||/^temple/.test(id)||NORTH_ORDER.includes(id))?ROUTE_LOOP:null;
+  const shards=id==='lamp-failed'?['needle']:(id==='stag'||id==='finale'||id==='loop')?ROUTE_ACT1:(id==='sandbar'||/^cave:/.test(id)||/^undercroft/.test(id)||/^temple/.test(id)||isNorth(id))?ROUTE_LOOP:null;
   if(!shards)return null;
   const o={v:1,shards:{},caches:{},hearts:{},marks:{},spent:0,upgrades:{},freed:0,said:{}};
   for(const k of shards)o.shards[k]=1;
   if(id!=='lamp-failed'&&id!=='stag'){ o.hearts.stag=1; o.marks.stag=1; }       // the Stag is down from the finale on
   if(id==='cave:after'){ o.hearts.undertow=1; o.marks.undertow=2; }
   if(/^temple/.test(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; }
-  if(NORTH_ORDER.includes(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; o.hearts.answer=1; o.marks.answer=2;
+  if(isNorth(id)){ o.hearts.undertow=1; o.marks.undertow=2; o.hearts.crane=1; o.marks.crane=2; o.hearts.answer=1; o.marks.answer=2;
     if(id==='north-lived'||id==='north-died'){ o.hearts.giant=1; o.marks.giant=2; } }   // after the Vigil: the Answer down too   // the Vigil comes after the cave and the Undercroft: 7 hearts with the route's shards
   return o;
 }
@@ -337,7 +344,7 @@ function runStart0(id){
   if(/^cave:/.test(id)){ const room=id.slice(5); F.begin(caveSave(room)); caveSwarmAndEnter(room); return; }
   if(/^undercroft/.test(id)){ F.begin(undercroftSave(id)); undercroftEnter(id); return; }
   if(/^temple/.test(id)){ F.begin(templeSave(id)); templeEnter(id); return; }
-  if(NORTH_ORDER.includes(id)){ F.begin(northSave(id)); northEnter(id); return; }
+  if(isNorth(id)){ F.begin(northSave(id)); northEnter(id); return; }
   if(id==='companions'){ // companions.js: both earned (a fox and the raven freed), standing by the hollow log on the moor
     const s=loopSave({lantern:true}); const N=(G.creatures&&G.creatures.negatives)||[];
     s.freed=N.map((n,i)=>(n.kind==='raven'||(n.kind==='fox'&&i===N.findIndex(m=>m.kind==='fox')))?i:-1).filter(i=>i>=0);

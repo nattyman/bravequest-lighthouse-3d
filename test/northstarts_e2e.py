@@ -18,7 +18,7 @@ function state(){ const NI=G.northIsle, NC=G.northCave, S=NC.state;
     started:G.boat.started,built:G.boat.built,parts:G.boat.count(),at:NI.at,onIsle:!!NI.inside,cave:!!NC.inside,tideLow:!!G.tide.low,
     drained:S.drained,hoistTop:S.hoistTop,met:S.met,scene:!!S.scene,ledger:!!S.read.ledger,test:!!G.testSaves,hud:!document.getElementById('hud').hidden,
     talk:document.body.classList.contains('talk-open'),label:label(),pos:[+P().pos.x.toFixed(1),+P().pos.y.toFixed(1),+P().pos.z.toFixed(1)],cp:G.state.checkpointName,
-    open:!!S.open,hp:P().hp,maxHp:P().maxHp,fire:fire()}; }
+    open:!!S.open,hp:P().hp,maxHp:P().maxHp,fire:fire(),story:G.northIsleStory?G.northIsleStory.stage():null}; }
 /* the fire room (northfire.js / northfire_story.js) */
 function fire(){ const NF=G.northFire, St=G.northFireStory; if(!NF)return null; const g=NF.giant;
   return {inside:!!NF.inside,fighting:!!NF.fighting,g:g.state,phase:g.phase,ghp:+g.hp.toFixed(1),done:!!NF.state.done,outcome:NF.state.outcome,look:NF.fire,
@@ -54,6 +54,7 @@ EXPECT={
  'north-cave':lambda s:north(s) and not s['cave'] and s['step']=='north:cave' and s['tideLow'] and s['label']=='Go into the sea cave',
  'north-cave-in':lambda s:north(s) and s['cave'] and not s['ledger'] and s['step']=='north:caveIn',
  'north-hoist':lambda s:north(s) and s['cave'] and s['drained'] and not s['hoistTop'] and s['step']=='north:hoist' and s['label']=='Work the hoist',
+ 'north-isle-known':lambda s:north(s) and not s['cave'] and s['ledger'] and s['drained'] and not s['met'] and s['tideLow'] and s['story']=='known' and s['step']=='north:cave',   # (northisle_story.js: out by the bothy)
  'north-father':lambda s:north(s) and s['cave'] and s['hoistTop'] and (s['scene'] or s['talk']) and not s['met'],
  'north-met':lambda s:north(s) and s['cave'] and s['met'] and s['step']=='north:met',
  'north-trap':lambda s:north(s) and s['cave'] and s['met'] and s['open'] and s['step']=='north:trap',
@@ -80,6 +81,7 @@ AFTER={
  'north-cave':("(()=>{ T.use(/sea cave/); T.run(2.5); return {cave:G.northCave.inside,step:G.quest.step}; })()", lambda r:r['cave'] and r['step']=='north:caveIn'),
  'north-cave-in':("(()=>{ G.northCave.debug.readLedger(); T.run(3); return {step:G.quest.step,ledger:!!G.northCave.state.read.ledger}; })()", lambda r:r['ledger']),
  'north-hoist':("(()=>{ T.use(/Work the hoist/); T.run(11); return {top:G.northCave.state.hoistTop,scene:!!G.northCave.state.scene,talk:document.body.classList.contains('talk-open')}; })()", lambda r:r['top'] and (r['scene'] or r['talk'])),
+ 'north-isle-known':("(()=>{ const S=G.northIsleStory, s=S.sites.stands.tally; G.player.teleport(s.x,s.y,s.z,-Math.PI/2); G.step(1/30,4); const lab=T.use(/tally/); T.run(1); return {lab,said:T.said(/A ship a season/),read:!!S.state.read['tally:known']}; })()", lambda r:r['lab']=='Look at the tally marks' and r['said'] and r['read']),
  'north-father':("(()=>{ T.run(4); return {talk:document.body.classList.contains('talk-open'),name:(document.querySelector('#talk .name, #talk [data-name], #talkName')||{}).textContent||''}; })()", lambda r:r['talk']),
  'north-trap':("(()=>{ const p=G.northCave.trapPos(); G.player.teleport(p.x,p.y,p.z,0); G.step(1/30,4); const lab=T.use(/fire room/); T.run(2.5); return {lab,inside:G.northFire.inside}; })()", lambda r:r['inside']),
  'north-fire':("(()=>{ const ok=T.settle(30,()=>G.northFire.giant.state==='fight'&&!G.northFireStory.scene); return {ok,intro:G.northFireStory.state.introSeen,g:G.northFire.giant.state,step:G.quest.step,dad:G.northFireStory.mode}; })()",
